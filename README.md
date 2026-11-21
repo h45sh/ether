@@ -20,11 +20,13 @@ import asyncio
 from ether.graph.store import GraphStore
 from ether.core.session import ExecutionSession
 
+
 async def main():
     store = GraphStore(":memory:")
     await store.initialize()
     # Execute tools, stream findings, query graph
     await store.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

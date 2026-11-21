@@ -251,7 +251,7 @@ async def test_gateway_blocks_extended_metadata():
 
 
 def test_gateway_imds_canonicalization_direct():
-    from ether.engine.gateway import is_blocked_destination
+    from ether.gateway.gate import is_blocked_destination
 
     assert is_blocked_destination("169.254.169.254") is True
     assert is_blocked_destination("0251.0376.0251.0376") is True

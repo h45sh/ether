@@ -105,14 +105,15 @@ def is_blocked_destination(text: str) -> bool:
     return False
 
 
-
 from enum import Enum
 
 
 class GatePolicy(str, Enum):
     """Policy mode governing gateway enforcement."""
-    SAFE = "safe"                  # Strict: blocks metadata, enforces CIDR, user shell only
+
+    SAFE = "safe"  # Strict: blocks metadata, enforces CIDR, user shell only
     UNRESTRICTED = "unrestricted"  # Beast: allows any destination, autonomous shell, raw execution
+
 
 class ActionValidationError(Exception):
     """Raised when an ActionRequest fails validation."""

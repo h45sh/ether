@@ -41,9 +41,14 @@ def test_zero_ui_imports():
                 if node.module:
                     root_pkg = node.module.split(".")[0]
                     if root_pkg in BANNED_UI_MODULES:
-                        violations.append(f"{py_file.name}:{node.lineno} imports from '{node.module}'")
+                        violations.append(
+                            f"{py_file.name}:{node.lineno} imports from '{node.module}'"
+                        )
 
-    assert not violations, f"Architectural violation: Banned UI imports found in headless engine:\n" + "\n".join(violations)
+    assert not violations, (
+        f"Architectural violation: Banned UI imports found in headless engine:\n"
+        + "\n".join(violations)
+    )
 
 
 @pytest.mark.tier0
@@ -61,9 +66,13 @@ def test_layer_dag_schemas_are_pure():
             if isinstance(node, ast.ImportFrom) and node.module:
                 for banned in banned_in_schemas:
                     if node.module.startswith(banned):
-                        violations.append(f"{py_file.name}:{node.lineno} schema imports higher layer '{node.module}'")
+                        violations.append(
+                            f"{py_file.name}:{node.lineno} schema imports higher layer '{node.module}'"
+                        )
 
-    assert not violations, f"Layer DAG violation: Schemas must be pure core models:\n" + "\n".join(violations)
+    assert not violations, f"Layer DAG violation: Schemas must be pure core models:\n" + "\n".join(
+        violations
+    )
 
 
 @pytest.mark.tier0
@@ -83,7 +92,15 @@ def test_no_raw_os_system_or_shell_true():
 
                 # Check for shell=True keyword argument in calls
                 for kw in node.keywords:
-                    if kw.arg == "shell" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
-                        violations.append(f"{py_file.name}:{node.lineno} uses shell=True in subprocess call")
+                    if (
+                        kw.arg == "shell"
+                        and isinstance(kw.value, ast.Constant)
+                        and kw.value.value is True
+                    ):
+                        violations.append(
+                            f"{py_file.name}:{node.lineno} uses shell=True in subprocess call"
+                        )
 
-    assert not violations, f"Security violation: Banned subprocess mechanisms found:\n" + "\n".join(violations)
+    assert not violations, f"Security violation: Banned subprocess mechanisms found:\n" + "\n".join(
+        violations
+    )

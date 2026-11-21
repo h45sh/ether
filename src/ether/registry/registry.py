@@ -138,4 +138,11 @@ class ToolRegistry:
         # optional diagnostics
 
         self.refresh_if_changed()
-        return {name: {"installed": data["adapter"].validate_install()} for name, data in self.tools.items()}
+        return {
+            name: {
+                "status": "ok" if data["adapter"].validate_install() else "error",
+                "healthy": data["adapter"].validate_install(),
+                "installed": data["adapter"].validate_install(),
+            }
+            for name, data in self.tools.items()
+        }

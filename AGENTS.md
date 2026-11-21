@@ -74,8 +74,10 @@ Ether features a first-class `GatePolicy` seam:
 
 ```python
 class GatePolicy(str, Enum):
-    SAFE = "safe"                  # Enforces SSRF defense, CIDR scope boundary, blocks metadata
-    UNRESTRICTED = "unrestricted"  # Beast mode: allows raw execution, any target, unrestricted shell
+    SAFE = "safe"  # Enforces SSRF defense, CIDR scope boundary, blocks metadata
+    UNRESTRICTED = (
+        "unrestricted"  # Beast mode: allows raw execution, any target, unrestricted shell
+    )
 ```
 
 1. **Under `GatePolicy.SAFE` (Default for public/educational consumers like CyGuide):**

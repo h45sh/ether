@@ -31,7 +31,7 @@ from ether.common.canonicalize import (
     canonicalize_mapping,
     canonicalize_port,
 )
-from ether.engine.gateway import is_blocked_destination
+from ether.gateway.gate import is_blocked_destination
 from ether.graph.store import GraphStore
 from ether.schemas.network import NetworkHost, NetworkService
 

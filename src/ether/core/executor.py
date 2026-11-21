@@ -18,6 +18,7 @@ def sanitize_subprocess_env(env: Optional[Dict[str, str]] = None) -> Dict[str, s
     """Sanitize environment variables passed to child subprocesses to prevent secret leakage."""
     base_env = env if env is not None else os.environ.copy()
     sensitive_prefixes = (
+        "ETHER_",
         "CYGUIDE_",
         "OPENAI_",
         "GROQ_",

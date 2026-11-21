@@ -1,8 +1,8 @@
 from typing import Any, AsyncIterator, Dict, List
 
-from cyguide.engine.adapter import ToolAdapter
-from cyguide.schemas.base import BaseFinding
-from cyguide.schemas.network import NetworkHost, NetworkService
+from ether.registry.adapter import ToolAdapter
+from ether.schemas.base import BaseFinding
+from ether.schemas.network import NetworkHost, NetworkService
 
 
 class MockNmapAdapter(ToolAdapter):

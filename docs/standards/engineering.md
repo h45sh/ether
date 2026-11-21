@@ -77,10 +77,12 @@ from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.network import NetworkService
 
+
 class NmapAdapter(ToolAdapter):
     def validate_install(self) -> bool:
         """Check if binary exists in PATH."""
         import shutil
+
         return shutil.which("nmap") is not None
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
@@ -89,10 +91,7 @@ class NmapAdapter(ToolAdapter):
         return ["nmap", "-sV", ip]
 
     async def parse_output(
-        self,
-        line: str,
-        target: BaseFinding,
-        context: Dict[str, Any]
+        self, line: str, target: BaseFinding, context: Dict[str, Any]
     ) -> AsyncIterator[BaseFinding]:
         """Streamingly parse single stdout lines into normalized findings."""
         if "/tcp" in line and "open" in line:
