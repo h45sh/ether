@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "ether",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "include-component-in-tag": false,
+      "changelog-sections": [
+        {"type": "feat", "section": "Features"},
+        {"type": "fix", "section": "Bug Fixes"},
+        {"type": "perf", "section": "Performance Improvements"},
+        {"type": "revert", "section": "Reverts"},
+        {"type": "docs", "hidden": true},
+        {"type": "refactor", "hidden": true},
+        {"type": "chore", "hidden": true},
+        {"type": "test", "hidden": true},
+        {"type": "ci", "hidden": true}
+      ]
+    }
+  }
+}
+EOF && \
+cat << 'EOF' > /home/harsh/Documents/ether/.release-please-manifest.json
+{
+  ".": "0.1.0"
+}
+EOF && \
+cat << 'EOF' > /home/harsh/Documents/ether/CHANGELOG.md
+# Changelog
+
+All notable changes to **Ether** will be documented in this file.
+
+## [0.1.0] - 2026-11-21
+
+### Features
+- **Decoupled Engine Core:** Standalone, pure-async process supervisor and telemetry engine.
+- **Deterministic Reactive Graph:** SHA-256 Primary Identity Key (PIK) hashing with SQLite WAL GraphStore.
+- **Dual Policy Seam:** First-class `GatePolicy` (`SAFE` vs `UNRESTRICTED` Beast mode).
+- **Universal Smart Adapters:** 11 pluggable security tool adapters (`nmap`, `nuclei`, `ffuf`, `gobuster`, etc.).
+- **Zero UI Invariant:** 100% headless core verified via automated AST architectural linting.
+- **Mechanical Testing Matrix:** 166 passing unit, property, and universal adapter fuzzing tests.

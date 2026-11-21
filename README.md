@@ -90,6 +90,7 @@ import asyncio
 from ether import GraphStore, ToolRegistry, ActionGateway, GatePolicy
 from ether.schemas.network import NetworkHost
 
+
 async def main():
     # 1. Initialize SQLite WAL Storage (in-memory or on disk)
     store = GraphStore(":memory:")
@@ -115,6 +116,7 @@ async def main():
     print(f"Discovered: {node['schema_type']} -> {node['pik_json']}")
 
     await store.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

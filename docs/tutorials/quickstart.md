@@ -19,6 +19,7 @@ import asyncio
 from ether import GraphStore, ToolRegistry, ActionGateway, GatePolicy
 from ether.schemas.network import NetworkHost
 
+
 async def main():
     print("[1] Initializing SQLite WAL GraphStore...")
     # Using :memory: for ephemeral runs or a path like "recon.db" for persistent storage
@@ -52,6 +53,7 @@ async def main():
     print("[7] Closing Database Connections Cleanly...")
     await store.close()
     print("Done!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

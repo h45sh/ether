@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Auto-generates docs/developer/SCHEMA_REGISTRY.md from ether/schemas.
+Auto-generates docs/reference/schema-registry.md from ether/schemas.
 Acts as a linter: fails if any schema is missing documentation or pik_fields.
 """
 
@@ -118,7 +118,7 @@ def generate_registry(check_only: bool = False):
     content += "This registry defines the shared language of CyGuide findings. Every tool must emit data conforming to one of these schemas.\n\n"
     content += header + "\n".join(rows) + "\n"
 
-    output_path = project_root / "docs" / "developer" / "SCHEMA_REGISTRY.md"
+    output_path = project_root / "docs" / "reference" / "schema-registry.md"
 
     if check_only:
         if not output_path.exists():

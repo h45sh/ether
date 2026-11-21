@@ -54,6 +54,7 @@ from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.network import NetworkService
 
+
 class NmapAdapter(ToolAdapter):
     def validate_install(self) -> bool:
         """Return True if the required binary is installed and executable."""
@@ -66,10 +67,7 @@ class NmapAdapter(ToolAdapter):
         return ["nmap", *flags, ip]
 
     async def parse_output(
-        self,
-        line: str,
-        target: BaseFinding,
-        context: Optional[Dict[str, Any]] = None
+        self, line: str, target: BaseFinding, context: Optional[Dict[str, Any]] = None
     ) -> AsyncIterator[BaseFinding]:
         """Parse incoming stdout line-by-line into normalized findings."""
         clean = line.strip()
