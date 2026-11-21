@@ -1,0 +1,97 @@
+"""Nmap tool adapter."""
+
+import re
+import shlex
+from typing import Any, AsyncIterator, Dict, List
+
+from ether.registry.adapter import ToolAdapter
+from ether.schemas.base import BaseFinding
+from ether.schemas.network import NetworkHost, NetworkService
+
+_REPORT_PATTERN = re.compile(r"Nmap scan report for (?:[^\s(]+\s+)?\(?([^\s)]+)\)?")
+_PORT_PATTERN = re.compile(r"(\d+)/(tcp|udp)\s+open\s+(\S+)")
+_IP_PATTERN = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
+
+
+class NmapAdapter(ToolAdapter):
+    """Adapter for the nmap port scanner."""
+
+    def validate_install(self) -> bool:
+        return self.is_binary_available("nmap")
+
+    def sanitize_output(self, raw_stdout: str) -> str:
+        """Strip nmap banner and timing statistics to conserve LLM context tokens."""
+        lines = []
+        for line in raw_stdout.splitlines():
+            s = line.strip()
+            if (
+                s.startswith("Starting Nmap")
+                or s.startswith("Nmap done:")
+                or "host up (" in s.lower()
+            ):
+                continue
+            lines.append(line)
+        return "\n".join(lines)
+
+    def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
+        # target is expected to be a network.host, but might be dummy in manual mode
+        ip = self.extract_host(target)
+
+        args = ["nmap", "--noninteractive"]
+
+        # Handle manual raw flags from UI
+        raw_flags = params.get("raw_flags", "")
+        if raw_flags:
+            args.extend(shlex.split(raw_flags))
+
+        if ip and ip not in args:
+            args.append(ip)
+        elif not raw_flags:
+            raise ValueError(
+                "Target finding must have an IP address, or provide one in the command flags."
+            )
+
+        return args
+
+    async def parse_output(
+        self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
+    ) -> AsyncIterator[BaseFinding]:
+        """Simple regex parser for nmap output.
+
+        Example line: 80/tcp open  http
+        """
+        context = context or {}
+
+        for line in raw_stdout.splitlines():
+            clean_line = self.strip_ansi(line)
+
+            # Host discovery
+            host_match = _REPORT_PATTERN.search(clean_line)
+            if host_match:
+                host_ip = host_match.group(1)
+                context["current_host_ip"] = host_ip
+                yield NetworkHost.create(ip=host_ip)
+                continue
+
+            # Port discovery
+            port_match = _PORT_PATTERN.search(clean_line)
+            if port_match:
+                # Priority: 1. Host from output context, 2. Host from target PIK, 3. Host from raw flags
+                host_ip = context.get("current_host_ip") or target.pik.get("ip")
+
+                if not host_ip:
+                    # Fallback: Try to find IP in raw flags if it is a manual scan
+                    raw_flags = context.get("params", {}).get("raw_flags", "")
+                    ip_match = _IP_PATTERN.search(raw_flags)
+                    if ip_match:
+                        host_ip = ip_match.group(1)
+                        context["current_host_ip"] = host_ip
+
+                if host_ip:
+                    port = int(port_match.group(1))
+                    protocol = port_match.group(2)
+                    service = port_match.group(3)
+
+                    yield NetworkService.create(
+                        host_ip=host_ip, port=port, protocol=protocol, service_name=service
+                    )

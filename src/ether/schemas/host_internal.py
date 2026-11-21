@@ -1,0 +1,58 @@
+"""Host-internal finding schemas (processes, files, packages)."""
+
+from typing import ClassVar, Optional
+
+from ether.schemas.base import BaseFinding, Relation
+
+
+class ProcessRunning(BaseFinding):
+    """A running process on a host. Child of network.host. Produced by ps, netstat."""
+
+    schema_type: str = "process.running"
+    pik_fields: ClassVar[list[str]] = ["host_ip", "pid"]
+
+    @classmethod
+    def create(cls, host_ip: str, pid: int, name: str, **kwargs):
+        return cls.from_data(
+            {"host_ip": host_ip, "pid": pid, "name": name, **kwargs},
+            parent=Relation(
+                target_type="network.host", target_pik={"ip": host_ip}, via="hosts_process"
+            ),
+        )
+
+
+class FileSystemObject(BaseFinding):
+    """A file or directory found on a host. Child of network.host. Produced by find, ls."""
+
+    schema_type: str = "file.system_object"
+    pik_fields: ClassVar[list[str]] = ["host_ip", "path"]
+
+    @classmethod
+    def create(cls, host_ip: str, path: str, **kwargs):
+        return cls.from_data(
+            {"host_ip": host_ip, "path": path, **kwargs},
+            parent=Relation(
+                target_type="network.host", target_pik={"ip": host_ip}, via="hosts_file"
+            ),
+        )
+
+
+class SoftwarePackage(BaseFinding):
+    """An installed software package. Child of network.host. Produced by dpkg, rpm, brew."""
+
+    schema_type: str = "software.package"
+    pik_fields: ClassVar[list[str]] = ["host_ip", "package_name"]
+
+    @classmethod
+    def create(cls, host_ip: str, package_name: str, version: Optional[str] = None, **kwargs):
+        return cls.from_data(
+            {
+                "host_ip": host_ip,
+                "package_name": package_name,
+                "version": version,
+                **kwargs,
+            },
+            parent=Relation(
+                target_type="network.host", target_pik={"ip": host_ip}, via="hosts_software"
+            ),
+        )

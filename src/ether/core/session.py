@@ -1,0 +1,917 @@
+"""ExecutionSession: Deep module encapsulating action execution, output spooling, and stream multiplexing."""
+
+import asyncio
+import os
+import shlex
+import shutil
+import subprocess
+from contextlib import nullcontext
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    ContextManager,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
+from uuid import UUID
+
+from ether.registry.adapter import ToolAdapter
+from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
+from ether.gateway.gate import ActionGateway
+from ether.registry.registry import ToolRegistry
+from ether.graph.store import GraphStore
+from ether.paths import get_action_log_path
+from ether.schemas.base import BaseFinding
+from ether.schemas.power import ActionRequest, JobStatus, JobStatusEnum
+
+# --- Protocols & Seams ---
+
+
+@runtime_checkable
+class TerminalSuspendContext(Protocol):
+    """Protocol for safely suspending a terminal UI during privileged operations."""
+
+    def suspend(self) -> ContextManager[None]:
+        """Context manager invoked before privileged execution to release terminal controls."""
+        ...
+
+
+@runtime_checkable
+class CommandRunner(Protocol):
+    """Protocol for executing tools or shell commands and streaming raw output."""
+
+    async def run(
+        self,
+        adapter: ToolAdapter,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        task_id: str,
+        cwd: str,
+        env: Optional[Dict[str, str]] = None,
+        use_shell: bool = False,
+        shell_path: Optional[str] = None,
+        on_output: Optional[Callable[[str], Any]] = None,
+        on_error_output: Optional[Callable[[str], Any]] = None,
+        timeout_seconds: Optional[int] = None,
+    ) -> AsyncIterator[BaseFinding]: ...
+
+    async def stop(self, task_id: str) -> None: ...
+
+
+class SubprocessCommandRunner:
+    """Production CommandRunner delegating to Executor subprocess management."""
+
+    def __init__(self, executor: Executor):
+        self.executor = executor
+
+    async def run(
+        self,
+        adapter: ToolAdapter,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        task_id: str,
+        cwd: str,
+        env: Optional[Dict[str, str]] = None,
+        use_shell: bool = False,
+        shell_path: Optional[str] = None,
+        on_output: Optional[Callable[[str], Any]] = None,
+        on_error_output: Optional[Callable[[str], Any]] = None,
+        timeout_seconds: Optional[int] = None,
+    ) -> AsyncIterator[BaseFinding]:
+        async for finding in self.executor.run_tool(
+            adapter=adapter,
+            target=target,
+            params=params,
+            session_id=None,
+            task_id=task_id,
+            cwd=cwd,
+            env=env,
+            use_shell=use_shell,
+            shell_path=shell_path,
+            on_output=on_output,
+            on_error_output=on_error_output,
+            timeout_seconds=timeout_seconds,
+        ):
+            yield finding
+
+    async def stop(self, task_id: str) -> None:
+        await self.executor.stop_task(task_id)
+
+
+# --- Typed Execution Events ---
+
+
+@dataclass(frozen=True)
+class ExecutionEvent:
+    """Base typed execution event emitted across the ExecutionSession stream."""
+
+    action_id: UUID
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class ExecutionStarted(ExecutionEvent):
+    tool_name: str = ""
+    command_snippet: str = ""
+    log_file: str = ""
+
+
+@dataclass(frozen=True)
+class ExecutionChunk(ExecutionEvent):
+    text: str = ""
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
+class ExecutionCompleted(ExecutionEvent):
+    status: JobStatusEnum = JobStatusEnum.DONE
+    findings_count: int = 0
+    duration_seconds: float = 0.0
+
+
+@dataclass(frozen=True)
+class ExecutionFailed(ExecutionEvent):
+    error: str = ""
+    duration_seconds: float = 0.0
+
+
+# --- Internal Adapters ---
+
+
+class InternalShellAdapter(ToolAdapter):
+    """Adapter for explicit shell commands (prefix '!')."""
+
+    def validate_install(self) -> bool:
+        return True
+
+    def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
+        return shlex.split(params.get("raw_flags", ""))
+
+    async def parse_output(
+        self,
+        raw_stdout: str,
+        target: BaseFinding,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[BaseFinding]:
+        if False:
+            yield target
+
+
+# --- Deep ExecutionSession Module ---
+
+
+class ExecutionSession:
+    """Encapsulates in-memory action execution lifecycles, streaming multiplexers,
+
+    disk log spooling, and interactive privileged command execution.
+    """
+
+    def __init__(
+        self,
+        store: GraphStore,
+        gateway: ActionGateway,
+        registry: ToolRegistry,
+        command_runner: CommandRunner,
+        user_env: Optional[Dict[str, str]] = None,
+        user_shell: Optional[str] = None,
+    ):
+        self.store = store
+        self.gateway = gateway
+        self.registry = registry
+        self.runner = command_runner
+        self.user_env = user_env or os.environ.copy()
+        self.user_shell = user_shell or "/bin/bash"
+
+        # Action tracking
+        self._active_jobs: Dict[UUID, JobStatus] = {}
+        self._job_actions: Dict[UUID, ActionRequest] = {}
+        self._job_buffers: Dict[UUID, List[str]] = {}
+        self._event_queues: Dict[UUID, List[asyncio.Queue[Optional[ExecutionEvent]]]] = {}
+        self._running_tasks: Dict[UUID, asyncio.Task] = {}
+        self._status_listeners: List[Callable[[JobStatus], Any]] = []
+        self._session_cwd: Dict[str, str] = {}
+        self.closed_job_ids: set[str] = set()
+        self._job_spoolers: Dict[UUID, LogSpooler] = {}
+
+    def add_status_listener(self, listener: Callable[[JobStatus], Any]) -> None:
+        """Register a callback notified when any job changes status."""
+        self._status_listeners.append(listener)
+
+    def remove_status_listener(self, listener: Callable[[JobStatus], Any]) -> None:
+        if listener in self._status_listeners:
+            self._status_listeners.remove(listener)
+
+    def _notify_status(self, job: JobStatus) -> None:
+        for listener in list(self._status_listeners):
+            try:
+                listener(job)
+            except Exception:
+                pass
+
+    def get_job(self, action_id: UUID) -> Optional[JobStatus]:
+        return self._active_jobs.get(action_id)
+
+    def get_job_action(self, action_id: UUID) -> Optional[ActionRequest]:
+        """Get the original ActionRequest for a job."""
+        return self._job_actions.get(action_id)
+
+    def register_job(self, job: JobStatus) -> None:
+        """Register or update a JobStatus in active job tracking."""
+        self._active_jobs[job.job_id] = job
+        self._notify_status(job)
+
+    def register_action(self, action: ActionRequest) -> None:
+        """Register the ActionRequest for a job."""
+        self._job_actions[action.action_id] = action
+
+    def append_job_buffer(self, action_id: UUID, chunk: str) -> None:
+        """Append an output chunk to in-memory job buffer."""
+        if action_id not in self._job_buffers:
+            self._job_buffers[action_id] = []
+        self._job_buffers[action_id].append(chunk)
+
+    def remove_job(self, action_id: UUID) -> Optional[JobStatus]:
+        """Remove a job from active in-memory tracking and record in closed_job_ids."""
+        job = self._active_jobs.pop(action_id, None)
+        self._job_actions.pop(action_id, None)
+        self._job_buffers.pop(action_id, None)
+        self._running_tasks.pop(action_id, None)
+        self.closed_job_ids.add(str(action_id))
+        return job
+
+    def mark_job_closed(self, action_id: Any) -> None:
+        """Record an action ID as closed."""
+        self.closed_job_ids.add(str(action_id))
+
+    def is_job_closed(self, action_id: Any) -> bool:
+        """Check if an action has been marked closed."""
+        return str(action_id) in self.closed_job_ids
+
+    def get_active_jobs(self) -> List[JobStatus]:
+        return list(self._active_jobs.values())
+
+    def get_running_task(self, action_id: UUID) -> Optional[asyncio.Task]:
+        return self._running_tasks.get(action_id)
+
+    def track_task(self, action_id: UUID, task: asyncio.Task) -> None:
+        """Register an asynchronous task under session lifecycle management."""
+        self._running_tasks[action_id] = task
+
+    def get_cwd(self, session_id: str) -> str:
+        return self._session_cwd.get(session_id, os.getcwd())
+
+    def set_cwd(self, session_id: str, new_path: str) -> None:
+        self._session_cwd[session_id] = new_path
+
+    def get_output_history(self, action_id: UUID) -> List[str]:
+        """Return buffered output chunks for replay when switching or restoring tabs."""
+        return list(self._job_buffers.get(action_id, []))
+
+    def get_job_buffer(self, action_id: UUID) -> List[str]:
+        """Return buffered output chunks for an action."""
+        return self.get_output_history(action_id)
+
+    def get_active_jobs_count(self, session_id: Optional[str] = None) -> int:
+        """Get count of active (running/queued) jobs, optionally filtered by session_id."""
+        if session_id is None:
+            return sum(
+                1
+                for j in self._active_jobs.values()
+                if j.status in (JobStatusEnum.RUNNING, JobStatusEnum.QUEUED)
+            )
+        return sum(
+            1
+            for j in self._active_jobs.values()
+            if str(j.session_id) == str(session_id)
+            and j.status in (JobStatusEnum.RUNNING, JobStatusEnum.QUEUED)
+        )
+
+    def get_session_active_jobs(self, session_id: str) -> List[JobStatus]:
+        """Get all active/tracked jobs for a session."""
+        return [j for j in self._active_jobs.values() if str(j.session_id) == str(session_id)]
+
+    async def subscribe(self, action_id: UUID) -> AsyncIterator[ExecutionEvent]:
+        """Subscribe to live typed execution events for an action with backlog replay."""
+        q: asyncio.Queue[Optional[ExecutionEvent]] = asyncio.Queue()
+        if action_id not in self._event_queues:
+            self._event_queues[action_id] = []
+        self._event_queues[action_id].append(q)
+
+        # Replay backlog if already started
+        buffer_chunks = self.get_output_history(action_id)
+        for chunk in buffer_chunks:
+            await q.put(ExecutionChunk(action_id=action_id, text=chunk))
+
+        job = self.get_job(action_id)
+        if job and job.status != JobStatusEnum.RUNNING:
+            if job.status == JobStatusEnum.DONE:
+                await q.put(ExecutionCompleted(action_id=action_id, status=job.status))
+            else:
+                await q.put(
+                    ExecutionFailed(action_id=action_id, error=job.error_snippet or "Failed")
+                )
+            await q.put(None)
+
+        try:
+            while True:
+                event = await q.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            if action_id in self._event_queues and q in self._event_queues[action_id]:
+                self._event_queues[action_id].remove(q)
+                if not self._event_queues[action_id]:
+                    self._event_queues.pop(action_id, None)
+
+    async def _emit_event(self, action_id: UUID, event: Optional[ExecutionEvent]) -> None:
+        queues = list(self._event_queues.get(action_id, []))
+        for q in queues:
+            try:
+                await q.put(event)
+            except Exception:
+                pass
+
+    async def dispatch(
+        self,
+        action: ActionRequest,
+        suspend_context: Optional[TerminalSuspendContext] = None,
+        on_chunk: Optional[Callable[[str], Any]] = None,
+        on_complete: Optional[Callable[[], Any]] = None,
+    ) -> UUID:
+        """Dispatch an action request through preflight validation, disk spooling, and execution."""
+        # 0. Session guard
+        session_info = await self.store.get_session(str(action.session_id))
+        if session_info and session_info.get("status") == "CLOSED":
+            raise PermissionError(
+                "Cannot execute actions in an archived session. Reopen the session first."
+            )
+
+        # 1. Variable substitution ($TARGET, $PORT, $LHOST, etc.) via ActionGateway
+        pik = None
+        if action.target_entity_id:
+            node_data = await self.store.get_node(str(action.session_id), action.target_entity_id)
+            if node_data:
+                import json
+
+                pik = json.loads(node_data.get("pik_json") or "{}")
+
+        resolved_vars = self.gateway.resolve_entity_variables(pik)
+        raw_flags = action.params.get("raw_flags", "") if action.params else ""
+        raw_flags = self.gateway.interpolate_variables(raw_flags, resolved_vars)
+        if action.params:
+            action.params["raw_flags"] = raw_flags
+
+        # 2. Builtin 'cd' handling
+        tool_data = self.registry.get_tool(action.tool_name)
+        if not tool_data and action.tool_name == "cd":
+            dest = raw_flags.strip()
+            current = self.get_cwd(str(action.session_id))
+            new_path = os.path.abspath(os.path.join(current, dest))
+            if os.path.isdir(new_path):
+                self.set_cwd(str(action.session_id), new_path)
+                msg = f"Changed directory to: {new_path}\n"
+            else:
+                msg = f"cd: no such directory: {dest}\n"
+            if on_chunk:
+                await on_chunk(msg)
+            return UUID(int=0)
+
+        # 3. Determine Adapter
+        if action.is_explicit_shell:
+            action.params["raw_flags"] = f"{action.tool_name} {raw_flags}".strip()
+            adapter = InternalShellAdapter()
+        elif tool_data:
+            action.params["raw_flags"] = raw_flags
+            adapter = tool_data["adapter"]
+        else:
+            raise ValueError(f"No tool or explicit shell prefix found for '{action.tool_name}'")
+
+        # 4. Preflight Validation
+        try:
+            await self.gateway.validate_action(action)
+        except Exception as e:
+            await self._emit_event(
+                action.action_id, ExecutionFailed(action_id=action.action_id, error=str(e))
+            )
+            await self._emit_event(action.action_id, None)
+            raise
+
+        # 5. Job status initialization
+        log_file_path = get_action_log_path(str(action.action_id))
+        cmd_raw = action.params.get("raw_flags", "") if action.params else ""
+        cmd_snippet = f"{action.tool_name} {cmd_raw}".strip() if cmd_raw else action.tool_name
+
+        job = JobStatus(
+            job_id=action.action_id,
+            session_id=action.session_id,
+            tool_name=action.tool_name,
+            status=JobStatusEnum.RUNNING,
+            log_file=log_file_path,
+            command_snippet=cmd_snippet,
+        )
+        self._active_jobs[job.job_id] = job
+        self._job_actions[job.job_id] = action
+        self._job_buffers[job.job_id] = []
+        self._notify_status(job)
+
+        # 6. Resolve target finding
+        if not action.is_explicit_shell and action.target_entity_id:
+            import json
+
+            node_data = await self.store.get_node(str(action.session_id), action.target_entity_id)
+            target = BaseFinding(
+                schema_type=node_data["schema_type"],
+                pik=json.loads(node_data["pik_json"]),
+                data=json.loads(node_data["data_json"]),
+                status=node_data.get("status", "confirmed"),
+            )
+        else:
+            target = BaseFinding(
+                schema_type="system.shell",
+                pik={"cmd": action.tool_name},
+                data={},
+                status="confirmed",
+            )
+
+        # 7. Privileged execution check (sudo)
+        is_sudo = action.tool_name == "sudo"
+        if is_sudo:
+            # Handle sudo interactively using suspend context
+            task = asyncio.create_task(
+                self._run_privileged_action(
+                    action, cmd_raw, log_file_path, job, suspend_context, on_chunk, on_complete
+                )
+            )
+        else:
+            # Handle regular background action
+            task = asyncio.create_task(
+                self._run_background_action(
+                    action, adapter, target, log_file_path, job, on_chunk, on_complete
+                )
+            )
+
+        self._running_tasks[action.action_id] = task
+        task.add_done_callback(lambda t: self._running_tasks.pop(action.action_id, None))
+        return job.job_id
+
+    async def _append_chunk(
+        self, action_id: UUID, text: str, log_file_path: str, is_error: bool = False
+    ) -> None:
+        buf = self._job_buffers.setdefault(action_id, [])
+        buf.append(text)
+        if len(buf) > 5000:
+            self._job_buffers[action_id] = buf[-2500:]
+
+        spooler = self._job_spoolers.get(action_id)
+        if spooler:
+            spooler.write(text)
+        elif log_file_path:
+            try:
+                with open(log_file_path, "a", encoding="utf-8", errors="replace") as f:
+                    f.write(text)
+            except Exception:
+                pass
+
+        await self._emit_event(
+            action_id, ExecutionChunk(action_id=action_id, text=text, is_error=is_error)
+        )
+
+    async def _run_privileged_action(
+        self,
+        action: ActionRequest,
+        cmd_raw: str,
+        log_file_path: str,
+        job: JobStatus,
+        suspend_context: Optional[TerminalSuspendContext],
+        on_chunk: Optional[Callable[[str], Any]],
+        on_complete: Optional[Callable[[], Any]],
+    ) -> None:
+        start_time = asyncio.get_event_loop().time()
+        cwd = self.get_cwd(str(action.session_id))
+        clean_env = sanitize_subprocess_env(self.user_env)
+
+        # Initialize LogSpooler with 64KB buffering
+        spooler = LogSpooler(log_file_path)
+        self._job_spoolers[action.action_id] = spooler
+        spooler.write(
+            f"=== Privileged Execution Start: {datetime.now(UTC).isoformat()} ===\n"
+            f"Tool: sudo\n"
+            f"Session: {action.session_id}\n"
+            f"Action ID: {action.action_id}\n"
+            f"{'=' * 50}\n\n"
+        )
+
+        await self._emit_event(
+            action.action_id,
+            ExecutionStarted(
+                action_id=action.action_id,
+                tool_name="sudo",
+                command_snippet=job.command_snippet,
+                log_file=log_file_path,
+            ),
+        )
+
+        err_msg = None
+        target_args: List[str] = []
+        try:
+            tokens = shlex.split(cmd_raw) if cmd_raw else []
+            while tokens and tokens[0] == "sudo":
+                tokens = tokens[1:]
+            target_args = tokens
+
+            if not target_args:
+                cmd_args = ["sudo", "-h"]
+            else:
+                cmd_args = ["sudo"] + target_args
+
+            if not shutil.which("sudo"):
+                raise RuntimeError("'sudo' binary not found on system PATH")
+
+            # Check if sudo credentials are authenticated/cached or if passwordless sudo is configured.
+            # 'sudo -n true' exits 0 if cached or passwordless, and non-zero if a password prompt is required.
+            check_proc = subprocess.run(
+                ["sudo", "-n", "true"],
+                shell=False,
+                env=clean_env,
+                capture_output=True,
+            )
+            needs_auth = check_proc.returncode != 0
+
+            if needs_auth:
+                auth_notice = (
+                    "❯ sudo: Authentication required. Suspending UI for password entry...\n"
+                )
+                await self._append_chunk(action.action_id, auth_notice, log_file_path)
+                if on_chunk:
+                    try:
+                        await on_chunk(auth_notice)
+                    except Exception:
+                        pass
+
+                suspend_cm = suspend_context.suspend() if suspend_context else nullcontext()
+                with suspend_cm:
+                    auth_proc = subprocess.run(
+                        ["sudo", "-v"],
+                        shell=False,
+                        env=clean_env,
+                        cwd=cwd,
+                    )
+                    auth_code = auth_proc.returncode
+
+                if auth_code != 0:
+                    raise PermissionError(
+                        f"Sudo authentication failed or cancelled (code {auth_code})"
+                    )
+
+                resumed_notice = "[Sudo credentials validated. Live output resumed below]\n"
+                await self._append_chunk(action.action_id, resumed_notice, log_file_path)
+                if on_chunk:
+                    try:
+                        await on_chunk(resumed_notice)
+                    except Exception:
+                        pass
+
+            # Stream the actual privileged command in the foreground/terminal tab
+            async def handle_stdout(text: str) -> None:
+                await self._append_chunk(action.action_id, text, log_file_path, is_error=False)
+                if on_chunk:
+                    try:
+                        await on_chunk(text)
+                    except Exception:
+                        pass
+
+            async def handle_stderr(text: str) -> None:
+                await self._append_chunk(action.action_id, text, log_file_path, is_error=True)
+                if on_chunk:
+                    try:
+                        await on_chunk(text)
+                    except Exception:
+                        pass
+
+            adapter = InternalShellAdapter()
+            target = BaseFinding(
+                schema_type="system.shell",
+                pik={"cmd": "sudo"},
+                data={},
+                status="confirmed",
+            )
+            params = {"raw_flags": shlex.join(cmd_args)}
+
+            async for _ in self.runner.run(
+                adapter=adapter,
+                target=target,
+                params=params,
+                task_id=str(action.action_id),
+                cwd=cwd,
+                env=clean_env,
+                use_shell=False,
+                on_output=handle_stdout,
+                on_error_output=handle_stderr,
+                timeout_seconds=getattr(action, "timeout_seconds", None),
+            ):
+                pass
+
+            if job.status == JobStatusEnum.RUNNING:
+                job.status = JobStatusEnum.DONE
+
+        except asyncio.CancelledError:
+            err_msg = "Job cancelled"
+            job.status = JobStatusEnum.FAILED
+        except Exception as e:
+            job.status = JobStatusEnum.FAILED
+            err_msg = str(e)
+            await self._append_chunk(
+                action.action_id,
+                f"[Privileged execution error: {e}]\n",
+                log_file_path,
+                is_error=True,
+            )
+            if on_chunk:
+                try:
+                    await on_chunk(f"[Privileged execution error: {e}]\n")
+                except Exception:
+                    pass
+        finally:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            job.completed_at = datetime.now(UTC)
+            self._notify_status(job)
+
+            # Record final status in disk log and close spooler
+            status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
+            spooler.write(
+                f"\n\n=== Privileged Execution End: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            )
+            spooler.close()
+            self._job_spoolers.pop(action.action_id, None)
+
+            if job.status == JobStatusEnum.DONE:
+                await self._emit_event(
+                    action.action_id,
+                    ExecutionCompleted(
+                        action_id=action.action_id,
+                        status=JobStatusEnum.DONE,
+                        duration_seconds=elapsed,
+                    ),
+                )
+            else:
+                await self._emit_event(
+                    action.action_id,
+                    ExecutionFailed(
+                        action_id=action.action_id,
+                        error=err_msg or "Failed",
+                        duration_seconds=elapsed,
+                    ),
+                )
+            await self._emit_event(action.action_id, None)
+
+            # Persist to database event log
+            if not getattr(self.store, "_closed", False):
+                try:
+                    buf_output = "".join(self.get_output_history(action.action_id))
+                    if len(buf_output) > 200_000:
+                        db_output = (
+                            buf_output[:100_000]
+                            + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
+                            + buf_output[-100_000:]
+                        )
+                    else:
+                        db_output = buf_output
+
+                    command_summary = (
+                        f"Ran sudo {shlex.join(target_args)}"
+                        if target_args
+                        else f"Ran sudo {cmd_raw}"
+                    )
+                    await self.store.append_event(
+                        str(action.session_id),
+                        action,
+                        {"output": db_output, "log_file": log_file_path, "error": err_msg},
+                        command_summary + (f" (failed: {err_msg})" if err_msg else ""),
+                    )
+                    if str(action.action_id) in self.closed_job_ids:
+                        self.evict_job(action.action_id)
+                except Exception:
+                    pass
+
+            if on_complete:
+                try:
+                    await on_complete()
+                except Exception:
+                    pass
+
+    async def _run_background_action(
+        self,
+        action: ActionRequest,
+        adapter: ToolAdapter,
+        target: BaseFinding,
+        log_file_path: str,
+        job: JobStatus,
+        on_chunk: Optional[Callable[[str], Any]],
+        on_complete: Optional[Callable[[], Any]],
+    ) -> None:
+        start_time = asyncio.get_event_loop().time()
+        cwd = self.get_cwd(str(action.session_id))
+        clean_env = sanitize_subprocess_env(self.user_env)
+
+        # Initialize LogSpooler with 64KB buffering
+        spooler = LogSpooler(log_file_path)
+        self._job_spoolers[action.action_id] = spooler
+        spooler.write(
+            f"=== Execution Start: {datetime.now(UTC).isoformat()} ===\n"
+            f"Tool: {action.tool_name}\n"
+            f"Session: {action.session_id}\n"
+            f"Action ID: {action.action_id}\n"
+            f"{'=' * 50}\n\n"
+        )
+
+        await self._emit_event(
+            action.action_id,
+            ExecutionStarted(
+                action_id=action.action_id,
+                tool_name=action.tool_name,
+                command_snippet=job.command_snippet,
+                log_file=log_file_path,
+            ),
+        )
+
+        async def handle_stdout(text: str) -> None:
+            await self._append_chunk(action.action_id, text, log_file_path, is_error=False)
+            if on_chunk:
+                try:
+                    await on_chunk(text)
+                except Exception:
+                    pass
+
+        async def handle_stderr(text: str) -> None:
+            await self._append_chunk(action.action_id, text, log_file_path, is_error=True)
+            if on_chunk:
+                try:
+                    await on_chunk(text)
+                except Exception:
+                    pass
+
+        err_msg = None
+        findings_count = 0
+        finding_buffer: List[BaseFinding] = []
+        last_flush = asyncio.get_event_loop().time()
+
+        async def flush_findings():
+            nonlocal last_flush
+            if not finding_buffer:
+                return
+            to_flush = list(finding_buffer)
+            finding_buffer.clear()
+            last_flush = asyncio.get_event_loop().time()
+            if not getattr(self.store, "_closed", False):
+                try:
+                    await self.store.upsert_findings_batch(str(action.session_id), to_flush)
+                except Exception:
+                    pass
+
+        try:
+            async for finding in self.runner.run(
+                adapter=adapter,
+                target=target,
+                params=action.params,
+                task_id=str(action.action_id),
+                cwd=cwd,
+                env=clean_env,
+                use_shell=action.is_explicit_shell,
+                shell_path=self.user_shell,
+                on_output=handle_stdout,
+                on_error_output=handle_stderr,
+                timeout_seconds=getattr(action, "timeout_seconds", None),
+            ):
+                findings_count += 1
+                finding_buffer.append(finding)
+                now = asyncio.get_event_loop().time()
+                if len(finding_buffer) >= 50 or (now - last_flush) >= 0.25:
+                    await flush_findings()
+
+            await flush_findings()
+            if job.status == JobStatusEnum.RUNNING:
+                job.status = JobStatusEnum.DONE
+        except asyncio.CancelledError:
+            err_msg = "Job cancelled"
+            job.status = JobStatusEnum.FAILED
+        except Exception as e:
+            err_msg = str(e)
+            job.status = JobStatusEnum.FAILED
+        finally:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            job.completed_at = datetime.now(UTC)
+
+            # Record final status in disk log and close spooler
+            status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
+            spooler.write(
+                f"\n\n=== Execution End: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            )
+            spooler.close()
+            self._job_spoolers.pop(action.action_id, None)
+
+            # Persist to database event log
+            if not getattr(self.store, "_closed", False):
+                try:
+                    buf_output = "".join(self.get_output_history(action.action_id))
+                    if len(buf_output) > 200_000:
+                        db_output = (
+                            buf_output[:100_000]
+                            + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
+                            + buf_output[-100_000:]
+                        )
+                    else:
+                        db_output = buf_output
+
+                    await self.store.append_event(
+                        str(action.session_id),
+                        action,
+                        {"output": db_output, "log_file": log_file_path, "error": err_msg},
+                        f"Ran {action.tool_name}" + (f" (failed: {err_msg})" if err_msg else ""),
+                    )
+                    if str(action.action_id) in self.closed_job_ids:
+                        await self.store.mark_event_closed(
+                            str(action.action_id), session_id=str(action.session_id)
+                        )
+                except Exception:
+                    pass
+
+            self._notify_status(job)
+
+            if job.status == JobStatusEnum.DONE:
+                await self._emit_event(
+                    action.action_id,
+                    ExecutionCompleted(
+                        action_id=action.action_id,
+                        status=JobStatusEnum.DONE,
+                        findings_count=findings_count,
+                        duration_seconds=elapsed,
+                    ),
+                )
+            else:
+                await self._emit_event(
+                    action.action_id,
+                    ExecutionFailed(
+                        action_id=action.action_id,
+                        error=err_msg or "Failed",
+                        duration_seconds=elapsed,
+                    ),
+                )
+            await self._emit_event(action.action_id, None)
+
+            if on_complete:
+                try:
+                    await on_complete()
+                except Exception:
+                    pass
+
+    async def kill_job(self, action_id: UUID) -> bool:
+        """Cancel and terminate an active execution."""
+        job = self.get_job(action_id)
+        if not job or job.status != JobStatusEnum.RUNNING:
+            return False
+
+        try:
+            await self.runner.stop(str(action_id))
+        except Exception:
+            pass
+        task = self.get_running_task(action_id)
+        if task and not task.done():
+            task.cancel()
+
+        job.status = JobStatusEnum.FAILED
+        self._notify_status(job)
+        return True
+
+    async def evict_session(self, session_id: str) -> None:
+        """Clean up and purge all tracked execution jobs, buffers, and state for a session."""
+        target_jobs = [j for j in self.get_active_jobs() if str(j.session_id) == str(session_id)]
+        for job in target_jobs:
+            try:
+                await self.kill_job(job.job_id)
+            except Exception:
+                pass
+            self._active_jobs.pop(job.job_id, None)
+            self._job_actions.pop(job.job_id, None)
+            self._job_buffers.pop(job.job_id, None)
+            self._running_tasks.pop(job.job_id, None)
+            self.closed_job_ids.discard(str(job.job_id))
+
+    async def evict_sessions(self, session_ids: set[str] | List[str]) -> None:
+        """Clean up and purge all tracked execution jobs for multiple sessions."""
+        for sid in session_ids:
+            await self.evict_session(sid)
+
+    async def shutdown(self) -> None:
+        """Gracefully stop all running executions."""
+        tasks = list(self._running_tasks.values())
+        if tasks:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ether"
+version = "0.1.0"
+description = "Reactive process supervisor and graph telemetry engine for security tools and autonomous agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+  { name = "Harshwardhan Patil", email = "harshwardhan@h45sh.com" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+]
+dependencies = [
+    "pydantic>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "python-dotenv>=1.0.0",
+    "dnspython>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "hypothesis>=6.100.0",
+    "ruff>=0.4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/h45sh/ether"
+Repository = "https://github.com/h45sh/ether"
+Issues = "https://github.com/h45sh/ether/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ether"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "tier0: Microsecond AST invariants and property-based mathematical tests",
+    "fast: Fast in-memory engine and domain logic tests (< 5s)",
+    "fuzz: Hostile stream and adapter parser fuzzing tests",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E9", "F63", "F7", "F82", "F401", "I", "ASYNC", "B",
+]
+ignore = [
+    "ASYNC240", "ASYNC230", "ASYNC221",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ether", "tools"]
