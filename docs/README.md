@@ -1,70 +1,109 @@
 # Ether Documentation Hub
 
-Welcome to the **Ether** documentation index.
+Welcome to the Ether documentation portal. Ether is an open-source Terminal User Interface (TUI) platform for cybersecurity education, tool orchestration, and stateful reconnaissance analysis.
 
-Ether is an open-source, reactive process supervisor, AST validator, and deterministic graph telemetry engine for cybersecurity tools and autonomous agents.
+Our documentation is structured according to the **[Diátaxis Framework](https://diataxis.fr/)**, dividing technical information into four distinct modes: **Tutorials**, **How-To Guides**, **Reference**, and **Explanation**.
 
-## Structure
-- [Architecture](architecture/overview.md): High-level system design, deep modules, and unidirectional layer DAG.
-- [Standards](standards/engineering.md): Concrete coding standards, AST verification, and testing tiers.
-- [Adapters](developer/adapters.md): Specification and guide for writing pluggable security tool adapters.
-- [Glossary](standards/glossary.md): Authoritative domain vocabulary and ubiquitous language.
-- [Roadmap](../ROADMAP.md): High-level release milestones and strategic development plan.
-EOF && \
-cat << 'EOF' > /home/harsh/Documents/ether/docs/standards/glossary.md
-# Domain Vocabulary & Ubiquitous Language
+---
 
-To prevent architectural degradation and semantic drift, all code, documentation, and agent reasoning in Ether must adhere to these exact definitions:
+## Documentation Navigation
 
-- **Workspace:** Top-level container grouping related sessions for an engagement or client scope. (*Avoid:* Project, folder, group).
-- **Session:** Persistent investigation timeline stored in SQLite containing graph nodes and immutable event logs. (*Avoid:* Tab, run, instance).
-- **ExecutionSession:** Runtime supervisor managing active process lifecycles, output streams, and memory ring buffers. (*Avoid:* Job runner, terminal instance).
-- **ActionGateway:** Security module governing execution policies, SSRF defenses, CIDR scope limits, and variable resolution. (*Avoid:* Validator, firewall).
-- **Finding:** Canonicalized, structured unit of security intelligence inheriting `BaseFinding`. (*Avoid:* Result, discovery, raw line).
-- **Action:** Explicit recorded invocation of a security tool or shell command. (*Avoid:* Job, task, subprocess).
-- **Adapter:** Pluggable Python module implementing `ToolAdapter` that encapsulates CLI command building and streaming output parsing. (*Avoid:* Driver, wrapper, script).
-- **Primary Identity Key (PIK):** Deterministic set of attributes defining unique entity identity (used to compute the SHA-256 node ID).
-EOF && \
-cat << 'EOF' > /home/harsh/Documents/ether/docs/architecture/overview.md
-# Ether Architecture Overview
-
-Ether is built on the philosophy of **Deep Modules** (John Ousterhout) and a **Pure Core / Imperative Shell** unidirectional layer DAG.
-
-## Unidirectional Layer DAG
-
-```
-┌────────────────────────────────────────────────────────┐
-│  Headless Interfaces: CLI, Python SDK, MCP Server       │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
-│  ActionGateway (Policy, SSRF Guard, Radix Trie Scope)  │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
-│  ExecutionSession (Process Supervisor, Ring Buffers)   │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
-│  GraphStore (SQLite WAL, SHA-256 PIK, Event Sourcing)  │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
-│  ToolRegistry & Pluggable Smart Adapters (tools/*)     │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
-│  Normalized Schemas (BaseFinding) & Core Primitives    │
-└────────────────────────────────────────────────────────┘
+```text
+                                  PRACTICAL
+                                     ▲
+                                     │
+           Tutorials                 │             How-To Guides
+     (Learning-Oriented)             │          (Problem-Oriented)
+  "Show me how to get started"       │      "Show me how to solve a task"
+                                     │
+ ────────────────────────────────────┼────────────────────────────────────
+                                     │
+             Explanation             │               Reference
+     (Understanding-Oriented)        │         (Information-Oriented)
+   "Help me understand how it works" │     "Give me the technical specs"
+                                     │
+                                     ▼
+                                THEORETICAL
 ```
 
-## Core Deep Modules
-1. **`ExecutionSession` (`ether.core.session`):**
-   - Small Interface: `run_action()`, `get_stream()`, `stop_action()`.
-   - Big Implementation: Async pipe draining, 64KB disk spooling, capped ring buffers, process exit monitoring.
-2. **`GraphStore` (`ether.graph.store`):**
-   - Small Interface: `upsert_finding()`, `get_node()`, `query_nodes()`.
-   - Big Implementation: Deterministic PIK hashing, non-destructive graph attribute merging, SQLite WAL pooling, parent-child relationship auto-wiring.
-3. **`ActionGateway` (`ether.gateway.gate`):**
-   - Small Interface: `validate_action()`, `resolve_variables()`.
-   - Big Implementation: Longest-prefix IP Radix Trie matching, cloud metadata SSRF defense, variable template interpolation, and `GatePolicy` enforcement.
+---
+
+### 1. Tutorials (Learning-Oriented)
+Step-by-step lessons designed to take you through your first successful investigation:
+
+* **[Quickstart & First Reconnaissance](user/USER_MANUAL.md#1-getting-started--the-dashboard)**: Launch Ether, initialize a workspace, and discover your first target host and open services.
+* **[Guided Learning Mode](user/USER_MANUAL.md#3-learning-mode-guided-cybersecurity-curriculum)**: Work through curated security tool recipes, inspect flag breakdowns, receive real-time AI tutor explanations, save multi-tool lab checkpoints (`.cyglab`), and export lab notes to Markdown.
+
+---
+
+### 2. How-To Guides (Task-Oriented)
+Practical recipes for accomplishing specific operational goals:
+
+* **[Multi-Distribution Installation](README.md#installing-security-tools--dependencies)**: Automated and native package manager installation across Debian/Ubuntu, Kali, Arch, Fedora/RHEL, openSUSE, Alpine, Void, and macOS.
+* **[Configuring Local AI with Ollama](user/USER_MANUAL.md#the-command-palette-ctrlp--in-app-configuration)**: Connect Ether to local, privacy-preserving LLMs (e.g., Llama 3, Gemma, Mistral).
+* **[Multi-Provider Cloud AI Setup](user/USER_MANUAL.md#the-command-palette-ctrlp--in-app-configuration)**: Configure OpenAI, Anthropic, Gemini, DeepSeek, or Groq with automatic failover.
+* **[Exporting & Importing Investigations](user/USER_MANUAL.md#session-portability--reporting)**: Archive standalone `.db` graphs for CTF assignment submissions or peer reviews.
+* **[Academic & Classroom Lab Guide](user/ACADEMIC_LAB_GUIDE.md)**: Verifiable methodology grading, student assignment workflows, and privacy-preserving local AI tutoring for university professors.
+* **[Writing a Custom Security Tool Adapter](user/CONTRIBUTING.md#2-anatomy-of-a-tool-plugin)**: Create a new pluggable adapter using the Smart Adapter / Stupid Framework pattern.
+* **[Developer Standards & Pre-Commit Setup](user/CONTRIBUTING.md#7-code-standards--developer-ergonomics)**: Ruff linting, pre-commit git hooks, and Conventional Commits workflow.
+
+---
+
+### 3. Reference (Information-Oriented)
+Authoritative technical specifications and catalogues:
+
+* **[Architecture & Domain Glossary](GLOSSARY.md)**: Comprehensive definitions of core platform terms (PIK, Smart Adapter, Entity Graph, Action Gateway, Forensic Archiving).
+* **[Master Keyboard Shortcuts & Hotkeys](user/USER_MANUAL.md#master-keyboard-shortcuts--hotkeys-quick-reference)**: Comprehensive lookup table for all global, dashboard, learning mode, and operator hotkeys.
+* **[CLI Commands & Diagnostics](user/USER_MANUAL.md#6-cli-commands--diagnostics)**: Complete reference for `cyg doctor`, `cyg logs`, `cyg session`, `cyg workspace`, `cyg tool`, and `cyg lab`.
+* **[Standard Schema Registry](developer/SCHEMA_REGISTRY.md)**: Specifications for the standardized finding schemas (hosts, services, endpoints, credentials, vulnerabilities) and Primary Identity Keys (PIKs).
+* **[Database Architecture & Relational DDL](developer/DATABASE.md)**: Full SQLite schema, index specifications, ER diagrams, and portability mechanisms.
+* **[Security Vulnerability Policy](../.github/SECURITY.md)**: Supported versions, private reporting channels, response SLAs, and threat model boundaries.
+
+
+
+---
+
+### 4. Explanation (Understanding-Oriented)
+In-depth discussions of system architecture, design decisions, and threat models:
+
+* **[System Architecture Blueprint](developer/ARCHITECTURE.md)**: Architectural Decision Records (ADRs), decoupled subsystem design, and dataflow pipelines.
+* **[Database Architecture & Relational DDL](developer/DATABASE.md)**: Full SQLite schema, index specifications, ER diagrams, and portability mechanisms.
+* **[Master Project Roadmap & Milestones](developer/ROADMAP.md)**: Architectural progression, deliverable capabilities, and future autonomous agent roadmap.
+
+---
+
+## Reading Paths by Role
+
+### For Students & CTF Competitors
+1. Read the **[User Manual](user/USER_MANUAL.md)** to learn how to navigate the TUI.
+2. Launch `cyg` and practice in **Learning Mode** to understand command flags and scan outputs.
+3. Switch to **Power Mode** during live CTFs to track network discovery live in the entity graph without messy terminal tabs.
+4. Export your session using `cyg session export <session_id> session.db -r report.md` (or save multi-tool lab checkpoint `cyg lab save <name>`) to submit your challenge writeup.
+
+### For Instructors & Evaluators
+1. Install Ether via Docker or package manager ([Installation Guide](README.md#installing-security-tools--dependencies)).
+2. Have students submit standalone `.db` archives generated via `cyg session export` or `.cyglab` checkpoints.
+3. Use `cyg session import <archive.db>` or `cyg lab load <file.cyglab>` to import student submissions into your local Ether instance.
+4. Review the student's exact chronological execution timeline, discovered findings, and command history in the TUI.
+
+### For Security Analysts & Penetration Testers
+1. Deploy Ether via Docker (`docker run -it --rm --net=host -v ~/.ether:/root/.ether ghcr.io/h45sh/ether`).
+2. Utilize **Power Mode** (`Enter`) for parallel scanning with universal variable substitution (`$TARGET`, `$PORT`).
+3. Use `Ctrl+G` to merge findings across multiple subnets and targets into a unified workspace-wide attack graph.
+4. Press `Ctrl+E` to generate instant technical and executive Markdown reports.
+
+### For Tool Developers & Plugin Authors
+1. Read **[Contributing Guide](user/CONTRIBUTING.md)** and understand the Smart Adapter contract.
+2. Inspect the **[Schema Registry](developer/SCHEMA_REGISTRY.md)** to select the right finding models for your tool.
+3. Review **[System Architecture](developer/ARCHITECTURE.md)** and **[Database Specification](developer/DATABASE.md)**.
+4. Verify changes locally by running `./scripts/verify.sh`.
+
+---
+
+## Author & Project Ownership
+
+**Ether** is an open-source cybersecurity platform created, architected, and maintained by **Harshwardhan Patil ([@h45sh](https://github.com/h45sh))**.
+
+* **Website**: [h45sh.com/portfolio/ether](https://h45sh.com/portfolio/ether/)
+* **Maintainer Inquiries**: [harshwardhan@h45sh.com](mailto:harshwardhan@h45sh.com)
+
