@@ -17,43 +17,45 @@ Following the **[Diátaxis Framework](https://diataxis.fr/)**, the documentation
            Tutorials                 │             How-To Guides
      (Learning-Oriented)             │          (Problem-Oriented)
   "Show me how to get started"       │      "Show me how to solve a task"
-  - Quickstart Execution             │      - Writing a Tool Adapter
-  - Headless Session Lifecycle       │      - Driving Ether via Python SDK
-                                     │      - Connecting AI Agents via MCP
+  - [Quickstart Tutorial]            │      - [Authoring Tool Adapters]
+    (tutorials/quickstart.md)        │        (how-to/author-adapters.md)
+                                     │      - [Headless CLI Operations]
+                                     │        (how-to/cli-usage.md)
+                                     │      - [Contributing Guidelines]
+                                     │        (how-to/contributing.md)
  ────────────────────────────────────┼────────────────────────────────────
                                      │
              Explanation             │               Reference
      (Understanding-Oriented)        │         (Information-Oriented)
    "Help me understand how it works" │     "Give me the technical specs"
-   - Kernel Architecture & DAG       │     - Normalized Schema Registry
-   - Deterministic Graph (PIK)       │     - SQLite Database Schema
-   - Process Supervisor & Rings      │     - CLI & Engine API Reference
-                                     │
+   - [Architecture Deep Dive]        │     - [Schema Registry]
+     (explanation/architecture.md)   │       (reference/schema-registry.md)
+   - [Database & Graph State]        │     - [Domain Glossary]
+     (explanation/database.md)       │       (reference/glossary.md)
+                                     │     - [Engineering Standards]
+                                     │       (reference/engineering-standards.md)
                                      ▼
                                 THEORETICAL
 ```
 
 ---
 
-## 📚 Table of Contents
+## 📚 Direct Links
 
-### 1. Explanation (Architecture & Design)
-Deep dives into the internal mechanics and engineering philosophy of the engine:
-* **[Architecture Overview](developer/ARCHITECTURE.md)**: Deep modules, pure core vs. imperative shell, and the unidirectional layer DAG.
-* **[Database & Graph Telemetry](developer/DATABASE.md)**: SQLite WAL mode, Primary Identity Key (PIK) hashing, graph node merging, and event sourcing.
-* **[Engineering Standards](standards/engineering.md)**: AST mechanical gates, zero UI imports, memory caps, and testing pyramids.
-* **[Domain Glossary](GLOSSARY.md)**: Authoritative ubiquitous language and domain vocabulary.
+### 1. Tutorials
+* **[Quickstart Tutorial](tutorials/quickstart.md)**: Initialize SQLite WAL storage, discover adapters, and upsert findings in 5 minutes.
 
-### 2. Reference (Technical Specifications)
-Precise contracts, schemas, and schemas:
-* **[Schema Registry](developer/SCHEMA_REGISTRY.md)**: Canonical catalogue of all 18 normalized `BaseFinding` schemas.
-* **[Adapter Specification](developer/adapters.md)**: `ToolAdapter` interface and `manifest.toml` recipe contracts.
+### 2. How-To Guides
+* **[Authoring Pluggable Tool Adapters](how-to/author-adapters.md)**: Add new security tools to Ether using `ToolAdapter` and `manifest.toml`.
+* **[Headless CLI Operations](how-to/cli-usage.md)**: Running scans, inspecting sessions, and exporting investigations.
+* **[Contributing Guidelines](how-to/contributing.md)**: Coding standards, mechanical quality gates, and pull request checklist.
 
-### 3. How-To Guides (Developer & Operator Workflows)
-Step-by-step guides for extending and integrating Ether:
-* **[Authoring Tool Adapters](developer/adapters.md)**: Creating streaming stdout/stderr parsers for CLI scanners.
-* **[Autonomous Agent Integration (MCP)](developer/ARCHITECTURE.md#5-agent-integration--zero-token-diffing)**: Connecting LLM agents via Model Context Protocol and receiving token-zero graph diffs.
-* **[Contributing Guidelines](user/CONTRIBUTING.md)**: Quality gates, pre-commit checks, and code review standards.
+### 3. Reference
+* **[Schema Registry](reference/schema-registry.md)**: Official catalog of all 18 normalized finding models (`BaseFinding`, `network.host`, `network.service`, `vulnerability.found`).
+* **[Engineering Standards](reference/engineering-standards.md)**: AST mechanical gates, zero UI imports, memory caps, and testing invariants.
+* **[Domain Glossary](reference/glossary.md)**: Authoritative ubiquitous language and terminology.
 
-### 4. Vision & Planning
-* **[Master Roadmap](../ROADMAP.md)**: The phased roadmap to the ultimate ideal state of the engine.
+### 4. Explanation
+* **[Architecture Overview](explanation/architecture.md)**: Deep module philosophy, pure core vs. imperative shell, and layer DAG.
+* **[Database & Graph Telemetry](explanation/database.md)**: SQLite WAL mode, Primary Identity Key (PIK) hashing, graph node merging, and event sourcing.
+* **[Master Roadmap](../ROADMAP.md)**: The 5 Evolutionary Epochs to the ultimate ideal state of the engine.
