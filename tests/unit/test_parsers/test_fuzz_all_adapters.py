@@ -15,8 +15,8 @@ import pytest
 
 pytestmark = pytest.mark.fuzz
 
-from ether.registry.registry import ToolRegistry
 from ether.graph.store import GraphStore
+from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
 from ether.schemas.dns import DnsRecord
 from ether.schemas.network import NetworkHost, NetworkService

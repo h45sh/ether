@@ -7,8 +7,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ether import paths
 from ether.common.algorithms import IPRadixTrie
 from ether.gateway.network import get_lhost_info
-from ether.registry.registry import ToolRegistry
 from ether.graph.store import GraphStore
+from ether.registry.registry import ToolRegistry
 from ether.schemas.power import ActionRequest, ActionSource
 
 
@@ -107,6 +107,7 @@ def is_blocked_destination(text: str) -> bool:
 
 
 from enum import Enum
+
 
 class GatePolicy(str, Enum):
     """Policy mode governing gateway enforcement."""

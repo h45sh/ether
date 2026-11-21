@@ -7,8 +7,8 @@ import shlex
 import shutil
 from typing import Any, AsyncIterator, Callable, Coroutine, Dict, Optional
 
-from ether.registry.adapter import ToolAdapter
 from ether.graph.store import GraphStore
+from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 
 logger = logging.getLogger(__name__)

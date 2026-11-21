@@ -138,4 +138,4 @@ class ToolRegistry:
         # optional diagnostics
 
         self.refresh_if_changed()
-        return DiagnosticEngine.check_tool_health(self)
+        return {name: {"installed": data["adapter"].validate_install()} for name, data in self.tools.items()}

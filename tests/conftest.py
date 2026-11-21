@@ -14,6 +14,7 @@ except ImportError:
     pass
 
 from ether.core.session import CommandRunner
+
 # ExplainerBackend
 from ether.graph.store import GraphStore
 from ether.schemas.network import NetworkHost

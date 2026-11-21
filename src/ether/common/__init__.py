@@ -1,7 +1,7 @@
 """Common shared algorithmic and string primitives for Ether."""
 
 import re
-from typing import List, Optional
+from typing import List
 
 from ether.common.algorithms import (
     BloomFilter,
