@@ -10,8 +10,8 @@ Adding or modifying a security tool is strictly additive: create a folder in `to
 
 ```
 tools/<tool_name>/
-├── manifest.toml    # Discovery metadata, binary, input/output schemas
-└── adapter.py       # Python class inheriting from ToolAdapter
+ manifest.toml # Discovery metadata, binary, input/output schemas
+ adapter.py # Python class inheriting from ToolAdapter
 ```
 
 ---
@@ -56,34 +56,34 @@ from ether.schemas.network import NetworkService
 
 
 class NmapAdapter(ToolAdapter):
-    def validate_install(self) -> bool:
-        """Return True if the required binary is installed and executable."""
-        return shutil.which("nmap") is not None
+ def validate_install(self) -> bool:
+ """Return True if the required binary is installed and executable."""
+ return shutil.which("nmap") is not None
 
-    def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        """Construct a safe argument vector from target and execution parameters."""
-        ip = target.data.get("ip") or "127.0.0.1"
-        flags = params.get("raw_flags", "-sV -T4").split()
-        return ["nmap", *flags, ip]
+ def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
+ """Construct a safe argument vector from target and execution parameters."""
+ ip = target.data.get("ip") or "127.0.0.1"
+ flags = params.get("raw_flags", "-sV -T4").split()
+ return ["nmap", *flags, ip]
 
-    async def parse_output(
-        self, line: str, target: BaseFinding, context: Optional[Dict[str, Any]] = None
-    ) -> AsyncIterator[BaseFinding]:
-        """Parse incoming stdout line-by-line into normalized findings."""
-        clean = line.strip()
-        if "/tcp" in clean and "open" in clean:
-            parts = clean.split()
-            port_proto = parts[0].split("/")
-            port = int(port_proto[0])
-            protocol = port_proto[1]
-            service = parts[2] if len(parts) > 2 else "unknown"
+ async def parse_output(
+ self, line: str, target: BaseFinding, context: Optional[Dict[str, Any]] = None
+ ) -> AsyncIterator[BaseFinding]:
+ """Parse incoming stdout line-by-line into normalized findings."""
+ clean = line.strip()
+ if "/tcp" in clean and "open" in clean:
+ parts = clean.split()
+ port_proto = parts[0].split("/")
+ port = int(port_proto[0])
+ protocol = port_proto[1]
+ service = parts[2] if len(parts) > 2 else "unknown"
 
-            yield NetworkService.create(
-                host_ip=target.data.get("ip"),
-                port=port,
-                protocol=protocol,
-                service=service,
-            )
+ yield NetworkService.create(
+ host_ip=target.data.get("ip"),
+ port=port,
+ protocol=protocol,
+ service=service,
+ )
 ```
 
 ---

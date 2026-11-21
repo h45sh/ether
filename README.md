@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ ETHER
+# ETHER
 
 **The Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents**
 
@@ -16,7 +16,7 @@
 
 ---
 
-## 💡 Why Ether?
+## Why Ether?
 
 Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but orchestrating them in modern workflows or autonomous AI agent loops is notoriously painful:
 - **Unstructured Noise:** Tools spew thousands of lines of terminal ANSI garbage. Parsing stdout line-by-line in ad-hoc bash scripts is brittle.
@@ -55,7 +55,7 @@ Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but 
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Universal Smart Adapters:** Completely tool-agnostic plugin framework (`tools/<name>/`). Adapters encapsulate argument building and streaming output parsing into normalized Pydantic schemas.
 * **Deterministic Reactive Graph:** Entities (Hosts, Services, Vulnerabilities, Endpoints) are identified by deterministic SHA-256 **Primary Identity Keys (PIK)** and merged non-destructively in SQLite WAL mode.
@@ -68,7 +68,7 @@ Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but 
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```bash
 # Clone the repository
@@ -83,7 +83,7 @@ uv pip install -e ".[dev]"
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```python
 import asyncio
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
 ---
 
-## 🧪 Testing & Verification
+## Testing & Verification
 
 Ether adheres to the **"Review Proof, Not Code"** engineering model. Every release must satisfy 100% of local mechanical gates:
 
@@ -145,7 +145,7 @@ ruff format --check .
 
 ---
 
-## 📚 Documentation Index
+## Documentation Index
 
 Our documentation follows the **[Diátaxis Framework](https://diataxis.fr/)**:
 
@@ -164,7 +164,7 @@ Our documentation follows the **[Diátaxis Framework](https://diataxis.fr/)**:
 
 ---
 
-## 🗺️ Master Roadmap Summary
+## Master Roadmap Summary
 
 - **Epoch 1:** Hardened Substrate & Decoupled Core *(Current - v0.1.0)*
 - **Epoch 2:** Autonomous Agent Telemetry Protocol (MCP & Zero-Token Diffs) *(v0.3.0)*
@@ -176,6 +176,6 @@ Our documentation follows the **[Diátaxis Framework](https://diataxis.fr/)**:
 
 ---
 
-## 📄 License
+## License
 
 Ether is open-source software licensed under the [MIT License](LICENSE).

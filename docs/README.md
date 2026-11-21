@@ -40,7 +40,7 @@ Following the **[Diátaxis Framework](https://diataxis.fr/)**, the documentation
 
 ---
 
-## 📚 Direct Links
+## Direct Links
 
 ### 1. Tutorials
 * **[Quickstart Tutorial](tutorials/quickstart.md)**: Initialize SQLite WAL storage, discover adapters, and upsert findings in 5 minutes.

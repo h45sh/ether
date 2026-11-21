@@ -11,30 +11,30 @@ Ether is a modular cybersecurity investigation and learning platform built for t
 Ether solves this through a **"Smart Adapter / Stupid Framework"** architecture:
 
 ```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 THE "STUPID" FRAMEWORK                                 │
-│                                                                                        │
-│   • Agnostic to specific security tools                                                │
-│   • Understands only standardized findings (BaseFinding schemas)                       │
-│   • Manages asynchronous execution, process lifecycle, and Headless Engine rendering               │
-│   • Builds and queries stateful entity graphs via GraphStore                           │
-└───────────────────────────────────────────▲────────────────────────────────────────────┘
-                                            │ Standardized BaseFinding streams
-┌───────────────────────────────────────────┴────────────────────────────────────────────┐
-│                                 THE "SMART" ADAPTERS                                   │
-│                                                                                        │
-│   • tools/nmap         -> Encapsulates nmap flags, stdout parsing, and host/service    │
-│   • tools/gobuster     -> Encapsulates directory fuzzing and endpoint generation       │
-│   • tools/nikto        -> Encapsulates web vulnerability discovery and CVE linking      │
-│   • tools/whois        -> Encapsulates domain and netblock extraction                   │
-│   • tools/subfinder    -> Encapsulates passive subdomain discovery                      │
-│   • tools/dnspython    -> Encapsulates pure-Python DNS resolution and zone transfers    │
-│   • tools/searchsploit -> Encapsulates Exploit-DB offline vulnerability correlation    │
-│   • tools/ffuf         -> Encapsulates high-speed web fuzzing and sensitive exposure   │
-│   • tools/nuclei       -> Encapsulates template-based vulnerability assessment          │
-│   • tools/sqlmap       -> Encapsulates automated SQLi detection and credential dumping │
-│   • tools/netexec      -> Encapsulates network execution & credential spraying (SMB/etc)│
-└────────────────────────────────────────────────────────────────────────────────────────┘
+
+ THE "STUPID" FRAMEWORK 
+ 
+ • Agnostic to specific security tools 
+ • Understands only standardized findings (BaseFinding schemas) 
+ • Manages asynchronous execution, process lifecycle, and Headless Engine rendering 
+ • Builds and queries stateful entity graphs via GraphStore 
+
+ Standardized BaseFinding streams
+
+ THE "SMART" ADAPTERS 
+ 
+ • tools/nmap -> Encapsulates nmap flags, stdout parsing, and host/service 
+ • tools/gobuster -> Encapsulates directory fuzzing and endpoint generation 
+ • tools/nikto -> Encapsulates web vulnerability discovery and CVE linking 
+ • tools/whois -> Encapsulates domain and netblock extraction 
+ • tools/subfinder -> Encapsulates passive subdomain discovery 
+ • tools/dnspython -> Encapsulates pure-Python DNS resolution and zone transfers 
+ • tools/searchsploit -> Encapsulates Exploit-DB offline vulnerability correlation 
+ • tools/ffuf -> Encapsulates high-speed web fuzzing and sensitive exposure 
+ • tools/nuclei -> Encapsulates template-based vulnerability assessment 
+ • tools/sqlmap -> Encapsulates automated SQLi detection and credential dumping 
+ • tools/netexec -> Encapsulates network execution & credential spraying (SMB/etc)
+
 ```
 
 ### Key Architectural Invariants:
@@ -50,74 +50,74 @@ The system is organized into modular layers with explicit unidirectional depende
 
 ```mermaid
 graph TB
-    subgraph PresentationLayer["Presentation Layer (Headless Engine & CLI)"]
-        CLI["CLI Entrypoints (cyg, cyg doctor, cyg session, cyg lab)"]
-        Headless Engine["Asyncio Headless Engine Shell (App)"]
-        DashScreen["Dashboard Screen"]
-        PowerScreen["Power Mode Screen (Operator Workbench)"]
-        LearnScreen["Telemetry Mode Screen (Guided Mentorship)"]
-    end
+ subgraph PresentationLayer["Presentation Layer (Headless Engine & CLI)"]
+ CLI["CLI Entrypoints (cyg, cyg doctor, cyg session, cyg lab)"]
+ Headless Engine["Asyncio Headless Engine Shell (App)"]
+ DashScreen["Dashboard Screen"]
+ PowerScreen["Power Mode Screen (Operator Workbench)"]
+ LearnScreen["Telemetry Mode Screen (Guided Mentorship)"]
+ end
 
-    subgraph CoordinationLayer["Coordination & Intelligence Layer"]
-        Facade["PowerWorkspaceFacade<br><i>(State Coordination & Event Bus)</i>"]
-        Context["WorkspaceContextBuilder<br><i>(Context Snapshot & Variable Resolution)</i>"]
-        Workspaces["WorkspaceRepository<br><i>(Lifecycle, Forensics & Persistence)</i>"]
-        Gateway["ActionGateway<br><i>(Policy, CIDR Scope, Source Validation)</i>"]
-        GraphAnalytics["GraphAnalyticsEngine<br><i>(BFS Attack Paths & Blast Radius)</i>"]
-        Preflight["PreflightVerifier<br><i>(Prerequisite Binaries, Wordlists & Remediation)</i>"]
-        Tutor["ExplanationTutor<br><i>(Multi-Key Cooldowns, Streaming Events, Local Ollama)</i>"]
-        Diag["DiagnosticEngine<br><i>(System, DB, Toolchain & AI Probing)</i>"]
-        Report["SessionReportService<br><i>(Forensic Reports, Tables, Mermaid, Export)</i>"]
-    end
+ subgraph CoordinationLayer["Coordination & Intelligence Layer"]
+ Facade["PowerWorkspaceFacade<br><i>(State Coordination & Event Bus)</i>"]
+ Context["WorkspaceContextBuilder<br><i>(Context Snapshot & Variable Resolution)</i>"]
+ Workspaces["WorkspaceRepository<br><i>(Lifecycle, Forensics & Persistence)</i>"]
+ Gateway["ActionGateway<br><i>(Policy, CIDR Scope, Source Validation)</i>"]
+ GraphAnalytics["GraphAnalyticsEngine<br><i>(BFS Attack Paths & Blast Radius)</i>"]
+ Preflight["PreflightVerifier<br><i>(Prerequisite Binaries, Wordlists & Remediation)</i>"]
+ Tutor["ExplanationTutor<br><i>(Multi-Key Cooldowns, Streaming Events, Local Ollama)</i>"]
+ Diag["DiagnosticEngine<br><i>(System, DB, Toolchain & AI Probing)</i>"]
+ Report["SessionReportService<br><i>(Forensic Reports, Tables, Mermaid, Export)</i>"]
+ end
 
-    subgraph CoreEngine["Execution & Storage Engine"]
-        ExecSession["ExecutionSession<br><i>(Subprocess / PTY Lifecycle, Disk Spooling, Pub/Sub)</i>"]
-        Store["GraphStore (SQLite)<br><i>(PIK Determinism, Graph Topology)</i>"]
-        Timeline["ActionTimelineRepository<br><i>(Action Event Log, Audit Trail)</i>"]
-        Registry["ToolRegistry<br><i>(Dynamic Discovery & Manifest Validation)</i>"]
-    end
+ subgraph CoreEngine["Execution & Storage Engine"]
+ ExecSession["ExecutionSession<br><i>(Subprocess / PTY Lifecycle, Disk Spooling, Pub/Sub)</i>"]
+ Store["GraphStore (SQLite)<br><i>(PIK Determinism, Graph Topology)</i>"]
+ Timeline["ActionTimelineRepository<br><i>(Action Event Log, Audit Trail)</i>"]
+ Registry["ToolRegistry<br><i>(Dynamic Discovery & Manifest Validation)</i>"]
+ end
 
-    subgraph PluginLayer["Pluggable Ecosystem (tools/)"]
-        Nmap["tools/nmap"]
-        Gobuster["tools/gobuster"]
-        Nikto["tools/nikto"]
-        Whois["tools/whois"]
-        Subfinder["tools/subfinder"]
-        FFUF["tools/ffuf"]
-        Nuclei["tools/nuclei"]
-        SearchSploit["tools/searchsploit"]
-        DnsPython["tools/dnspython"]
-        SQLMap["tools/sqlmap"]
-        NetExec["tools/netexec"]
-        Shell["ShellAdapter (!)"]
-    end
+ subgraph PluginLayer["Pluggable Ecosystem (tools/)"]
+ Nmap["tools/nmap"]
+ Gobuster["tools/gobuster"]
+ Nikto["tools/nikto"]
+ Whois["tools/whois"]
+ Subfinder["tools/subfinder"]
+ FFUF["tools/ffuf"]
+ Nuclei["tools/nuclei"]
+ SearchSploit["tools/searchsploit"]
+ DnsPython["tools/dnspython"]
+ SQLMap["tools/sqlmap"]
+ NetExec["tools/netexec"]
+ Shell["ShellAdapter (!)"]
+ end
 
-    CLI --> Headless Engine
-    Headless Engine --> DashScreen
-    Headless Engine --> PowerScreen
-    Headless Engine --> LearnScreen
+ CLI --> Headless Engine
+ Headless Engine --> DashScreen
+ Headless Engine --> PowerScreen
+ Headless Engine --> LearnScreen
 
-    PowerScreen --> Facade
-    LearnScreen --> Tutor
-    CLI --> Diag
+ PowerScreen --> Facade
+ LearnScreen --> Tutor
+ CLI --> Diag
 
-    Facade --> Gateway
-    Facade --> Context
-    Facade --> Workspaces
-    Facade --> Report
-    Facade --> ExecSession
-    Workspaces --> Store
-    Store --> Timeline
-    Context --> Store
-    Context --> ExecSession
+ Facade --> Gateway
+ Facade --> Context
+ Facade --> Workspaces
+ Facade --> Report
+ Facade --> ExecSession
+ Workspaces --> Store
+ Store --> Timeline
+ Context --> Store
+ Context --> ExecSession
 
-    Gateway --> Registry
-    Gateway --> Store
-    Store -.->|on_upsert event| PowerScreen
+ Gateway --> Registry
+ Gateway --> Store
+ Store -.->|on_upsert event| PowerScreen
 
-    ExecSession --> PluginLayer
-    Registry --> PluginLayer
-    ExecSession --> Store
+ ExecSession --> PluginLayer
+ Registry --> PluginLayer
+ ExecSession --> Store
 ```
 
 ---
@@ -129,8 +129,8 @@ graph TB
 * **Primary Identity Key (PIK)**: The deterministic set of identifying fields for a schema (e.g., `{"ip": "192.168.1.1"}` for `network.host`). Used to generate deterministic SHA-256 Node IDs for deduplication and upserts.
 * **Workspace**: The root container for a project or engagement (e.g., "Internal Audit 2026"). Contains multiple sessions and global graph rollups.
 * **Session**: A specific thread of investigation within a workspace:
-  * **Power Session**: Persistent SQLite-backed investigation featuring interactive entity trees, parallel workbench tabs, command palettes, and action histories.
-  * **Learning Session**: Ephemeral guided exploration sandbox backed by an AI Explainer (`ExplanationTutor` with local Ollama or cloud LLM fallbacks).
+ * **Power Session**: Persistent SQLite-backed investigation featuring interactive entity trees, parallel workbench tabs, command palettes, and action histories.
+ * **Learning Session**: Ephemeral guided exploration sandbox backed by an AI Explainer (`ExplanationTutor` with local Ollama or cloud LLM fallbacks).
 * **Entity Graph**: A directed graph representing the current target state for a session. Built using parent-child edges and semantic association links.
 * **Event Log**: An append-only, immutable audit trail of every executed tool action, raw shell command, and generated finding. Ensures full investigation reproducibility and workbench tab restoration.
 * **Entity Alias**: A finding (`entity.alias`) mapping two semantically identical but syntactically distinct identifiers (e.g., resolving a hostname to an IP address).
@@ -143,18 +143,18 @@ To enable future autonomous AI agents without compromising safety, Power Mode im
 
 ```text
 [ 1. User Interface / Agent Layer ]
-       │ Submits ActionRequest(tool="nmap", params={"raw_flags": "-sV $TARGET"}, target="node_123")
-       ▼
-[ 2. PowerWorkspaceFacade & ContextBuilder ] ─── Resolves $TARGET to "192.168.1.10", validates scope
-       │ Passes resolved ActionRequest
-       ▼
-[ 3. ActionGateway ] ────────── Validates tool registration, target compatibility, USER vs AGENT policy
-       │ Passes validated ActionRequest & Adapter
-       ▼
-[ 4. ExecutionSession ] ─────── Manages subprocess / PTY lifecycle, disk spooling, and pub/sub streaming
-       │ Dispatches process execution via Async Executor
-       ▼
-[ 5. Tool Adapter & Shell ] ─── Parses stdout lines, emits structured findings to GraphStore
+ Submits ActionRequest(tool="nmap", params={"raw_flags": "-sV $TARGET"}, target="node_123")
+ 
+[ 2. PowerWorkspaceFacade & ContextBuilder ] Resolves $TARGET to "192.168.1.10", validates scope
+ Passes resolved ActionRequest
+ 
+[ 3. ActionGateway ] Validates tool registration, target compatibility, USER vs AGENT policy
+ Passes validated ActionRequest & Adapter
+ 
+[ 4. ExecutionSession ] Manages subprocess / PTY lifecycle, disk spooling, and pub/sub streaming
+ Dispatches process execution via Async Executor
+ 
+[ 5. Tool Adapter & Shell ] Parses stdout lines, emits structured findings to GraphStore
 ```
 
 ### 4.1. Stage-by-Stage Component Responsibilities
@@ -162,21 +162,21 @@ To enable future autonomous AI agents without compromising safety, Power Mode im
 #### 2. `PowerWorkspaceFacade` ([`ether/engine/power_facade.py`](../../ether/engine/power_facade.py))
 * Serves as the **single programmatic API** for both the Asyncio Headless Engine and future AI agents.
 * Coordinates specialized deep modules:
-  * **Context Resolution**: Delegates `$TARGET`, `$PORT`, `$SERVICE` variable resolution and snapshot generation to [`WorkspaceContextBuilder`](../../ether/engine/context_builder.py).
-  * **Workspace Lifecycle**: Delegates engagement creation, renaming, and forensic closing to [`WorkspaceRepository`](../../ether/engine/workspace_repository.py).
-  * **Graph Analytics & Blast Radius**: Exposes topological attack path finding and blast-radius calculations via [`GraphAnalyticsEngine`](../../ether/engine/graph_analytics.py) (`facade.get_graph_analytics(session_id)`).
-  * **Job Management**: Delegates subprocess execution and output distribution to [`ExecutionSession`](../../ether/engine/execution_session.py).
-  * **Session Reporting**: Delegates forensic investigation exports and Markdown summaries to [`SessionReportService`](../../ether/engine/reporter.py).
-  * **Desktop Notification Dispatch**: Directly encapsulates OS-level desktop notification dispatch (`send_desktop_notification`), ensuring presentation layers never invoke subprocesses while eliminating trivial micro-files.
+ * **Context Resolution**: Delegates `$TARGET`, `$PORT`, `$SERVICE` variable resolution and snapshot generation to [`WorkspaceContextBuilder`](../../ether/engine/context_builder.py).
+ * **Workspace Lifecycle**: Delegates engagement creation, renaming, and forensic closing to [`WorkspaceRepository`](../../ether/engine/workspace_repository.py).
+ * **Graph Analytics & Blast Radius**: Exposes topological attack path finding and blast-radius calculations via [`GraphAnalyticsEngine`](../../ether/engine/graph_analytics.py) (`facade.get_graph_analytics(session_id)`).
+ * **Job Management**: Delegates subprocess execution and output distribution to [`ExecutionSession`](../../ether/engine/execution_session.py).
+ * **Session Reporting**: Delegates forensic investigation exports and Markdown summaries to [`SessionReportService`](../../ether/engine/reporter.py).
+ * **Desktop Notification Dispatch**: Directly encapsulates OS-level desktop notification dispatch (`send_desktop_notification`), ensuring presentation layers never invoke subprocesses while eliminating trivial micro-files.
 
 #### 3. `ActionGateway` ([`ether/engine/gateway.py`](../../ether/engine/gateway.py))
 * Evaluates action requests against security, policy, and boundary constraints before any process is spawned.
 * **Policy Enforcement**:
-  * **Tool Registration**: Validates that the requested tool exists in the `ToolRegistry`.
-  * **Source Gating**: Restricts arbitrary shell execution (`is_explicit_shell=True`) strictly to `ActionSource.USER`, preventing autonomous AI agents from escaping into unsanctioned shell commands.
-  * **Input Compatibility**: Verifies that the selected target finding matches the input types accepted in the tool's `manifest.toml` (e.g., preventing `gobuster` from targeting a raw `network.netblock`).
-  * **Declarative CIDR Scope Enforcement**: Enforces engagement boundaries through `allowed_cidrs` and `set_allowed_cidrs()`. Validates targets, raw CLI flags, and finding PIKs against defined subnets, raising `ScopeViolationError` if an operator or automated agent attempts out-of-scope scanning.
-  * **SSRF & Cloud Metadata Defense**: Checks all targets, IP candidates, and arguments against `BLOCKED_TARGETS` (AWS IMDS, Azure, GCP, Link-Local `169.254.0.0/16`, hex/decimal alternates).
+ * **Tool Registration**: Validates that the requested tool exists in the `ToolRegistry`.
+ * **Source Gating**: Restricts arbitrary shell execution (`is_explicit_shell=True`) strictly to `ActionSource.USER`, preventing autonomous AI agents from escaping into unsanctioned shell commands.
+ * **Input Compatibility**: Verifies that the selected target finding matches the input types accepted in the tool's `manifest.toml` (e.g., preventing `gobuster` from targeting a raw `network.netblock`).
+ * **Declarative CIDR Scope Enforcement**: Enforces engagement boundaries through `allowed_cidrs` and `set_allowed_cidrs()`. Validates targets, raw CLI flags, and finding PIKs against defined subnets, raising `ScopeViolationError` if an operator or automated agent attempts out-of-scope scanning.
+ * **SSRF & Cloud Metadata Defense**: Checks all targets, IP candidates, and arguments against `BLOCKED_TARGETS` (AWS IMDS, Azure, GCP, Link-Local `169.254.0.0/16`, hex/decimal alternates).
 
 #### 4. `GraphAnalyticsEngine` ([`ether/engine/graph_analytics.py`](../../ether/engine/graph_analytics.py))
 * High-leverage topological analysis engine operating on in-memory entity graph projections extracted from `GraphStore`.
@@ -188,9 +188,9 @@ To enable future autonomous AI agents without compromising safety, Power Mode im
 #### 5. `ExecutionSession` ([`ether/engine/execution_session.py`](../../ether/engine/execution_session.py)) & `Executor` ([`ether/engine/executor.py`](../../ether/engine/executor.py))
 * **`ExecutionSession`**: Deep module encapsulating the complete runtime lifecycle of active tool tasks and shell commands. Coordinates process spawning, temporary disk spooling, output streaming pub/sub to UI tabs, and atomic result status updates.
 * **Privileged Execution (`sudo`)**:
-  * **Zero-Flicker Cached Check**: Probes `sudo -n true` non-interactively; if valid credentials exist, the command executes without suspending the UI.
-  * **Targeted Credential Validation**: If authentication is required, suspends Asyncio Headless Engine (`ctx.suspend()`) strictly for `sudo -v` to prompt for password in the host terminal, then immediately resumes the Headless Engine upon success.
-  * **Foreground Stream & Spooling**: Runs the command as an asynchronous process with piped I/O, streaming live output into the Power Mode tab, writing to disk logs (`LogSpooler`), and updating event history in SQLite.
+ * **Zero-Flicker Cached Check**: Probes `sudo -n true` non-interactively; if valid credentials exist, the command executes without suspending the UI.
+ * **Targeted Credential Validation**: If authentication is required, suspends Asyncio Headless Engine (`ctx.suspend()`) strictly for `sudo -v` to prompt for password in the host terminal, then immediately resumes the Headless Engine upon success.
+ * **Foreground Stream & Spooling**: Runs the command as an asynchronous process with piped I/O, streaming live output into the Power Mode tab, writing to disk logs (`LogSpooler`), and updating event history in SQLite.
 * **`Executor`**: Asynchronously executes binaries via `asyncio.create_subprocess_exec` (with environment sanitization and API key scrubbing). Concurrently drains stdout/stderr, feeds lines to the tool adapter's parser, and persists findings to `GraphStore`.
 * Handles process termination (`stop_task`) and cleanup during job cancellation (`ctrl+k`).
 
@@ -207,46 +207,46 @@ To enable future autonomous AI agents without compromising safety, Power Mode im
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor User as Operator / Headless Engine
-    participant Facade as PowerWorkspaceFacade
-    participant Context as WorkspaceContextBuilder
-    participant Gateway as ActionGateway
-    participant Registry as ToolRegistry
-    participant ExecSession as ExecutionSession
-    participant Adapter as ToolAdapter (e.g. Nmap)
-    participant Store as GraphStore (SQLite)
-    participant UI as Workbench Tab
+ autonumber
+ actor User as Operator / Headless Engine
+ participant Facade as PowerWorkspaceFacade
+ participant Context as WorkspaceContextBuilder
+ participant Gateway as ActionGateway
+ participant Registry as ToolRegistry
+ participant ExecSession as ExecutionSession
+ participant Adapter as ToolAdapter (e.g. Nmap)
+ participant Store as GraphStore (SQLite)
+ participant UI as Workbench Tab
 
-    User->>Facade: submit_action(ActionRequest)
-    Facade->>Context: resolve_variables(command, target_node)
-    Context-->>Facade: Resolved Command ($TARGET -> 10.0.0.1)
+ User->>Facade: submit_action(ActionRequest)
+ Facade->>Context: resolve_variables(command, target_node)
+ Context-->>Facade: Resolved Command ($TARGET -> 10.0.0.1)
 
-    Facade->>Registry: get_tool(tool_name)
-    Registry-->>Facade: ToolManifest + AdapterInstance
+ Facade->>Registry: get_tool(tool_name)
+ Registry-->>Facade: ToolManifest + AdapterInstance
 
-    Facade->>Gateway: validate_action(ActionRequest)
-    Gateway->>Store: get_node(session_id, target_id)
-    Store-->>Gateway: Target Entity Node Data
-    Note over Gateway: Validate input schema & source policy
-    Gateway-->>Facade: Validation Passed
+ Facade->>Gateway: validate_action(ActionRequest)
+ Gateway->>Store: get_node(session_id, target_id)
+ Store-->>Gateway: Target Entity Node Data
+ Note over Gateway: Validate input schema & source policy
+ Gateway-->>Facade: Validation Passed
 
-    Facade->>ExecSession: execute(request, adapter, session_id)
-    ExecSession->>ExecSession: Spool to disk & spawn process
+ Facade->>ExecSession: execute(request, adapter, session_id)
+ ExecSession->>ExecSession: Spool to disk & spawn process
 
-    par Real-Time Stream Draining
-        ExecSession->>UI: publish_output(chunk) -> Stream to Tab
-    and Line-by-Line Finding Parsing
-        ExecSession->>Adapter: parse_output(line, target, context)
-        Adapter-->>ExecSession: yield BaseFinding (e.g. network.service)
-        ExecSession->>Store: upsert_finding(session_id, finding)
-        Store-->>ExecSession: Confirmed Node ID
-        ExecSession-->>Facade: on_finding_upsert(finding)
-    end
+ par Real-Time Stream Draining
+ ExecSession->>UI: publish_output(chunk) -> Stream to Tab
+ and Line-by-Line Finding Parsing
+ ExecSession->>Adapter: parse_output(line, target, context)
+ Adapter-->>ExecSession: yield BaseFinding (e.g. network.service)
+ ExecSession->>Store: upsert_finding(session_id, finding)
+ Store-->>ExecSession: Confirmed Node ID
+ ExecSession-->>Facade: on_finding_upsert(finding)
+ end
 
-    ExecSession-->>Facade: Process Terminated (Exit Code 0)
-    Facade->>Store: append_event(session_id, ActionRequest, Result, Summary)
-    Facade->>UI: on_complete() -> Mark Tab DONE
+ ExecSession-->>Facade: Process Terminated (Exit Code 0)
+ Facade->>Store: append_event(session_id, ActionRequest, Result, Summary)
+ Facade->>UI: on_complete() -> Mark Tab DONE
 ```
 
 ---
@@ -257,21 +257,21 @@ To enable an identical command interface for human operators and automated agent
 
 ```mermaid
 flowchart LR
-    Node["Selected Tree Node<br><b>network.service</b><br>PIK: host_ip='10.0.0.1', port=80"]
-    --> Context["WorkspaceContextBuilder<br><b>Context Resolver</b>"]
+ Node["Selected Tree Node<br><b>network.service</b><br>PIK: host_ip='10.0.0.1', port=80"]
+ --> Context["WorkspaceContextBuilder<br><b>Context Resolver</b>"]
 
-    Context --> V1["$TARGET = '10.0.0.1'"]
-    Context --> V2["$PORT = 80"]
-    Context --> V3["$SERVICE = 'http'"]
+ Context --> V1["$TARGET = '10.0.0.1'"]
+ Context --> V2["$PORT = 80"]
+ Context --> V3["$SERVICE = 'http'"]
 
-    CmdIn["User/Agent Command:<br><code>nikto -h $TARGET -p $PORT</code>"]
-    --> Sub["Substitution Engine"]
+ CmdIn["User/Agent Command:<br><code>nikto -h $TARGET -p $PORT</code>"]
+ --> Sub["Substitution Engine"]
 
-    V1 --> Sub
-    V2 --> Sub
-    V3 --> Sub
+ V1 --> Sub
+ V2 --> Sub
+ V3 --> Sub
 
-    Sub --> CmdOut["Executable Command:<br><code>nikto -h 10.0.0.1 -p 80</code>"]
+ Sub --> CmdOut["Executable Command:<br><code>nikto -h 10.0.0.1 -p 80</code>"]
 ```
 
 ### Context Resolution Rules:
@@ -288,13 +288,13 @@ The plugin ecosystem allows adding tools dynamically without compiling or modify
 
 ```
 tools/
-├── nmap/
-│   ├── manifest.toml        # Declarative metadata, accepted inputs, and documentation
-│   └── adapter.py           # Subclass of ToolAdapter implementing CLI build & stdout parsing
-├── gobuster/
-│   ├── manifest.toml
-│   └── adapter.py
-└── ...
+ nmap/
+ manifest.toml # Declarative metadata, accepted inputs, and documentation
+ adapter.py # Subclass of ToolAdapter implementing CLI build & stdout parsing
+ gobuster/
+ manifest.toml
+ adapter.py
+ ...
 ```
 
 ### 6.1. Manifest Schema (`manifest.toml`)
@@ -321,43 +321,43 @@ Every tool adapter inherits from `ToolAdapter` in [`ether/engine/adapter.py`](..
 
 ```python
 class ToolAdapter(ABC):
-    @abstractmethod
-    def validate_install(self) -> bool:
-        """Verify that the required binary exists in system PATH."""
-        pass
+ @abstractmethod
+ def validate_install(self) -> bool:
+ """Verify that the required binary exists in system PATH."""
+ pass
 
-    @abstractmethod
-    def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        """Construct the CLI arguments list."""
-        pass
+ @abstractmethod
+ def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
+ """Construct the CLI arguments list."""
+ pass
 
-    @abstractmethod
-    async def parse_output(
-        self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
-    ) -> AsyncIterator[BaseFinding]:
-        """Parse raw stdout and yield standardized BaseFinding objects."""
-        pass
+ @abstractmethod
+ async def parse_output(
+ self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
+ ) -> AsyncIterator[BaseFinding]:
+ """Parse raw stdout and yield standardized BaseFinding objects."""
+ pass
 
-    # --- Built-in Canonical Helpers (Prevent Ad-Hoc Parsing Duplication) ---
+ # --- Built-in Canonical Helpers (Prevent Ad-Hoc Parsing Duplication) ---
 
-    def extract_url(self, target: Optional[BaseFinding]) -> Optional[str]:
-        """Resolve full HTTP/HTTPS URL from any target (web.endpoint, service, host, dns)."""
+ def extract_url(self, target: Optional[BaseFinding]) -> Optional[str]:
+ """Resolve full HTTP/HTTPS URL from any target (web.endpoint, service, host, dns)."""
 
-    def extract_host(self, target: Optional[BaseFinding]) -> Optional[str]:
-        """Resolve target IP or hostname from network.host, network.service, or web.* finding."""
+ def extract_host(self, target: Optional[BaseFinding]) -> Optional[str]:
+ """Resolve target IP or hostname from network.host, network.service, or web.* finding."""
 
-    def extract_domain(self, target: Optional[BaseFinding]) -> Optional[str]:
-        """Resolve target domain identifier from dns.record, domain.info, or web endpoint."""
+ def extract_domain(self, target: Optional[BaseFinding]) -> Optional[str]:
+ """Resolve target domain identifier from dns.record, domain.info, or web endpoint."""
 
-    def extract_port(self, target: Optional[BaseFinding]) -> Optional[int]:
-        """Resolve integer target port from network.service or PIK/data."""
+ def extract_port(self, target: Optional[BaseFinding]) -> Optional[int]:
+ """Resolve integer target port from network.service or PIK/data."""
 
-    def sanitize_output(self, raw_stdout: str) -> str:
-        """Filter ASCII art, banners, and progress spinners before logging."""
+ def sanitize_output(self, raw_stdout: str) -> str:
+ """Filter ASCII art, banners, and progress spinners before logging."""
 
-    @staticmethod
-    def strip_ansi(text: str) -> str:
-        """Strip ANSI color codes and cursor control escapes via centralized regex."""
+ @staticmethod
+ def strip_ansi(text: str) -> str:
+ """Strip ANSI color codes and cursor control escapes via centralized regex."""
 ```
 
 ### 6.3. Dynamic Loader Pipeline in `ToolRegistry`
@@ -433,16 +433,16 @@ In addition to the CLI command (`cyg doctor`), the active Headless Engine surfac
 ### ADR-08: Deep Modules & High-Leverage Architectural Seams
 * **Context**: As Ether grew, cross-cutting concerns (workspace lifecycle, report generation, context variable resolution, timeline logging, execution streaming, diagnostic probing, prompt boundary sanitization, and settings management) were intermingled inside UI layers and large procedural methods.
 * **Decision**: Refactor the codebase around Deep Modules (John Ousterhout principle: small, simple interfaces hiding substantial internal complexity):
-  1. `ExecutionSession` ([`ether/engine/execution_session.py`](../../ether/engine/execution_session.py)): Subprocess lifecycle, interactive terminal suspension, disk log spooling, atomic session eviction (`evict_session`), typed pub/sub event streaming (`subscribe`), and encapsulated job query interfaces (`get_active_jobs_count`, `get_session_active_jobs`).
-  2. `ExplanationTutor` ([`ether/engine/explainer.py`](../../ether/engine/explainer.py)): Multi-key cloud fallbacks, cooldown tracking, prompt boundary sanitization, deep scan context encapsulation (`explain_scan`, `stream_scan`, `strip_scanner_noise`), and uniform `ProviderAdapter` streaming with local Ollama failover.
-  3. `ActionGateway` ([`ether/engine/gateway.py`](../../ether/engine/gateway.py)): Security boundary policy enforcement, cloud metadata SSRF defense (`BLOCKED_TARGETS`), tool manifest validation, and centralized variable resolution.
-  4. `WorkspaceRepository` ([`ether/engine/workspace_repository.py`](../../ether/engine/workspace_repository.py)): Workspace and session CRUD, forensic read-only locking, atomic job cleanup delegation, and high-leverage batch operations (`move_sessions`, `batch_delete` with `SYSTEM` workspace guards).
-  5. Declarative `BaseFinding` Canonicalization ([`ether/schemas/base.py`](../../ether/schemas/base.py)): Automatic whitespace trimming, lowercase normalizations, and IPv6 expansion via Pydantic model configuration.
-  6. `SessionReportService` ([`ether/engine/reporter.py`](../../ether/engine/reporter.py)): Multi-format forensic reporting, Markdown tables, Mermaid attack flow graphs, and stat summaries.
-  7. `ActionTimelineRepository` ([`ether/engine/timeline.py`](../../ether/engine/timeline.py)): Append-only action event logs, tab state restoration, and timeline replay queries using public `store.connection()`.
-  8. `WorkspaceContextBuilder` ([`ether/engine/context_builder.py`](../../ether/engine/context_builder.py)): Point-in-time context compilation using `ActionGateway` variable resolution.
-  9. `DiagnosticEngine` ([`ether/engine/diagnostics.py`](../../ether/engine/diagnostics.py)): Pluggable probe registry for system, database, security toolchain, and AI connectivity.
-  10. `PreferencesStore` ([`ether/common/preferences.py`](../../ether/common/preferences.py)): Atomic `0o600` filesystem persistence for settings, active API key profile switching, and operator scratchpad note-taking.
+ 1. `ExecutionSession` ([`ether/engine/execution_session.py`](../../ether/engine/execution_session.py)): Subprocess lifecycle, interactive terminal suspension, disk log spooling, atomic session eviction (`evict_session`), typed pub/sub event streaming (`subscribe`), and encapsulated job query interfaces (`get_active_jobs_count`, `get_session_active_jobs`).
+ 2. `ExplanationTutor` ([`ether/engine/explainer.py`](../../ether/engine/explainer.py)): Multi-key cloud fallbacks, cooldown tracking, prompt boundary sanitization, deep scan context encapsulation (`explain_scan`, `stream_scan`, `strip_scanner_noise`), and uniform `ProviderAdapter` streaming with local Ollama failover.
+ 3. `ActionGateway` ([`ether/engine/gateway.py`](../../ether/engine/gateway.py)): Security boundary policy enforcement, cloud metadata SSRF defense (`BLOCKED_TARGETS`), tool manifest validation, and centralized variable resolution.
+ 4. `WorkspaceRepository` ([`ether/engine/workspace_repository.py`](../../ether/engine/workspace_repository.py)): Workspace and session CRUD, forensic read-only locking, atomic job cleanup delegation, and high-leverage batch operations (`move_sessions`, `batch_delete` with `SYSTEM` workspace guards).
+ 5. Declarative `BaseFinding` Canonicalization ([`ether/schemas/base.py`](../../ether/schemas/base.py)): Automatic whitespace trimming, lowercase normalizations, and IPv6 expansion via Pydantic model configuration.
+ 6. `SessionReportService` ([`ether/engine/reporter.py`](../../ether/engine/reporter.py)): Multi-format forensic reporting, Markdown tables, Mermaid attack flow graphs, and stat summaries.
+ 7. `ActionTimelineRepository` ([`ether/engine/timeline.py`](../../ether/engine/timeline.py)): Append-only action event logs, tab state restoration, and timeline replay queries using public `store.connection()`.
+ 8. `WorkspaceContextBuilder` ([`ether/engine/context_builder.py`](../../ether/engine/context_builder.py)): Point-in-time context compilation using `ActionGateway` variable resolution.
+ 9. `DiagnosticEngine` ([`ether/engine/diagnostics.py`](../../ether/engine/diagnostics.py)): Pluggable probe registry for system, database, security toolchain, and AI connectivity.
+ 10. `PreferencesStore` ([`ether/common/preferences.py`](../../ether/common/preferences.py)): Atomic `0o600` filesystem persistence for settings, active API key profile switching, and operator scratchpad note-taking.
 * **Consequences**: Drastic reduction in cognitive load and high locality of change. Adding new features, security tools, or AI models requires zero modifications to core orchestration pipelines.
 
 ### ADR-09: Compressed Asset Packaging & Linguist Vendoring for Micro-Wordlists
@@ -458,9 +458,9 @@ In addition to the CLI command (`cyg doctor`), the active Headless Engine surfac
 ### ADR-11: Two-Phase Privileged Execution & Credential Validation
 * **Context**: Executing `sudo` commands in Power Mode previously suspended the Asyncio Headless Engine (`with ctx.suspend():`) for the full duration of the subprocess with `stdout=None`. Output printed directly to the underlying host terminal buffer, leaving the workbench tab empty until application shutdown.
 * **Decision**: Decouple interactive credential validation from command execution:
-  1. Probe `sudo -n true` non-interactively. If credentials are valid, execute with zero suspension.
-  2. If credentials have expired, suspend the Headless Engine strictly for `sudo -v` to prompt for password in the host terminal, then immediately resume the Headless Engine.
-  3. Execute the actual command via `CommandRunner` (`use_shell=False`) with piped stdout/stderr, streaming live output to the tab, spooling to disk, and capturing CTF flags.
+ 1. Probe `sudo -n true` non-interactively. If credentials are valid, execute with zero suspension.
+ 2. If credentials have expired, suspend the Headless Engine strictly for `sudo -v` to prompt for password in the host terminal, then immediately resume the Headless Engine.
+ 3. Execute the actual command via `CommandRunner` (`use_shell=False`) with piped stdout/stderr, streaming live output to the tab, spooling to disk, and capturing CTF flags.
 * **Consequences**: No lost output, zero screen flickering for cached credentials, immediate Headless Engine recovery after password entry, real-time interactive streaming in terminal tabs, and full forensic persistence in SQLite event logs.
 
 ### ADR-12: Pre-flight Verification & One-Click Remediation Seam
@@ -476,10 +476,10 @@ In addition to the CLI command (`cyg doctor`), the active Headless Engine surfac
 ### ADR-14: Deep Module Consolidation & Shallow Micro-File Pruning
 * **Context**: Several micro-files (`notifications.py`, `scrollbar.py`, `lazy.py`) existed as single-function shims or trivial overrides, adding indirection tax and cognitive friction.
 * **Decision**: In accordance with John Ousterhout's deep module philosophy, absorb shallow splinter files into their natural, high-cohesion owners:
-  1. Consolidate OS desktop notification dispatch (`send_desktop_notification`) directly into `ether/engine/power_facade.py`, preventing layer leakage while respecting AST rules.
-  2. Inline `ThinScrollBarRender` and `setup_thin_scrollbars()` directly into `ether/ui/compat.py` as part of unified Asyncio runtime hardening and compatibility.
-  3. Replace `ether/ui/screens/lazy.py` with dynamic `__getattr__` screen loading in `ether/ui/screens/__init__.py`.
-  4. Deepen `ActionTimelineRepository` with strongly-typed `GraphStore` contracts and parameterized table compaction (`compact_timeline()`).
+ 1. Consolidate OS desktop notification dispatch (`send_desktop_notification`) directly into `ether/engine/power_facade.py`, preventing layer leakage while respecting AST rules.
+ 2. Inline `ThinScrollBarRender` and `setup_thin_scrollbars()` directly into `ether/ui/compat.py` as part of unified Asyncio runtime hardening and compatibility.
+ 3. Replace `ether/ui/screens/lazy.py` with dynamic `__getattr__` screen loading in `ether/ui/screens/__init__.py`.
+ 4. Deepen `ActionTimelineRepository` with strongly-typed `GraphStore` contracts and parameterized table compaction (`compact_timeline()`).
 * **Consequences**: Elimination of shallow files, reduced repository surface area, zero indirection tax, and permanent mechanical enforcement via AST architectural tests.
 
 ### ADR-15: Graph Analytics, Attack Paths & Blast Radius Engine
@@ -500,26 +500,26 @@ In addition to the CLI command (`cyg doctor`), the active Headless Engine surfac
 ### ADR-18: High-Performance Fluid Panes, Sidebar Geometry & Write-Behind Layout Optimization
 * **Context**: Shrinking and expanding sidebars in Telemetry Mode and Power Mode exhibited perceptible stutter, latency, and dropped frames under high DOM loads (such as live output logs with 5,000 lines, rich Markdown theory readers, and large entity trees).
 * **Decision**: Implement a 5-layer fluid layout optimization pipeline:
-  1. **Asynchronous Write-Behind Debounce (`save_settings`)**: Decouple settings persistence from the critical render loop. Update in-memory configurations instantly (< 0.001ms) and debounce atomic file serialization via a 400ms trailing timer, eliminating synchronous disk I/O on every column step or drag event.
-  2. **Subtree Layout Containment**: Eliminate whole-screen layout invalidations (`self.refresh(layout=True)`) during pane resizing. Direct style assignments cleanly invalidate only the affected horizontal parent container, preventing recursive reflow of complex child panes.
-  3. **Transition Decoupling (`-resizing` & `-fast-stepping`)**: In CSS, force `transition: none !important;` during interactive dragging and keyboard stepping (`Alt+[` / `Alt+]`). Retain the 200ms cubic easing curve strictly for binary toggle collapse (`Ctrl+B`).
-  4. **Deadband Event Filtering**: In `ResizeHandle`, suppress redundant style assignments and message broadcasts if the mouse position does not alter the integer column width.
-  5. **Breakpoint Tier Memoization**: In `_sync_sidebar_responsive_layout` and `_sync_copilot_responsive_layout`, track responsive state tiers (icon vs compact vs full) and exit immediately without querying child DOM nodes or re-rendering buttons when staying within the same breakpoint bracket.
+ 1. **Asynchronous Write-Behind Debounce (`save_settings`)**: Decouple settings persistence from the critical render loop. Update in-memory configurations instantly (< 0.001ms) and debounce atomic file serialization via a 400ms trailing timer, eliminating synchronous disk I/O on every column step or drag event.
+ 2. **Subtree Layout Containment**: Eliminate whole-screen layout invalidations (`self.refresh(layout=True)`) during pane resizing. Direct style assignments cleanly invalidate only the affected horizontal parent container, preventing recursive reflow of complex child panes.
+ 3. **Transition Decoupling (`-resizing` & `-fast-stepping`)**: In CSS, force `transition: none !important;` during interactive dragging and keyboard stepping (`Alt+[` / `Alt+]`). Retain the 200ms cubic easing curve strictly for binary toggle collapse (`Ctrl+B`).
+ 4. **Deadband Event Filtering**: In `ResizeHandle`, suppress redundant style assignments and message broadcasts if the mouse position does not alter the integer column width.
+ 5. **Breakpoint Tier Memoization**: In `_sync_sidebar_responsive_layout` and `_sync_copilot_responsive_layout`, track responsive state tiers (icon vs compact vs full) and exit immediately without querying child DOM nodes or re-rendering buttons when staying within the same breakpoint bracket.
 * **Consequences**: 100% elimination of blocking disk I/O during resize, ~10x fewer re-measured DOM nodes per frame, zero easing curve clashing, and buttery-smooth 60 FPS terminal rendering.
 
 ### ADR-19: High-Leverage Mathematical & Algorithmic Primitives
 * **Context**: Critical subsystems across security policy validation, streaming text ingestion, prompt budgeting, graph topology analytics, entity clustering, and graph storage exhibited scaling bottlenecks ($O(N)$ CIDR linear scan, regex catastrophic backtracking in ANSI stripping, greedy prompt token overflows, unbounded graph queries, and quadratic Jaccard comparisons).
 * **Decision**: Consolidate foundational mathematical data structures into a unified deep algorithmic module ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)) and integrate parsing directly into common text utilities ([`ether/common/__init__.py`](../../ether/common/__init__.py)):
-  1. **Patricia Radix Trie (`IPRadixTrie`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Binary bitwise Radix Trie providing sub-microsecond $O(W)$ prefix matching ($W \le 32$ for IPv4, $W \le 128$ for IPv6), elevating SSRF gating throughput to 2.6M - 6.7M ops/sec.
-  2. **Table-Driven DFA ANSI Parser (`strip_ansi` / `dfa_strip_ansi`)** ([`ether/common/__init__.py`](../../ether/common/__init__.py)): ECMA-48 state machine with zero regex engine invocations, 100% immune to catastrophic backtracking and ReDoS.
-  3. **0/1 Knapsack Context Optimizer (`knapsack_01`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Dynamic programming solver with $O(N \cdot W)$ complexity and state backtracking, replacing naive greedy truncation with mathematically optimal finding utility under LLM token constraints.
-  4. **Probabilistic Query Pre-Filter (`BloomFilter`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Optimal counting & standard Bloom filter with optimal bit allocation ($m = -n \ln p / (\ln 2)^2$) and $k$ independent hash projections, pre-filtering known node IDs in `GraphStore` to bypass SQLite `SELECT ... WHERE id IN (...)` round-trips with zero false negatives.
-  5. **Disjoint-Set Union (`DisjointSet`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): DSU with two-pass path compression and union-by-rank with deterministic tie-breaking in $O(\alpha(N))$ amortized time.
-  6. **Locality-Sensitive Hashing (`MinHash`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Universal hash family over Mersenne prime $2^{61}-1$ for fast $O(K)$ Jaccard similarity estimation across banner and endpoint token streams.
-  7. **Topology & Centrality Engine (`GraphAnalyticsEngine`)** ([`ether/engine/graph_analytics.py`](../../ether/engine/graph_analytics.py)): Brandes' $O(V \cdot E)$ betweenness centrality and Tarjan's $O(V + E)$ strongly connected components (SCC), vertically integrated into `PowerWorkspaceFacade` (`get_critical_pivot_nodes`, `get_cyclic_attack_chains`).
+ 1. **Patricia Radix Trie (`IPRadixTrie`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Binary bitwise Radix Trie providing sub-microsecond $O(W)$ prefix matching ($W \le 32$ for IPv4, $W \le 128$ for IPv6), elevating SSRF gating throughput to 2.6M - 6.7M ops/sec.
+ 2. **Table-Driven DFA ANSI Parser (`strip_ansi` / `dfa_strip_ansi`)** ([`ether/common/__init__.py`](../../ether/common/__init__.py)): ECMA-48 state machine with zero regex engine invocations, 100% immune to catastrophic backtracking and ReDoS.
+ 3. **0/1 Knapsack Context Optimizer (`knapsack_01`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Dynamic programming solver with $O(N \cdot W)$ complexity and state backtracking, replacing naive greedy truncation with mathematically optimal finding utility under LLM token constraints.
+ 4. **Probabilistic Query Pre-Filter (`BloomFilter`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Optimal counting & standard Bloom filter with optimal bit allocation ($m = -n \ln p / (\ln 2)^2$) and $k$ independent hash projections, pre-filtering known node IDs in `GraphStore` to bypass SQLite `SELECT ... WHERE id IN (...)` round-trips with zero false negatives.
+ 5. **Disjoint-Set Union (`DisjointSet`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): DSU with two-pass path compression and union-by-rank with deterministic tie-breaking in $O(\alpha(N))$ amortized time.
+ 6. **Locality-Sensitive Hashing (`MinHash`)** ([`ether/common/algorithms.py`](../../ether/common/algorithms.py)): Universal hash family over Mersenne prime $2^{61}-1$ for fast $O(K)$ Jaccard similarity estimation across banner and endpoint token streams.
+ 7. **Topology & Centrality Engine (`GraphAnalyticsEngine`)** ([`ether/engine/graph_analytics.py`](../../ether/engine/graph_analytics.py)): Brandes' $O(V \cdot E)$ betweenness centrality and Tarjan's $O(V + E)$ strongly connected components (SCC), vertically integrated into `PowerWorkspaceFacade` (`get_critical_pivot_nodes`, `get_cyclic_attack_chains`).
 * **Key Design Decisions**:
-  - **Rollout Sequence (Concurrency of Core Primitives)**: Phase 1 (Pure Math Core & Bitwise Trie SSRF defense) and Phase 2 (Table-Driven DFA ANSI parsing) were deployed concurrently. Pure algorithmic math modules in `ether/common/` have zero external dependencies, allowing them to harden the security perimeter (`ActionGateway`) while simultaneously eliminating catastrophic backtracking from high-velocity stdout streams (`TerminalStreamPane`) without regressions.
-  - **Graph Intelligence Cadence (Lazy On-Demand Execution)**: Graph analytics (Brandes' betweenness centrality, Tarjan's SCC, attack paths, and transitive closure) are evaluated **lazily on demand** when requested via `PowerWorkspaceFacade.get_graph_analytics(session_id)` or UI graph views, rather than eagerly on every finding batch upsert. This completely shields the high-throughput ingestion pipeline (~27,500 findings/sec) from $O(V \cdot E)$ CPU spikes during active scanning while executing in sub-10ms latency when viewed by an operator.
+ - **Rollout Sequence (Concurrency of Core Primitives)**: Phase 1 (Pure Math Core & Bitwise Trie SSRF defense) and Phase 2 (Table-Driven DFA ANSI parsing) were deployed concurrently. Pure algorithmic math modules in `ether/common/` have zero external dependencies, allowing them to harden the security perimeter (`ActionGateway`) while simultaneously eliminating catastrophic backtracking from high-velocity stdout streams (`TerminalStreamPane`) without regressions.
+ - **Graph Intelligence Cadence (Lazy On-Demand Execution)**: Graph analytics (Brandes' betweenness centrality, Tarjan's SCC, attack paths, and transitive closure) are evaluated **lazily on demand** when requested via `PowerWorkspaceFacade.get_graph_analytics(session_id)` or UI graph views, rather than eagerly on every finding batch upsert. This completely shields the high-throughput ingestion pipeline (~27,500 findings/sec) from $O(V \cdot E)$ CPU spikes during active scanning while executing in sub-10ms latency when viewed by an operator.
 * **Consequences**: Deterministic mathematical properties, sub-microsecond latency, zero false negatives in storage filtering, and provable immunity to catastrophic backtracking.
 
 ---
@@ -529,26 +529,26 @@ In addition to the CLI command (`cyg doctor`), the active Headless Engine surfac
 To maintain codebase stability for university evaluation and production deployment, Ether enforces a strict tiered file protection policy:
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                        TIER 1: FROZEN CORE                             │
-│   • ether/schemas/base.py       • ether/engine/store.py            │
-│   • ether/common/canonicalize.py • ether/engine/registry.py       │
-│   • ether/paths.py                                                   │
-│   Governance: Core infrastructure. Changes require deep review and      │
-│   team agreement.                                                      │
-├────────────────────────────────────────────────────────────────────────┤
-│                        TIER 2: REVIEW REQUIRED                         │
-│   • tools/*/adapter.py            • ether/engine/executor.py         │
-│   • ether/schemas/*.py          • ether/engine/power_facade.py     │
-│   • ether/engine/explainer.py   • ether/engine/gateway.py          │
-│   Governance: Architectural components. Changes require unit tests.    │
-├────────────────────────────────────────────────────────────────────────┤
-│                        TIER 3: FREE TO CHANGE                          │
-│   • ether/ui/ (Screens/Widgets) • ether/schemas/                   │
-│   • docs/ and scripts/            • tests/                             │
-│   Governance: Layouts, styles, utility helpers, and documentation.     │
 
-└────────────────────────────────────────────────────────────────────────┘
+ TIER 1: FROZEN CORE 
+ • ether/schemas/base.py • ether/engine/store.py 
+ • ether/common/canonicalize.py • ether/engine/registry.py 
+ • ether/paths.py 
+ Governance: Core infrastructure. Changes require deep review and 
+ team agreement. 
+
+ TIER 2: REVIEW REQUIRED 
+ • tools/*/adapter.py • ether/engine/executor.py 
+ • ether/schemas/*.py • ether/engine/power_facade.py 
+ • ether/engine/explainer.py • ether/engine/gateway.py 
+ Governance: Architectural components. Changes require unit tests. 
+
+ TIER 3: FREE TO CHANGE 
+ • ether/ui/ (Screens/Widgets) • ether/schemas/ 
+ • docs/ and scripts/ • tests/ 
+ Governance: Layouts, styles, utility helpers, and documentation. 
+
+
 ```
 
 ---
@@ -559,8 +559,8 @@ To prevent directory pollution and support multi-user and multi-tenant environme
 
 ### Path Hierarchy & Resolution Rules:
 * **Root Unified Directory**: Resolves by priority:
-  1. `ETHER_DATA_DIR` environment variable (if specified).
-  2. `~/.ether` in the operator's home directory.
+ 1. `ETHER_DATA_DIR` environment variable (if specified).
+ 2. `~/.ether` in the operator's home directory.
 * **Database File**: `get_default_db_path()` defaults to `<data_dir>/ether.db` unless overridden by `--db <path>`.
 * **User Settings**: `<data_dir>/settings.json` stores persistent Headless Engine preferences (animations, sidebar state, active AI key, fallback configs).
 * **Scratchpad Markdown**: `<data_dir>/scratchpad.md` stores quick operator notes across sessions with restrictive filesystem permissions (`0o600`).
@@ -573,20 +573,20 @@ To prevent directory pollution and support multi-user and multi-tenant environme
 Telemetry Mode and AI explainers feature a multi-tiered fallback architecture managed by `ExplanationTutor` in [`ether/engine/explainer.py`](../../ether/engine/explainer.py):
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│                             ExplanationTutor                             │
-├──────────────────────────────────────────────────────────────────────────┤
-│ 1. Active Primary Key Profile (OpenAI / Claude / Groq / OpenRouter)       │
-│    │ Failed (429 Rate Limited, 503 Outage, or Network Timeout)           │
-│    ▼                                                                     │
-│ 2. Automatic Cooldown & Failover to Enabled Fallback Profiles             │
-│    │ All Cloud Keys Exhausted or Offline                                 │
-│    ▼                                                                     │
-│ 3. Automatic Graceful Fallback to Local Ollama (if configured)           │
-│    │ Ollama Unavailable                                                  │
-│    ▼                                                                     │
-│ 4. Clear Diagnostic Guidance & Zero UI Hanging                           │
-└──────────────────────────────────────────────────────────────────────────┘
+
+ ExplanationTutor 
+
+ 1. Active Primary Key Profile (OpenAI / Claude / Groq / OpenRouter) 
+ Failed (429 Rate Limited, 503 Outage, or Network Timeout) 
+ 
+ 2. Automatic Cooldown & Failover to Enabled Fallback Profiles 
+ All Cloud Keys Exhausted or Offline 
+ 
+ 3. Automatic Graceful Fallback to Local Ollama (if configured) 
+ Ollama Unavailable 
+ 
+ 4. Clear Diagnostic Guidance & Zero UI Hanging 
+
 ```
 
 * **`CloudKeyProfile`**: Tracks individual key configurations, active/standby states, rate-limit cooldown timers (`cooldown_until`), and health indicators.
@@ -605,11 +605,11 @@ Telemetry Mode and AI explainers feature a multi-tiered fallback architecture ma
 Ether integrates interactive modal screens and reusable widgets that adhere to strict layer separation:
 
 * **`ConfigModal` ([`ether/ui/screens/config_modal.py`](../../ether/ui/screens/config_modal.py))**:
-  - Live configuration editor with dedicated tab panes for **Local LLM (Ollama)**, **Cloud AI (Key Profiles & Fallback)**, **Database Paths**, and **Custom Tools**.
-  - Integrated with the Asyncio Command Palette (`Ctrl+P`) via specialized sub-palette providers (`ConfigProvider`, `OllamaConfigProvider`, `CloudAPIConfigProvider`, `DatabaseConfigProvider`, `ToolsConfigProvider`).
+ - Live configuration editor with dedicated tab panes for **Local LLM (Ollama)**, **Cloud AI (Key Profiles & Fallback)**, **Database Paths**, and **Custom Tools**.
+ - Integrated with the Asyncio Command Palette (`Ctrl+P`) via specialized sub-palette providers (`ConfigProvider`, `OllamaConfigProvider`, `CloudAPIConfigProvider`, `DatabaseConfigProvider`, `ToolsConfigProvider`).
 * **`ResizeHandle` ([`ether/ui/widgets/resizer.py`](../../ether/ui/widgets/resizer.py))**:
-  - Decoupled, draggable pane splitter allowing operators to resize the Entity Browser, Workbench Terminals, and AI Suggestions sidebar interactively.
-  - Automatically persists customized pane widths into `settings.json`.
+ - Decoupled, draggable pane splitter allowing operators to resize the Entity Browser, Workbench Terminals, and AI Suggestions sidebar interactively.
+ - Automatically persists customized pane widths into `settings.json`.
 
 ---
 
@@ -635,18 +635,18 @@ Ether implements strict defense-in-depth controls across process execution, netw
 ### 16.2. Link-Local & Cloud Metadata SSRF Gating
 * **Destination Policy**: [`ActionGateway`](../../ether/engine/gateway.py) validates all target entities and raw CLI flags against `BLOCKED_TARGETS`.
 * **Covered Metadata Endpoints**: Enforces comprehensive blocking across:
-  - IPv4 Link-Local subnet (`169.254.0.0/16`) covering AWS, Azure (`169.254.169.250`), GCP, DigitalOcean, and Oracle Cloud metadata.
-  - AWS IMDSv2 IPv6 Link-Local (`fd00:ec2::254`).
-  - Alibaba Cloud metadata (`100.100.100.200`).
-  - Alternate numeric encodings (decimal `2852039166`, hex `0xa9fea9fe`).
-  - Cloud DNS hostnames (`metadata.google.internal`, `metadata.internal`, `instance-data`).
+ - IPv4 Link-Local subnet (`169.254.0.0/16`) covering AWS, Azure (`169.254.169.250`), GCP, DigitalOcean, and Oracle Cloud metadata.
+ - AWS IMDSv2 IPv6 Link-Local (`fd00:ec2::254`).
+ - Alibaba Cloud metadata (`100.100.100.200`).
+ - Alternate numeric encodings (decimal `2852039166`, hex `0xa9fea9fe`).
+ - Cloud DNS hostnames (`metadata.google.internal`, `metadata.internal`, `instance-data`).
 
 ### 16.3. Declarative CIDR Scope Enforcement
 * **Engagement Boundaries**: In addition to blocking cloud metadata, `ActionGateway` allows operators and automated workflows to define strict allowed scope networks (`allowed_cidrs`).
 * **Multi-Target Invariant Validation**: Before dispatching commands, the gateway inspects:
-  - Selected target entity nodes and their Primary Identity Keys (IPs, URLs, hostnames).
-  - Explicit raw CLI arguments and flags (`raw_flags`) for IP candidates.
-  - Target findings resolved from context variables.
+ - Selected target entity nodes and their Primary Identity Keys (IPs, URLs, hostnames).
+ - Explicit raw CLI arguments and flags (`raw_flags`) for IP candidates.
+ - Target findings resolved from context variables.
 * Any target resolving outside the configured CIDR boundary raises `ScopeViolationError` with clear diagnostic feedback, preventing accidental scope escapes.
 
 ### 16.4. Atomic Private File Permissions

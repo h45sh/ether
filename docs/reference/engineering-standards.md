@@ -15,11 +15,11 @@ These standards are mechanically enforced via automated linting and AST verifica
 - **Rule:** 100% of SQLite database queries must use parameterized placeholders (`?`). String formatting or interpolation into SQL is strictly forbidden.
 - **Rule:** Never open and close connections per query. Use the shared connection pool via `GraphStore._get_conn()`.
 - **Rule:** All SQLite connections must enforce:
-  ```sql
-  PRAGMA foreign_keys = ON;
-  PRAGMA journal_mode = WAL;
-  PRAGMA busy_timeout = 5000;
-  ```
+ ```sql
+ PRAGMA foreign_keys = ON;
+ PRAGMA journal_mode = WAL;
+ PRAGMA busy_timeout = 5000;
+ ```
 
 ## 4. Adapter Authoring Standards
 - Adapters in `tools/<name>/` must implement `ToolAdapter`.
@@ -32,9 +32,9 @@ These standards are mechanically enforced via automated linting and AST verifica
 - **Formatter:** `ruff format .` (line length: 100).
 - **Target Python Version:** `>= 3.11` (specifically tested on `py311`, `py312`, `py313`).
 - **Pre-commit Checks:**
-  1. `ruff check .`
-  2. `pytest -m tier0` (Invariants and property tests in <2 seconds).
-  3. `pytest -m fast` (Fast unit tests in <5 seconds).
+ 1. `ruff check .`
+ 2. `pytest -m tier0` (Invariants and property tests in <2 seconds).
+ 3. `pytest -m fast` (Fast unit tests in <5 seconds).
 EOF && \
 cat << 'EOF' > /home/harsh/Documents/ether/docs/developer/adapters.md
 # Authoring Pluggable Security Tool Adapters
@@ -45,8 +45,8 @@ Ether's architecture follows the **Smart Adapter / Simple Core** principle. The 
 
 ```
 tools/<tool_name>/
-├── manifest.toml    # Metadata, category, binary name, inputs & outputs
-└── adapter.py       # Python class inheriting from ToolAdapter
+ manifest.toml # Metadata, category, binary name, inputs & outputs
+ adapter.py # Python class inheriting from ToolAdapter
 ```
 
 ## 1. `manifest.toml` Specification
@@ -79,30 +79,30 @@ from ether.schemas.network import NetworkService
 
 
 class NmapAdapter(ToolAdapter):
-    def validate_install(self) -> bool:
-        """Check if binary exists in PATH."""
-        import shutil
+ def validate_install(self) -> bool:
+ """Check if binary exists in PATH."""
+ import shutil
 
-        return shutil.which("nmap") is not None
+ return shutil.which("nmap") is not None
 
-    def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        """Construct safe argument vector."""
-        ip = target.data.get("ip") or "127.0.0.1"
-        return ["nmap", "-sV", ip]
+ def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
+ """Construct safe argument vector."""
+ ip = target.data.get("ip") or "127.0.0.1"
+ return ["nmap", "-sV", ip]
 
-    async def parse_output(
-        self, line: str, target: BaseFinding, context: Dict[str, Any]
-    ) -> AsyncIterator[BaseFinding]:
-        """Streamingly parse single stdout lines into normalized findings."""
-        if "/tcp" in line and "open" in line:
-            parts = line.split()
-            port_proto = parts[0].split("/")
-            yield NetworkService.create(
-                host_ip=target.data.get("ip"),
-                port=int(port_proto[0]),
-                protocol=port_proto[1],
-                service=parts[2],
-            )
+ async def parse_output(
+ self, line: str, target: BaseFinding, context: Dict[str, Any]
+ ) -> AsyncIterator[BaseFinding]:
+ """Streamingly parse single stdout lines into normalized findings."""
+ if "/tcp" in line and "open" in line:
+ parts = line.split()
+ port_proto = parts[0].split("/")
+ yield NetworkService.create(
+ host_ip=target.data.get("ip"),
+ port=int(port_proto[0]),
+ protocol=port_proto[1],
+ service=parts[2],
+ )
 ```
 
 ## 3. Automated Verification

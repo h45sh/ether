@@ -22,9 +22,9 @@ Every security tool plugin lives in its own subdirectory under `tools/<tool_name
 
 ```text
 tools/<tool_name>/
-├── __init__.py
-├── manifest.toml    # Metadata, execution constraints, and learning recipes
-└── adapter.py       # Command generation and stdout parsing logic
+ __init__.py
+ manifest.toml # Metadata, execution constraints, and learning recipes
+ adapter.py # Command generation and stdout parsing logic
 ```
 
 > [!TIP]
@@ -81,30 +81,30 @@ from ether.schemas.web import WebEndpoint
 
 
 class MyToolAdapter(ToolAdapter):
-    def validate_install(self) -> bool:
-        """Check if the external CLI binary is available on PATH."""
-        return shutil.which("mytool") is not None
+ def validate_install(self) -> bool:
+ """Check if the external CLI binary is available on PATH."""
+ return shutil.which("mytool") is not None
 
-    def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        """Construct the CLI arguments safely as an argument list (preventing shell injection)."""
-        raw_flags = params.get("raw_flags", "")
-        flag_args = shlex.split(raw_flags) if raw_flags else []
-        url = self.extract_url(target) or ""
-        return ["mytool", "-u", url] + flag_args
+ def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
+ """Construct the CLI arguments safely as an argument list (preventing shell injection)."""
+ raw_flags = params.get("raw_flags", "")
+ flag_args = shlex.split(raw_flags) if raw_flags else []
+ url = self.extract_url(target) or ""
+ return ["mytool", "-u", url] + flag_args
 
-    async def parse_output(
-        self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
-    ) -> AsyncIterator[BaseFinding]:
-        """Parse raw stdout into validated BaseFinding schemas."""
-        for line in raw_stdout.splitlines():
-            cleaned = self.strip_ansi(line).strip()
-            if "200 OK" in cleaned:
-                path = cleaned.split()[0]
-                yield WebEndpoint.create(
-                    url=path,
-                    host_ip=self.extract_host(target),
-                    status_code=200,
-                )
+ async def parse_output(
+ self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
+ ) -> AsyncIterator[BaseFinding]:
+ """Parse raw stdout into validated BaseFinding schemas."""
+ for line in raw_stdout.splitlines():
+ cleaned = self.strip_ansi(line).strip()
+ if "200 OK" in cleaned:
+ path = cleaned.split()[0]
+ yield WebEndpoint.create(
+ url=path,
+ host_ip=self.extract_host(target),
+ status_code=200,
+ )
 ```
 
 ---
@@ -140,22 +140,22 @@ from tools.mytool.adapter import MyToolAdapter
 
 
 async def test_run():
-    store = GraphStore(":memory:")
-    await store.initialize()
+ store = GraphStore(":memory:")
+ await store.initialize()
 
-    adapter = MyToolAdapter()
-    executor = Executor(store)
+ adapter = MyToolAdapter()
+ executor = Executor(store)
 
-    # Run against a mock target or local test server
-    target = WebEndpoint.create(url="http://127.0.0.1:8000")
-    cmd = adapter.build_command(target, {})
-    print(f"Executing: {' '.join(cmd)}")
+ # Run against a mock target or local test server
+ target = WebEndpoint.create(url="http://127.0.0.1:8000")
+ cmd = adapter.build_command(target, {})
+ print(f"Executing: {' '.join(cmd)}")
 
-    await store.close()
+ await store.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(test_run())
+ asyncio.run(test_run())
 ```
 
 ---
@@ -216,15 +216,15 @@ python3 scripts/generate_schema_registry.py --check
 Ether rejects brittle, mock-heavy example tests and layered boilerplate in favor of empirical contracts:
 
 1. **Tier 0 AST Architectural Checks** (`tests/unit/test_architecture.py`):
-   Mechanical AST enforcement banning dangerous patterns (`shell=True`, direct `subprocess` imports in adapters, raw string SQL execution).
+ Mechanical AST enforcement banning dangerous patterns (`shell=True`, direct `subprocess` imports in adapters, raw string SQL execution).
 2. **Mathematical Properties with Hypothesis** (`tests/unit/test_properties.py`):
-   Algebraic invariants: PIK hash order independence, canonicalization idempotence, SSRF metadata permutations (100% block rate across hex, decimal, link-local, cloud metadata DNS), and GraphStore merge commutativity & idempotence.
+ Algebraic invariants: PIK hash order independence, canonicalization idempotence, SSRF metadata permutations (100% block rate across hex, decimal, link-local, cloud metadata DNS), and GraphStore merge commutativity & idempotence.
 3. **Universal Adapter Fuzzing** (`tests/unit/test_parsers/test_fuzz_all_adapters.py`):
-   When adding a new tool adapter in `tools/<name>/`, it is **automatically registered** and tested against 4 adversarial output streams (ANSI explosions, truncated JSON, 20,000-token strings, null bytes) and installation validation. Never write duplicate `test_validate_install` boilerplate.
+ When adding a new tool adapter in `tools/<name>/`, it is **automatically registered** and tested against 4 adversarial output streams (ANSI explosions, truncated JSON, 20,000-token strings, null bytes) and installation validation. Never write duplicate `test_validate_install` boilerplate.
 4. **Headless TUI Workflow Proofs** (`tests/integration/test_tui_workflow_proof.py`):
-   Full operator journeys tested headlessly via Textual pilot to ensure screens, sidebars, and reactive event streams remain unbroken.
+ Full operator journeys tested headlessly via Textual pilot to ensure screens, sidebars, and reactive event streams remain unbroken.
 5. **Pruning over Layering**:
-   Never pile shallow wrappers or redundant test suites on top of existing code. When universal property or fuzz tests strictly cover a domain, prune obsolete point-value tests.
+ Never pile shallow wrappers or redundant test suites on top of existing code. When universal property or fuzz tests strictly cover a domain, prune obsolete point-value tests.
 
 > [!NOTE]
 > If you create or modify finding schemas in `ether/schemas/`, `./scripts/verify.sh` automatically updates and validates [`docs/developer/SCHEMA_REGISTRY.md`](../developer/SCHEMA_REGISTRY.md). Ensure any generated documentation diffs are committed with your PR.

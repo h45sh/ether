@@ -48,7 +48,7 @@ A state-governed lifecycle model (`ACTIVE` vs `CLOSED`). When an operator closes
 An atomic SQLite database export mechanism (`ATTACH DATABASE`) that bundles the entire entity graph, edge relationships, and execution logs into a self-contained `.db` file. Instructors and evaluators can import this archive into any local Ether instance to inspect a student's exact chronological methodology and scan findings.
 
 ### Universal Lab Checkpoint (`.cyglab`)
-A self-contained SQLite archive created in Learning Mode (`Ctrl+S` / `⤓ SAVE`) that serializes full multi-tool laboratory progression. It records all discovered entity graph nodes/edges across all tools, per-tool configuration caches (`tool_configs`), cumulative terminal stdout lines, AI tutor dialogues, and student notes, secured with atomic `0o600` private file permissions.
+A self-contained SQLite archive created in Learning Mode (`Ctrl+S` / ` SAVE`) that serializes full multi-tool laboratory progression. It records all discovered entity graph nodes/edges across all tools, per-tool configuration caches (`tool_configs`), cumulative terminal stdout lines, AI tutor dialogues, and student notes, secured with atomic `0o600` private file permissions.
 
 ### Wordlist Subsystem
 A centralized asset repository located at `~/.ether/wordlists/` (or `$ETHER_DATA_DIR/wordlists`). It bundles high-signal starter wordlists and dynamically expands named macros (`{wordlist:common_dirs}`) inside tool recipes.

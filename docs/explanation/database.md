@@ -9,15 +9,15 @@ Welcome to the internal developer database specification for Ether. This documen
 Ether’s storage architecture is engineered to solve a core challenge in cybersecurity operations and education: **tool fragmentation, stateful correlation, and investigation reproducibility**.
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│                             Ether Runtime                              │
-├───────────────────────┬──────────────────────────────────────────────────┤
-│ Tool Adapters         │ Yield standardized BaseFinding objects           │
-│ Repository Layer      │ WorkspaceRepository & ActionTimelineRepository   │
-│ GraphStore Engine     │ Enforces PIKs, hashes IDs, auto-wires relations  │
-│ SQLite Storage Layer  │ Stores relational entities, graphs & event logs  │
-│ Portability Subsystem │ ATTACH/DETACH zero-copy session export/import    │
-└───────────────────────┴──────────────────────────────────────────────────┘
+
+ Ether Runtime 
+
+ Tool Adapters Yield standardized BaseFinding objects 
+ Repository Layer WorkspaceRepository & ActionTimelineRepository 
+ GraphStore Engine Enforces PIKs, hashes IDs, auto-wires relations 
+ SQLite Storage Layer Stores relational entities, graphs & event logs 
+ Portability Subsystem ATTACH/DETACH zero-copy session export/import 
+
 ```
 
 ### Core Design Tenets:
@@ -37,13 +37,13 @@ Ether manages database files across distinct locations depending on operational 
 
 ```
 ~/.ether/ (or $ETHER_DATA_DIR, mode 0700)
-├── ether.db               # Default global workspace & session database
-├── settings.json            # Persistent user configuration
-├── scratchpad.md            # Operator note-taking scratchpad
-├── exports/
-│   └── archive_<name>.db    # Standalone portable session archives (Export/Import)
-└── reports/
-    └── report_<name>.md     # Structured Markdown investigation reports
+ ether.db # Default global workspace & session database
+ settings.json # Persistent user configuration
+ scratchpad.md # Operator note-taking scratchpad
+ exports/
+ archive_<name>.db # Standalone portable session archives (Export/Import)
+ reports/
+ report_<name>.md # Structured Markdown investigation reports
 ```
 
 * **Uniform Runtime Database (`~/.ether/ether.db`)**: Created automatically on first launch in the user's unified application directory (mode `0o600`), regardless of which directory Ether is launched from.
@@ -51,15 +51,15 @@ Ether manages database files across distinct locations depending on operational 
 * **Custom Database Override (`cyg --db <path>`)**: Allows operators to bind Ether to a specific database file for engagement isolation.
 * **Transient Testing (`sqlite:///:memory:`)**: All unit and integration test suites run against isolated in-memory databases with sub-millisecond setup and teardown.
 * **Connection Lifecycle & Integrity Pragmas**:
-  Connection management is encapsulated via `GraphStore.connection()`. Every active connection enforces security, concurrency, and durability pragmas:
-  ```sql
-  PRAGMA foreign_keys = ON;
-  PRAGMA trusted_schema = OFF;
-  PRAGMA busy_timeout = 5000;
-  PRAGMA journal_mode = WAL;
-  PRAGMA synchronous = NORMAL;
-  ```
-  Foreign key enforcement is strictly enabled on every connection to maintain relational integrity and trigger cascading deletes.
+ Connection management is encapsulated via `GraphStore.connection()`. Every active connection enforces security, concurrency, and durability pragmas:
+ ```sql
+ PRAGMA foreign_keys = ON;
+ PRAGMA trusted_schema = OFF;
+ PRAGMA busy_timeout = 5000;
+ PRAGMA journal_mode = WAL;
+ PRAGMA synchronous = NORMAL;
+ ```
+ Foreign key enforcement is strictly enabled on every connection to maintain relational integrity and trigger cascading deletes.
 
 ---
 
@@ -71,58 +71,58 @@ The relational schema is composed of five core tables organized into two domains
 
 ```mermaid
 erDiagram
-    workspaces ||--o{ sessions : "contains (1:N)"
-    sessions ||--o{ nodes : "owns (1:N)"
-    sessions ||--o{ edges : "scopes (1:N)"
-    sessions ||--o{ event_log : "records (1:N)"
-    nodes ||--o{ edges : "source_node"
-    nodes ||--o{ edges : "target_node"
+ workspaces ||--o{ sessions : "contains (1:N)"
+ sessions ||--o{ nodes : "owns (1:N)"
+ sessions ||--o{ edges : "scopes (1:N)"
+ sessions ||--o{ event_log : "records (1:N)"
+ nodes ||--o{ edges : "source_node"
+ nodes ||--o{ edges : "target_node"
 
-    workspaces {
-        TEXT id PK "UUID string"
-        TEXT name "Unique workspace name"
-        TEXT status "ACTIVE | CLOSED | SYSTEM"
-        TIMESTAMP closed_at "Archival timestamp"
-        TIMESTAMP created_at "Creation timestamp"
-    }
+ workspaces {
+ TEXT id PK "UUID string"
+ TEXT name "Unique workspace name"
+ TEXT status "ACTIVE | CLOSED | SYSTEM"
+ TIMESTAMP closed_at "Archival timestamp"
+ TIMESTAMP created_at "Creation timestamp"
+ }
 
-    sessions {
-        TEXT id PK "UUID string"
-        TEXT workspace_id FK "References workspaces(id) ON DELETE CASCADE"
-        TEXT name "Session name"
-        TEXT status "ACTIVE | CLOSED | SYSTEM"
-        TIMESTAMP closed_at "Archival timestamp"
-        TIMESTAMP created_at "Creation timestamp"
-    }
+ sessions {
+ TEXT id PK "UUID string"
+ TEXT workspace_id FK "References workspaces(id) ON DELETE CASCADE"
+ TEXT name "Session name"
+ TEXT status "ACTIVE | CLOSED | SYSTEM"
+ TIMESTAMP closed_at "Archival timestamp"
+ TIMESTAMP created_at "Creation timestamp"
+ }
 
-    nodes {
-        TEXT session_id PK,FK "References sessions(id) ON DELETE CASCADE"
-        TEXT id PK "SHA-256(schema_type + sorted_pik)"
-        TEXT schema_type "E.g. network.host, network.service"
-        TEXT pik_json "Serialized JSON of Primary Identity Key"
-        TEXT data_json "Serialized JSON of merged finding payload"
-        TEXT status "confirmed | proposed"
-        TIMESTAMP updated_at "Last modification timestamp"
-    }
+ nodes {
+ TEXT session_id PK,FK "References sessions(id) ON DELETE CASCADE"
+ TEXT id PK "SHA-256(schema_type + sorted_pik)"
+ TEXT schema_type "E.g. network.host, network.service"
+ TEXT pik_json "Serialized JSON of Primary Identity Key"
+ TEXT data_json "Serialized JSON of merged finding payload"
+ TEXT status "confirmed | proposed"
+ TIMESTAMP updated_at "Last modification timestamp"
+ }
 
-    edges {
-        TEXT session_id PK,FK "References sessions(id) ON DELETE CASCADE"
-        TEXT source_id PK,FK "References nodes(session_id, id) ON DELETE CASCADE"
-        TEXT target_id PK,FK "References nodes(session_id, id) ON DELETE CASCADE"
-        TEXT relation_type PK "parent | resolves_to | whois_data_for | etc."
-    }
+ edges {
+ TEXT session_id PK,FK "References sessions(id) ON DELETE CASCADE"
+ TEXT source_id PK,FK "References nodes(session_id, id) ON DELETE CASCADE"
+ TEXT target_id PK,FK "References nodes(session_id, id) ON DELETE CASCADE"
+ TEXT relation_type PK "parent | resolves_to | whois_data_for | etc."
+ }
 
-    event_log {
-        INTEGER id PK "Auto-incrementing sequence"
-        TEXT session_id FK "References sessions(id) ON DELETE CASCADE"
-        TIMESTAMP timestamp "Execution timestamp"
-        TEXT action_payload "JSON ActionRequest (tool, args, target)"
-        TEXT result_payload "JSON execution metrics and return status"
-        TEXT human_readable "Formatted UI log line"
-        TEXT schema_type "Finding schema type or system.event"
-        TEXT finding_json "Full BaseFinding JSON payload"
-        INTEGER closed "0 = Active/Open tab, 1 = Closed tab"
-    }
+ event_log {
+ INTEGER id PK "Auto-incrementing sequence"
+ TEXT session_id FK "References sessions(id) ON DELETE CASCADE"
+ TIMESTAMP timestamp "Execution timestamp"
+ TEXT action_payload "JSON ActionRequest (tool, args, target)"
+ TEXT result_payload "JSON execution metrics and return status"
+ TEXT human_readable "Formatted UI log line"
+ TEXT schema_type "Finding schema type or system.event"
+ TEXT finding_json "Full BaseFinding JSON payload"
+ INTEGER closed "0 = Active/Open tab, 1 = Closed tab"
+ }
 ```
 
 ---
@@ -134,11 +134,11 @@ The top-level operational boundary representing an organization, project, or lab
 
 ```sql
 CREATE TABLE IF NOT EXISTS workspaces (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    status TEXT DEFAULT 'ACTIVE',
-    closed_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL,
+ status TEXT DEFAULT 'ACTIVE',
+ closed_at TIMESTAMP,
+ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -157,13 +157,13 @@ A focused thread of investigation within a workspace.
 
 ```sql
 CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    status TEXT DEFAULT 'ACTIVE',
-    closed_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+ id TEXT PRIMARY KEY,
+ workspace_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ status TEXT DEFAULT 'ACTIVE',
+ closed_at TIMESTAMP,
+ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 ```
 
@@ -183,15 +183,15 @@ Stores de-duplicated, stateful findings. Each row represents a discovered entity
 
 ```sql
 CREATE TABLE IF NOT EXISTS nodes (
-    session_id TEXT NOT NULL,
-    id TEXT NOT NULL,
-    schema_type TEXT NOT NULL,
-    pik_json TEXT NOT NULL,
-    data_json TEXT NOT NULL,
-    status TEXT DEFAULT 'confirmed',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (session_id, id),
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+ session_id TEXT NOT NULL,
+ id TEXT NOT NULL,
+ schema_type TEXT NOT NULL,
+ pik_json TEXT NOT NULL,
+ data_json TEXT NOT NULL,
+ status TEXT DEFAULT 'confirmed',
+ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY (session_id, id),
+ FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 ```
 
@@ -212,13 +212,13 @@ Stores directed relationships connecting nodes within an entity graph.
 
 ```sql
 CREATE TABLE IF NOT EXISTS edges (
-    session_id TEXT NOT NULL,
-    source_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    relation_type TEXT NOT NULL,
-    PRIMARY KEY (session_id, source_id, target_id, relation_type),
-    FOREIGN KEY (session_id, source_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE,
-    FOREIGN KEY (session_id, target_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE
+ session_id TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ target_id TEXT NOT NULL,
+ relation_type TEXT NOT NULL,
+ PRIMARY KEY (session_id, source_id, target_id, relation_type),
+ FOREIGN KEY (session_id, source_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE,
+ FOREIGN KEY (session_id, target_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE
 );
 ```
 
@@ -236,16 +236,16 @@ An append-only log capturing every command execution, tool output, and generated
 
 ```sql
 CREATE TABLE IF NOT EXISTS event_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    action_payload TEXT,
-    result_payload TEXT,
-    human_readable TEXT,
-    schema_type TEXT,
-    finding_json TEXT,
-    closed INTEGER DEFAULT 0,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ session_id TEXT NOT NULL,
+ timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ action_payload TEXT,
+ result_payload TEXT,
+ human_readable TEXT,
+ schema_type TEXT,
+ finding_json TEXT,
+ closed INTEGER DEFAULT 0,
+ FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 ```
 
@@ -308,11 +308,11 @@ $$\text{Node ID} = \text{SHA-256}\left(\text{schema\_type} + \text{":"} + \text{
 
 ```python
 def _generate_node_id(self, schema_type: str, pik: Dict[str, Any]) -> str:
-    import hashlib
-    import json
+ import hashlib
+ import json
 
-    pik_str = json.dumps(pik, sort_keys=True)
-    return hashlib.sha256(f"{schema_type}:{pik_str}".encode()).hexdigest()
+ pik_str = json.dumps(pik, sort_keys=True)
+ return hashlib.sha256(f"{schema_type}:{pik_str}".encode()).hexdigest()
 ```
 
 ### 5.2. Standard Schema PIK Reference Table
@@ -349,30 +349,30 @@ Nodes are interconnected into a directed graph using two primary relation models
 
 ```mermaid
 graph TD
-    classDef confirmed fill:#1e3a2f,stroke:#2ecc71,stroke-width:2px,color:#fff;
-    classDef proposed fill:#3d341e,stroke:#f39c12,stroke-width:2px,stroke-dasharray: 5 5,color:#fff;
-    classDef assoc fill:#1e2d42,stroke:#3498db,stroke-width:2px,color:#fff;
+ classDef confirmed fill:#1e3a2f,stroke:#2ecc71,stroke-width:2px,color:#fff;
+ classDef proposed fill:#3d341e,stroke:#f39c12,stroke-width:2px,stroke-dasharray: 5 5,color:#fff;
+ classDef assoc fill:#1e2d42,stroke:#3498db,stroke-width:2px,color:#fff;
 
-    NB["network.netblock<br><b>192.168.1.0/24</b>"]:::confirmed
-    H["network.host<br><b>192.168.1.10</b>"]:::confirmed
-    S80["network.service<br><b>80/tcp (http)</b>"]:::confirmed
-    S22["network.service<br><b>22/tcp (ssh)</b>"]:::confirmed
-    EP["web.endpoint<br><b>/api/v1/login</b>"]:::confirmed
-    VULN["web.vulnerability<br><b>SQLi in ?user=</b>"]:::confirmed
-    TLS["tls.certificate<br><b>Fingerprint: 7f8a...</b>"]:::confirmed
-    DNS["dns.record<br><b>api.target.com -> 192.168.1.10</b>"]:::assoc
-    WHOIS["domain.info<br><b>target.com (Registrar: MarkMonitor)</b>"]:::assoc
-    EP2["web.endpoint<br><b>/admin</b>"]:::confirmed
+ NB["network.netblock<br><b>192.168.1.0/24</b>"]:::confirmed
+ H["network.host<br><b>192.168.1.10</b>"]:::confirmed
+ S80["network.service<br><b>80/tcp (http)</b>"]:::confirmed
+ S22["network.service<br><b>22/tcp (ssh)</b>"]:::confirmed
+ EP["web.endpoint<br><b>/api/v1/login</b>"]:::confirmed
+ VULN["web.vulnerability<br><b>SQLi in ?user=</b>"]:::confirmed
+ TLS["tls.certificate<br><b>Fingerprint: 7f8a...</b>"]:::confirmed
+ DNS["dns.record<br><b>api.target.com -> 192.168.1.10</b>"]:::assoc
+ WHOIS["domain.info<br><b>target.com (Registrar: MarkMonitor)</b>"]:::assoc
+ EP2["web.endpoint<br><b>/admin</b>"]:::confirmed
 
-    NB -->|contains| H
-    H -->|parent| S80
-    H -->|parent| S22
-    S80 -->|parent| EP
-    S80 -->|parent| EP2
-    EP -->|parent| VULN
-    S80 -->|has_cert| TLS
-    DNS -.->|resolves_to| H
-    WHOIS -.->|whois_data_for| DNS
+ NB -->|contains| H
+ H -->|parent| S80
+ H -->|parent| S22
+ S80 -->|parent| EP
+ S80 -->|parent| EP2
+ EP -->|parent| VULN
+ S80 -->|has_cert| TLS
+ DNS -.->|resolves_to| H
+ WHOIS -.->|whois_data_for| DNS
 ```
 
 ### 6.2. Auto-Wiring Mechanics in `GraphStore.upsert_finding()`
@@ -381,30 +381,30 @@ When a finding is submitted, `GraphStore` automatically ensures all relational d
 ```python
 # 1. Handle Parent Relation (Auto-wires directed parent edge)
 if finding.parent:
-    p = finding.parent
-    parent_id = self._generate_node_id(p.target_type, p.target_pik)
-    # Ensure parent stub exists
-    await db.execute(
-        "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json) VALUES (?, ?, ?, ?, ?)",
-        (session_id, parent_id, p.target_type, json.dumps(p.target_pik), "{}"),
-    )
-    # Insert edge
-    await db.execute(
-        "INSERT OR IGNORE INTO edges (session_id, source_id, target_id, relation_type) VALUES (?, ?, ?, ?)",
-        (session_id, parent_id, node_id, p.via),
-    )
+ p = finding.parent
+ parent_id = self._generate_node_id(p.target_type, p.target_pik)
+ # Ensure parent stub exists
+ await db.execute(
+ "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json) VALUES (?, ?, ?, ?, ?)",
+ (session_id, parent_id, p.target_type, json.dumps(p.target_pik), "{}"),
+ )
+ # Insert edge
+ await db.execute(
+ "INSERT OR IGNORE INTO edges (session_id, source_id, target_id, relation_type) VALUES (?, ?, ?, ?)",
+ (session_id, parent_id, node_id, p.via),
+ )
 
 # 2. Handle Associations (Auto-wires semantic cross-entity edges)
 for assoc in finding.associations:
-    assoc_id = self._generate_node_id(assoc.target_type, assoc.target_pik)
-    await db.execute(
-        "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json) VALUES (?, ?, ?, ?, ?)",
-        (session_id, assoc_id, assoc.target_type, json.dumps(assoc.target_pik), "{}"),
-    )
-    await db.execute(
-        "INSERT OR IGNORE INTO edges (session_id, source_id, target_id, relation_type) VALUES (?, ?, ?, ?)",
-        (session_id, node_id, assoc_id, assoc.via),
-    )
+ assoc_id = self._generate_node_id(assoc.target_type, assoc.target_pik)
+ await db.execute(
+ "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json) VALUES (?, ?, ?, ?, ?)",
+ (session_id, assoc_id, assoc.target_type, json.dumps(assoc.target_pik), "{}"),
+ )
+ await db.execute(
+ "INSERT OR IGNORE INTO edges (session_id, source_id, target_id, relation_type) VALUES (?, ?, ?, ?)",
+ (session_id, node_id, assoc_id, assoc.via),
+ )
 ```
 
 ---
@@ -417,36 +417,36 @@ Every finding processed by Ether undergoes a multi-step verification, logging, m
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant Adapter as Tool Adapter (e.g. Nmap)
-    participant Store as GraphStore
-    participant DB as SQLite Engine
-    participant UI as Asyncio Headless Engine
+ autonumber
+ participant Adapter as Tool Adapter (e.g. Nmap)
+ participant Store as GraphStore
+ participant DB as SQLite Engine
+ participant UI as Asyncio Headless Engine
 
-    Adapter->>Store: upsert_finding(session_id, finding)
-    Store->>Store: Calculate Node ID (SHA-256)
+ Adapter->>Store: upsert_finding(session_id, finding)
+ Store->>Store: Calculate Node ID (SHA-256)
 
-    rect rgb(30, 45, 35)
-        Note over Store,DB: Step 1: Idempotent Node Upsert
-        Store->>DB: SELECT data_json FROM nodes WHERE session_id=? AND id=?
-        alt Node Exists
-            Store->>DB: UPDATE nodes SET data_json=merged_json, updated_at=CURRENT_TIMESTAMP
-        else Node is New
-            Store->>DB: INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status)
-        end
-    end
+ rect rgb(30, 45, 35)
+ Note over Store,DB: Step 1: Idempotent Node Upsert
+ Store->>DB: SELECT data_json FROM nodes WHERE session_id=? AND id=?
+ alt Node Exists
+ Store->>DB: UPDATE nodes SET data_json=merged_json, updated_at=CURRENT_TIMESTAMP
+ else Node is New
+ Store->>DB: INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status)
+ end
+ end
 
-    rect rgb(45, 30, 45)
-        Note over Store,DB: Step 2: Wire Parent & Association Edges
-        Store->>DB: INSERT OR IGNORE INTO nodes (Parent/Assoc Stubs)
-        Store->>DB: INSERT OR IGNORE INTO edges (session_id, source, target, relation_type)
-        Store->>DB: COMMIT Transaction
-    end
+ rect rgb(45, 30, 45)
+ Note over Store,DB: Step 2: Wire Parent & Association Edges
+ Store->>DB: INSERT OR IGNORE INTO nodes (Parent/Assoc Stubs)
+ Store->>DB: INSERT OR IGNORE INTO edges (session_id, source, target, relation_type)
+ Store->>DB: COMMIT Transaction
+ end
 
-    rect rgb(45, 45, 30)
-        Note over Store,UI: Step 3: Reactive Event Callback
-        Store-)UI: Fire on_upsert callback -> Live Re-render
-    end
+ rect rgb(45, 45, 30)
+ Note over Store,UI: Step 3: Reactive Event Callback
+ Store-)UI: Fire on_upsert callback -> Live Re-render
+ end
 ```
 
 ### 7.2. High-Throughput Batch Ingestion Pipeline (`upsert_findings_batch`)
@@ -456,36 +456,36 @@ When high-velocity scanners (such as `ffuf`, `nuclei`, or large subnet `nmap` sw
 To achieve maximum throughput without sacrificing data integrity or reactive UI updates, `GraphStore` implements `upsert_findings_batch(session_id, findings)`:
 
 ```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│                    upsert_findings_batch Pipeline                          │
-├────────────────────────────────────────────────────────────────────────────┤
-│ 1. Deterministic Node ID Generation (SHA-256 for all findings in batch)    │
-│    │                                                                       │
-│ 2. Probabilistic Bloom Filter Pre-Filtering:                               │
-│    - Query session's in-memory BloomFilter (zero false negatives)          │
-│    - If candidate set is empty, bypass SQLite SELECT queries entirely      │
-│    - Otherwise: chunked SELECT id, data_json WHERE id IN (...) (500/ck)   │
-│    │                                                                       │
-│ 3. In-Memory Dictionary Merge (Python dict update, preserving nulls)       │
-│    │                                                                       │
-│ 4. Single executemany:                                                     │
-│    INSERT INTO nodes (...) VALUES (...)                                    │
-│    ON CONFLICT(session_id, id) DO UPDATE SET                               │
-│      data_json = excluded.data_json,                                       │
-│      updated_at = excluded.updated_at                                      │
-│    │                                                                       │
-│ 5. Batched Stubs & Edges:                                                  │
-│    - Deduplicate parent & association nodes/edges in memory                │
-│    - executemany INSERT OR IGNORE INTO nodes ...                           │
-│    - executemany INSERT OR IGNORE INTO edges ...                           │
-│    │                                                                       │
-│ 6. Batched Audit Trail:                                                    │
-│    - executemany INSERT INTO event_log (...)                               │
-│    │                                                                       │
-│ 7. Bloom Filter State Synchronization (add upserted node IDs to filter)    │
-│    │                                                                       │
-│ 8. Single Batched Notification Event (on_upsert fired once per batch)      │
-└────────────────────────────────────────────────────────────────────────────┘
+
+ upsert_findings_batch Pipeline 
+
+ 1. Deterministic Node ID Generation (SHA-256 for all findings in batch) 
+ 
+ 2. Probabilistic Bloom Filter Pre-Filtering: 
+ - Query session's in-memory BloomFilter (zero false negatives) 
+ - If candidate set is empty, bypass SQLite SELECT queries entirely 
+ - Otherwise: chunked SELECT id, data_json WHERE id IN (...) (500/ck) 
+ 
+ 3. In-Memory Dictionary Merge (Python dict update, preserving nulls) 
+ 
+ 4. Single executemany: 
+ INSERT INTO nodes (...) VALUES (...) 
+ ON CONFLICT(session_id, id) DO UPDATE SET 
+ data_json = excluded.data_json, 
+ updated_at = excluded.updated_at 
+ 
+ 5. Batched Stubs & Edges: 
+ - Deduplicate parent & association nodes/edges in memory 
+ - executemany INSERT OR IGNORE INTO nodes ... 
+ - executemany INSERT OR IGNORE INTO edges ... 
+ 
+ 6. Batched Audit Trail: 
+ - executemany INSERT INTO event_log (...) 
+ 
+ 7. Bloom Filter State Synchronization (add upserted node IDs to filter) 
+ 
+ 8. Single Batched Notification Event (on_upsert fired once per batch) 
+
 ```
 
 #### Key Implementation Details:
@@ -502,21 +502,21 @@ To achieve maximum throughput without sacrificing data integrity or reactive UI 
 Ether implements cross-machine session sharing using zero-copy SQLite database attachment.
 
 ```text
-┌─────────────────────────┐                        ┌─────────────────────────┐
-│     Source Session      │                        │     Target Session      │
-│     (Host Analyst)      │                        │      (Team Member)      │
-│  ~/.ether/ether.db  │                        │  ~/.ether/ether.db  │
-└───────────┬─────────────┘                        └───────────▲─────────────┘
-            │                                                  │
-            │ cyg session export <id> exports/session.db       │ cyg session import exports/session.db
-            ▼                                                  │
- ┌─────────────────────────────────────────────────────────────┴┐
- │                 Standalone SQLite Export Archive             │
- │                     exports/session.db                       │
- │  - Copied workspace & session metadata                       │
- │  - Isolated entity nodes & topology edges                    │
- │  - Complete historical event_log & execution audit records   │
- └──────────────────────────────────────────────────────────────┘
+ 
+ Source Session Target Session 
+ (Host Analyst) (Team Member) 
+ ~/.ether/ether.db ~/.ether/ether.db 
+ 
+ 
+ cyg session export <id> exports/session.db cyg session import exports/session.db
+ 
+ 
+ Standalone SQLite Export Archive 
+ exports/session.db 
+ - Copied workspace & session metadata 
+ - Isolated entity nodes & topology edges 
+ - Complete historical event_log & execution audit records 
+ 
 ```
 
 ### 8.1. Export Pipeline (`export_session`)
@@ -529,8 +529,8 @@ Ether implements cross-machine session sharing using zero-copy SQLite database a
 1. Attaches the source export database using `ATTACH DATABASE ? AS src`.
 2. Resolves target workspace: matches by name, maps to an explicitly requested workspace ID, or creates a new workspace.
 3. Overwrite & Collision Management:
-   * **Re-import / Restoration**: If the imported session ID already exists in the store, existing session data is purged and restored cleanly.
-   * **Name Collisions**: If a different session already possesses the same name in the target workspace, the name is dynamically incremented (e.g. `Engagement Alpha (Imported 1)`).
+ * **Re-import / Restoration**: If the imported session ID already exists in the store, existing session data is purged and restored cleanly.
+ * **Name Collisions**: If a different session already possesses the same name in the target workspace, the name is dynamically incremented (e.g. `Engagement Alpha (Imported 1)`).
 4. Re-inserts all imported nodes, edges, and event logs into the local database within a single transaction.
 
 ### 8.3. Telemetry Mode Universal Checkpoints (`.cyglab`)
@@ -538,20 +538,20 @@ Telemetry Mode checkpoints (`.cyglab`) extend the zero-copy SQLite export archit
 
 1. **Relational Graph & Audit Entities**: Cloned via `export_session()` (`workspaces`, `sessions`, `nodes`, `edges`, `event_log`).
 2. **Universal Laboratory State Table (`learning_state`)**:
-   ```sql
-   CREATE TABLE IF NOT EXISTS learning_state (
-       session_id TEXT PRIMARY KEY,
-       primary_target TEXT,
-       active_tool TEXT,
-       tools_used TEXT,              -- JSON array of all tools used in this lab
-       tool_configs TEXT,            -- JSON map of per-tool parameters (target, flags, recipe_idx)
-       stdout_log TEXT,              -- JSON array of terminal stdout lines
-       explanation_buffer TEXT,      -- Full AI tutor guidance markdown
-       notes TEXT,                   -- Student lab notes
-       model_name TEXT,              -- AI model employed
-       saved_at TEXT                 -- ISO 8601 UTC timestamp
-   );
-   ```
+ ```sql
+ CREATE TABLE IF NOT EXISTS learning_state (
+ session_id TEXT PRIMARY KEY,
+ primary_target TEXT,
+ active_tool TEXT,
+ tools_used TEXT, -- JSON array of all tools used in this lab
+ tool_configs TEXT, -- JSON map of per-tool parameters (target, flags, recipe_idx)
+ stdout_log TEXT, -- JSON array of terminal stdout lines
+ explanation_buffer TEXT, -- Full AI tutor guidance markdown
+ notes TEXT, -- Student lab notes
+ model_name TEXT, -- AI model employed
+ saved_at TEXT -- ISO 8601 UTC timestamp
+ );
+ ```
 3. **Security Invariant**: Checkpoint files are pre-created atomically with permission mode `0o600` (`-rw-------`, user read/write only) via `os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)` to eliminate TOCTOU exposure.
 
 ---
@@ -562,31 +562,31 @@ Telemetry Mode checkpoints (`.cyglab`) extend the zero-copy SQLite export archit
 ```sql
 -- Retrieve all verified services under their respective hosts
 SELECT
-    h.pik_json AS host_pik,
-    h.data_json AS host_data,
-    s.pik_json AS service_pik,
-    s.data_json AS service_data
+ h.pik_json AS host_pik,
+ h.data_json AS host_data,
+ s.pik_json AS service_pik,
+ s.data_json AS service_data
 FROM nodes h
 JOIN edges e ON e.source_id = h.id AND e.session_id = h.session_id
 JOIN nodes s ON e.target_id = s.id AND e.session_id = s.session_id
 WHERE h.session_id = :session_id
-  AND h.schema_type = 'network.host'
-  AND s.schema_type = 'network.service'
-  AND e.relation_type = 'parent'
-  AND h.status = 'confirmed'
-  AND s.status = 'confirmed';
+ AND h.schema_type = 'network.host'
+ AND s.schema_type = 'network.service'
+ AND e.relation_type = 'parent'
+ AND h.status = 'confirmed'
+ AND s.status = 'confirmed';
 ```
 
 ### 9.2. Extracting Finding Statistics Across an Entire Workspace
 ```sql
 -- Workspace-wide node count grouped by schema type
 SELECT
-    n.schema_type,
-    COUNT(*) AS total_count
+ n.schema_type,
+ COUNT(*) AS total_count
 FROM nodes n
 JOIN sessions s ON n.session_id = s.id
 WHERE s.workspace_id = :workspace_id
-  AND n.status = 'confirmed'
+ AND n.status = 'confirmed'
 GROUP BY n.schema_type
 ORDER BY total_count DESC;
 ```
@@ -595,14 +595,14 @@ ORDER BY total_count DESC;
 ```sql
 -- Fetch open workbench jobs and execution logs
 SELECT
-    id,
-    timestamp,
-    action_payload,
-    result_payload,
-    human_readable
+ id,
+ timestamp,
+ action_payload,
+ result_payload,
+ human_readable
 FROM event_log
 WHERE session_id = :session_id
-  AND (closed IS NULL OR closed = 0)
+ AND (closed IS NULL OR closed = 0)
 ORDER BY timestamp ASC;
 ```
 
@@ -610,13 +610,13 @@ ORDER BY timestamp ASC;
 ```sql
 -- Extract proposed findings awaiting operator approval (reserved for Phase 4 TargetAdvisor)
 SELECT
-    id,
-    schema_type,
-    pik_json,
-    data_json
+ id,
+ schema_type,
+ pik_json,
+ data_json
 FROM nodes
 WHERE session_id = :session_id
-  AND status = 'proposed'
+ AND status = 'proposed'
 ORDER BY updated_at DESC;
 ```
 

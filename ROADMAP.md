@@ -4,7 +4,7 @@ This authoritative roadmap outlines the evolution of **Ether** from its current 
 
 ---
 
-## 🌌 The Vision: The "Cybersecurity Kernel"
+## The Vision: The "Cybersecurity Kernel"
 
 Every modern computing environment has an operating system kernel that multiplexes hardware, manages processes, provides IPC, and maintains filesystem state without caring which applications run on top.
 
@@ -18,7 +18,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-## 🗺️ The Five Evolutionary Epochs
+## The Five Evolutionary Epochs
 
 ```
  Epoch 1 ───────► Epoch 2 ───────► Epoch 3 ───────► Epoch 4 ───────► Epoch 5
@@ -29,7 +29,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### 🟢 Epoch 1: Hardened Substrate & Decoupled Core (Current Milestone)
+### Epoch 1: Hardened Substrate & Decoupled Core (Current Milestone)
 *Target: v0.1.0 – v0.2.0*
 *Focus: Complete architectural purity, mechanical gates, and 100% test coverage.*
 
@@ -48,7 +48,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### 🟡 Epoch 2: The Agent Telemetry Protocol (MCP & Zero-Token Diffs)
+### Epoch 2: The Agent Telemetry Protocol (MCP & Zero-Token Diffs)
 *Target: v0.3.0*
 *Focus: Turning Ether into the foundational operating system for Autonomous AI Security Agents.*
 
@@ -73,7 +73,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### 🟠 Epoch 3: High-Throughput Chained Execution & Pipeline DAG
+### Epoch 3: High-Throughput Chained Execution & Pipeline DAG
 *Target: v0.4.0*
 *Focus: Multi-stage, high-concurrency reconnaissance pipelines.*
 
@@ -91,7 +91,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### 🔴 Epoch 4: The Unrestricted "Beast" Engine (Offensive Workstation Core)
+### Epoch 4: The Unrestricted "Beast" Engine (Offensive Workstation Core)
 *Target: v0.5.0*
 *Focus: Sovereign offensive operations, full PTY emulation, and exploit choreography.*
 
@@ -107,7 +107,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### 🟣 Epoch 5: Distributed Sovereign Mesh & Global Telemetry
+### Epoch 5: Distributed Sovereign Mesh & Global Telemetry
 *Target: v1.0.0+*
 *Focus: Multi-node distributed operations, zero-trust coordination, and plugin marketplace.*
 
@@ -122,7 +122,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-## 📊 Concrete Capability Comparison
+## Concrete Capability Comparison
 
 | Dimension | Raw Bash / Scripts | Current CyGuide | **Ether Engine (Ideal State)** |
 | :--- | :--- | :--- | :--- |
@@ -136,7 +136,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-## 🏆 Definition of Done for Core Milestones
+## Definition of Done for Core Milestones
 
 To ensure high standards, no milestone in this roadmap is declared complete without:
 1. **100% AST Invariant Proofs:** Zero unauthorized cross-layer or UI imports.

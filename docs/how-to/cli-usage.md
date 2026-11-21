@@ -9,21 +9,21 @@ Welcome to the Ether User Manual. This guide provides comprehensive operational 
 When you launch Ether (`cyg`), you enter the **Dashboard Engagement Hub**. The dashboard organizes your investigations into a two-tier hierarchy: **Workspaces** (Projects/Engagements) and **Sessions** (Specific targets or sub-tasks).
 
 ```text
-┌─────────────────────────┬─────────────────────────────────────────────────┐
-│ Workspaces (Ctrl+B)     │ Active Workspace: "Penetration Test Lab"        │
-├─────────────────────────┼─────────────────────────────────────────────────┤
-│ • Local CTF             │ Sessions:                                       │
-│ • Corporate Audit [ACTIVE│ ❯ 10.0.0.1 - Initial Recon (Active: 2 | Closed: 1)│
-│ • Staging Environment   │   10.0.0.2 - Web App Assessment                 │
-│                         │                                                 │
-│ [Ctrl+N] New Workspace  │ Recent Engagement Activity:                     │
-│ [Ctrl+S] New Session    │ [14:22] nmap -> Discovered 10.0.0.1:80 (http)   │
-│ [F2] Rename | [Ctrl+D]  │ [14:25] gobuster -> Discovered /admin (200 OK)  │
-└─────────────────────────┴─────────────────────────────────────────────────┘
+
+ Workspaces (Ctrl+B) Active Workspace: "Penetration Test Lab" 
+
+ • Local CTF Sessions: 
+ • Corporate Audit [ACTIVE 10.0.0.1 - Initial Recon (Active: 2 | Closed: 1)
+ • Staging Environment 10.0.0.2 - Web App Assessment 
+ 
+ [Ctrl+N] New Workspace Recent Engagement Activity: 
+ [Ctrl+S] New Session [14:22] nmap -> Discovered 10.0.0.1:80 (http) 
+ [F2] Rename | [Ctrl+D] [14:25] gobuster -> Discovered /admin (200 OK) 
+
 ```
 
 <p align="center">
-  <img src="../../assets/dashboard.png" alt="Ether Dashboard Engagement Hub" width="100%">
+ <img src="../../assets/dashboard.png" alt="Ether Dashboard Engagement Hub" width="100%">
 </p>
 
 ### Workspace & Session Management
@@ -42,11 +42,11 @@ When you launch Ether (`cyg`), you enter the **Dashboard Engagement Hub**. The d
 Power Mode is an asynchronous terminal IDE designed for multi-target security operations.
 
 <p align="center">
-  <a href="../../assets/demo.mp4">
-    <img src="../../assets/powermode.png" alt="Ether Power Mode Operator Workbench" width="100%">
-  </a>
-  <br>
-  <a href="../../assets/demo.mp4">🎬 <b>Watch Power Mode Operator Workbench Video Demonstration (assets/demo.mp4)</b></a>
+ <a href="../../assets/demo.mp4">
+ <img src="../../assets/powermode.png" alt="Ether Power Mode Operator Workbench" width="100%">
+ </a>
+ <br>
+ <a href="../../assets/demo.mp4"> <b>Watch Power Mode Operator Workbench Video Demonstration (assets/demo.mp4)</b></a>
 </p>
 
 ### Multi-Tab Job Execution
@@ -60,17 +60,17 @@ Power Mode is an asynchronous terminal IDE designed for multi-target security op
 The left pane displays a physical hierarchy of discovered entities:
 ```text
 Targets
-└── 192.168.1.10 (Host)
-    ├── 22/tcp (ssh)
-    └── 80/tcp (http)
-        ├── /index.html (Endpoint)
-        └── /admin (Endpoint)
+ 192.168.1.10 (Host)
+ 22/tcp (ssh)
+ 80/tcp (http)
+ /index.html (Endpoint)
+ /admin (Endpoint)
 ```
-* **Dynamic Split-Pane Resizing**: Hover over the vertical border (`│`) between panels and drag with the mouse to resize, or use keyboard shortcuts (`Alt+[` / `Alt+]` for left sidebar, `Ctrl+Alt+[` / `Ctrl+Alt+]` for right sidebar). Sidebars feature buttery-smooth 60 FPS fluid resizing with write-behind persistence and intelligent breakpoint tiers, automatically remembering custom widths in `~/.ether/settings.json`.
+* **Dynamic Split-Pane Resizing**: Hover over the vertical border (``) between panels and drag with the mouse to resize, or use keyboard shortcuts (`Alt+[` / `Alt+]` for left sidebar, `Ctrl+Alt+[` / `Ctrl+Alt+]` for right sidebar). Sidebars feature buttery-smooth 60 FPS fluid resizing with write-behind persistence and intelligent breakpoint tiers, automatically remembering custom widths in `~/.ether/settings.json`.
 * **Universal Variable Injection**: Clicking any entity node in the tree binds context variables to the status bar:
-  * `$TARGET`: IP address or domain of the selected host.
-  * `$PORT`: Selected port number (e.g. `80`).
-  * `$SERVICE`: Service protocol name (e.g. `http`, `ssh`).
+ * `$TARGET`: IP address or domain of the selected host.
+ * `$PORT`: Selected port number (e.g. `80`).
+ * `$SERVICE`: Service protocol name (e.g. `http`, `ssh`).
 * **Global Entity Graph (`Ctrl+G`)**: Toggles between session-isolated entities and a unified, deduplicated entity graph spanning all sessions in the workspace.
 
 ### Operator Scratchpad (`Ctrl+N`)
@@ -83,10 +83,10 @@ The prompt supports dual execution modes:
 * **Mode Toggle (`> !` or `! !`)**: Switches between Tool and Shell execution.
 * **Raw Shell Lock (`Ctrl+L`)**: Locks the prompt in Shell Mode with Tab filename completion.
 * **Privileged Execution (`sudo`)**:
-  * Execute administrative commands using `!sudo <command>` (or `sudo <command>` in locked shell mode).
-  * **Zero-Flicker Cached Execution**: Automatically probes `sudo -n true` first. If credentials/timestamps are already cached, the command runs instantly without interrupting the UI.
-  * **Two-Phase Interactive Authentication**: If password entry is required, Ether briefly suspends the Headless Engine solely for `sudo -v` in the host terminal to prompt for your password. Once validated, the workbench resumes immediately.
-  * **Foreground Live Output Streaming**: The actual command runs with piped standard I/O, streaming its live output line-by-line into the active terminal tab with CTF flag auto-detection, disk log spooling, and persistent session replay.
+ * Execute administrative commands using `!sudo <command>` (or `sudo <command>` in locked shell mode).
+ * **Zero-Flicker Cached Execution**: Automatically probes `sudo -n true` first. If credentials/timestamps are already cached, the command runs instantly without interrupting the UI.
+ * **Two-Phase Interactive Authentication**: If password entry is required, Ether briefly suspends the Headless Engine solely for `sudo -v` in the host terminal to prompt for your password. Once validated, the workbench resumes immediately.
+ * **Foreground Live Output Streaming**: The actual command runs with piped standard I/O, streaming its live output line-by-line into the active terminal tab with CTF flag auto-detection, disk log spooling, and persistent session replay.
 
 ### Engagement Scope Boundaries (CIDR Enforcement)
 * **Scope Guardrails**: All actions executed through Ether pass through the `ActionGateway`.
@@ -100,7 +100,7 @@ The prompt supports dual execution modes:
 Press `Ctrl+P` from anywhere in Ether to open the Command Palette.
 
 <p align="center">
-  <img src="../../assets/command_pallete.png" alt="Ether Command Palette" width="100%">
+ <img src="../../assets/command_pallete.png" alt="Ether Command Palette" width="100%">
 </p>
 
 ### Configuration Modal (`Ctrl+Shift+C`)
@@ -110,35 +110,35 @@ Access the multi-tab settings panel to customize local models, cloud API provide
 Enable/disable local inference, set model names (e.g., `llama3`, `gemma`), configure custom endpoints, and run live connection checks:
 
 <p align="center">
-  <img src="../../assets/config_ollama.png" alt="Ether Local LLM Configuration" width="100%">
+ <img src="../../assets/config_ollama.png" alt="Ether Local LLM Configuration" width="100%">
 </p>
 
 #### 2. Cloud AI & Multi-Key Profiles
 Configure API keys for OpenAI, Anthropic Claude, Groq, OpenRouter, DeepSeek, and Gemini. Set fallback chains to prevent scan interruptions during rate limits:
 
 <p align="center">
-  <img src="../../assets/config_api.png" alt="Ether Cloud AI Profiles Configuration" width="100%">
+ <img src="../../assets/config_api.png" alt="Ether Cloud AI Profiles Configuration" width="100%">
 </p>
 
 #### 3. Database Settings
 Bind to custom database paths (`--db`) or verify the centralized SQLite store:
 
 <p align="center">
-  <img src="../../assets/config_db.png" alt="Ether Database Settings" width="100%">
+ <img src="../../assets/config_db.png" alt="Ether Database Settings" width="100%">
 </p>
 
 #### 4. Custom Tools & Plugins
 Configure external plugin directories (`--tools`) to load third-party adapters at runtime:
 
 <p align="center">
-  <img src="../../assets/config_tools.png" alt="Ether Custom Tools Configuration" width="100%">
+ <img src="../../assets/config_tools.png" alt="Ether Custom Tools Configuration" width="100%">
 </p>
 
 ### Live Tool Health Modal
 Select **Tool Health** in the Command Palette to inspect binary and module availability on PATH (`nmap`, `gobuster`, `nikto`, `subfinder`, `whois`, `dnspython`, `searchsploit`, `ffuf`, `nuclei`, `sqlmap`, `netexec`) with exact filesystem paths and package manager installation hints.
 
 <p align="center">
-  <img src="../../assets/tool_health.png" alt="Ether Tool Health Diagnostics Modal" width="100%">
+ <img src="../../assets/tool_health.png" alt="Ether Tool Health Diagnostics Modal" width="100%">
 </p>
 
 ---
@@ -175,7 +175,7 @@ cyg session export <session_id_or_name> exports/my_session.db -r reports/my_sess
 Ether includes a full domain-driven CLI suite for non-interactive automation, diagnostics, CI/CD pipelines, and offline lab operations:
 
 <p align="center">
-  <img src="../../assets/cli.png" alt="Ether CLI Interface & Subcommands" width="100%">
+ <img src="../../assets/cli.png" alt="Ether CLI Interface & Subcommands" width="100%">
 </p>
 
 ### Global Options & Version
@@ -195,7 +195,7 @@ cyg --data-dir /path/to/data
 cyg --db /path/to/my_database.db
 cyg --ollama --model mistral
 cyg --tools /path/to/custom_tools
-cyg --offline   # Disable all LLM calls
+cyg --offline # Disable all LLM calls
 ```
 
 ### Diagnostic Doctor (`cyg doctor`)
