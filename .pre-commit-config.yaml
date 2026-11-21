@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: schema-registry-check
+        name: Check Schema Registry Up to Date
+        entry: python3 scripts/generate_schema_registry.py --check
+        language: system
+        files: ^src/ether/schemas/.*\.py$
+        pass_filenames: false
+
+      - id: tier0-tests
+        name: Tier 0 Mechanical & Invariant Tests
+        entry: pytest -m tier0
+        language: system
+        pass_filenames: false
