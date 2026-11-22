@@ -5,12 +5,12 @@ Implement the execution tools (`execute_tool` and `abort_action`) on the MCP ser
 
 **Blocked by:** 03: Native MCP Server Skeleton and Graph Read Tools
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Implement `execute_tool` tool with `tool_name`, `target`, `arguments`, `session_id`, `timeout_seconds`, and `include_raw`
-- [ ] Connect `execute_tool` to `ActionGateway.execute_action` with `action_id` attribution
-- [ ] Implement sync-with-fallback execution timeout logic
-- [ ] Enforce prompt injection defense via `sanitize_untrusted_output` for raw logs
-- [ ] Implement in-band error formatting (`CallToolResult(isError=True, ...)`) for `SecurityViolation` and gateway errors
-- [ ] Implement `abort_action` tool terminating active processes via `ExecutionSession.abort_action`
-- [ ] Add unit tests in `tests/unit/test_mcp.py` testing successful execution, timeout fallback, prompt encapsulation, and policy rejection
+- [x] Implement `execute_tool` tool with `tool_name`, `target`, `arguments`, `session_id`, `timeout_seconds`, and `include_raw`
+- [x] Connect `execute_tool` to `ActionGateway.execute_action` with `action_id` attribution
+- [x] Implement sync-with-fallback execution timeout logic
+- [x] Enforce prompt injection defense via `sanitize_untrusted_output` for raw logs
+- [x] Implement in-band error formatting (`CallToolResult(isError=True, ...)`) for `SecurityViolation` and gateway errors
+- [x] Implement `abort_action` tool terminating active processes via `ExecutionSession.abort_action`
+- [x] Add unit tests in `tests/unit/test_mcp.py` testing successful execution, timeout fallback, prompt encapsulation, and policy rejection

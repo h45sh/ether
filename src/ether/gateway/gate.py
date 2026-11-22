@@ -10,6 +10,7 @@ from ether.common.exceptions import EtherError
 from ether.gateway.network import get_lhost_info
 from ether.graph.store import GraphStore
 from ether.registry.registry import ToolRegistry
+from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest, ActionSource
 
 
@@ -244,6 +245,36 @@ class ActionGateway:
                     if not any(ip_obj in net for net in self._allowed_cidrs):
                         return False
         return True
+
+    @staticmethod
+    def infer_target_finding(target: str) -> BaseFinding:
+        """Infer the typed BaseFinding entity from a raw target string."""
+        import ipaddress
+
+        from ether.schemas.base import BaseFinding
+        from ether.schemas.dns import DomainInfo
+        from ether.schemas.network import NetworkHost
+        from ether.schemas.web import WebEndpoint
+
+        try:
+            ipaddress.ip_address(target)
+            return NetworkHost.create(ip=target)
+        except ValueError:
+            pass
+
+        if target.startswith("http://") or target.startswith("https://"):
+            return WebEndpoint.create(url=target)
+
+        if "/" in target:
+            try:
+                ipaddress.ip_network(target, strict=False)
+                return BaseFinding(
+                    schema_type="network.netblock", pik={"cidr": target}, data={"cidr": target}
+                )
+            except ValueError:
+                pass
+
+        return DomainInfo.create(domain=target)
 
     @staticmethod
     def resolve_entity_variables(
