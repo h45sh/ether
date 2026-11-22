@@ -5,10 +5,10 @@ Implement `reconcile_state_decay(session_id: str, now: Optional[datetime] = None
 
 **Blocked by:** 01: Database DDL Schema Extensions & BaseFinding Model Update
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Implement `GraphStore.reconcile_state_decay(session_id, now=None)` with deterministic decay logic
-- [ ] Implement flapping heuristic ($\ge 2$ oscillations within active TTL window)
-- [ ] Update `GraphStore.get_all_nodes()` with `include_stale: bool = False` filtering
-- [ ] Implement `GraphStore.prune_stale_nodes(session_id, max_age_seconds)`
-- [ ] Write unit tests in `tests/unit/test_graph_decay.py` verifying state transitions with simulated timestamps
+- [x] Implement `GraphStore.reconcile_state_decay(session_id, now=None)` with deterministic decay logic
+- [x] Implement flapping heuristic ($\ge 2$ oscillations within active TTL window)
+- [x] Update `GraphStore.get_all_nodes()` with `include_stale: bool = False` filtering
+- [x] Implement `GraphStore.prune_stale_nodes(session_id, max_age_seconds)`
+- [x] Write unit tests in `tests/unit/test_graph_decay.py` verifying state transitions with simulated timestamps
