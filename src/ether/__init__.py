@@ -1,5 +1,6 @@
 """Ether: Reactive process supervisor and graph telemetry engine for security tools."""
 
+from ether.common.exceptions import EtherError
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
 from ether.core.session import ExecutionSession
 from ether.gateway.gate import ActionGateway, ActionValidationError, GatePolicy
@@ -17,6 +18,7 @@ __all__ = [
     "ActionTimelineRepository",
     "ActionValidationError",
     "BaseFinding",
+    "EtherError",
     "ExecutionSession",
     "Executor",
     "GatePolicy",

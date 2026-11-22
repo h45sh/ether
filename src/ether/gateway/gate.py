@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ether import paths
 from ether.common.algorithms import IPRadixTrie
+from ether.common.exceptions import EtherError
 from ether.gateway.network import get_lhost_info
 from ether.graph.store import GraphStore
 from ether.registry.registry import ToolRegistry
@@ -117,7 +118,7 @@ class GatePolicy(str, Enum):
     )
 
 
-class ActionValidationError(Exception):
+class ActionValidationError(EtherError):
     """Raised when an ActionRequest fails validation."""
 
     pass

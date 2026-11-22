@@ -11,6 +11,8 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
+from ether.common.exceptions import EtherError
+
 MAGIC_HEADER = b"ETHER_SECURE_ARC"  # 16 bytes
 CURRENT_VERSION = 1  # 1 byte
 AAD_TAG = b"ETHER_AUTHENTICATED_DATABASE_V1"
@@ -19,7 +21,7 @@ NONCE_SIZE = 12
 HEADER_SIZE = len(MAGIC_HEADER) + 1 + SALT_SIZE + NONCE_SIZE  # 16 + 1 + 16 + 12 = 45 bytes
 
 
-class CryptoError(Exception):
+class CryptoError(EtherError):
     """Base exception for cryptographic operations in Ether."""
 
 
