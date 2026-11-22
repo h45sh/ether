@@ -35,21 +35,23 @@ class VectorEmbeddingEngine:
 
         vec = [0.0] * self.dimension
 
-        # 1. Word unigrams (weight = 2.0)
+        # 1. Word unigrams (3 independent random projections, weight = 2.0)
         for token in tokens:
-            self._hash_feature(token, weight=2.0, vector=vec)
+            for h_idx in range(3):
+                self._hash_feature(f"{h_idx}:{token}", weight=2.0, vector=vec)
 
-        # 2. Word bigrams (weight = 1.5)
+        # 2. Word bigrams (2 independent random projections, weight = 1.5)
         for i in range(len(tokens) - 1):
             bigram = f"{tokens[i]}_{tokens[i + 1]}"
-            self._hash_feature(bigram, weight=1.5, vector=vec)
+            for h_idx in range(2):
+                self._hash_feature(f"bg:{h_idx}:{bigram}", weight=1.5, vector=vec)
 
-        # 3. Character trigrams for subword robustness (weight = 0.5)
+        # 3. Character 4-grams for subword robustness (weight = 0.5)
         for token in tokens:
-            if len(token) >= 3:
-                for i in range(len(token) - 2):
-                    trigram = token[i : i + 3]
-                    self._hash_feature(f"tri:{trigram}", weight=0.5, vector=vec)
+            if len(token) >= 4:
+                for i in range(len(token) - 3):
+                    ngram = token[i : i + 4]
+                    self._hash_feature(f"ng:{ngram}", weight=0.5, vector=vec)
 
         # 4. L2 Normalization to ensure ||v||_2 = 1.0
         norm_sq = sum(x * x for x in vec)

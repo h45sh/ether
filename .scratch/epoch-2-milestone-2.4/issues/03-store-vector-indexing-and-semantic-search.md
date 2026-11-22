@@ -13,10 +13,10 @@ Write unit tests in `tests/unit/test_vector_store.py`.
 
 **Blocked by:** 01: `sqlite-vec` Dependency & Extension Integration in `GraphStore`, 02: Deterministic Offline Vector Embedding Engine & Finding Serialization
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Implement `sync_vectors_batch()` and auto-sync in `upsert_findings_batch()`
-- [ ] Implement `GraphStore.semantic_search()` with k-NN cosine distance queries
-- [ ] Filter out stale nodes and support `schema_type` filtering in vector search
-- [ ] Purge `vec_findings` rows on `prune_stale_nodes()` and session deletion
-- [ ] Write unit tests in `tests/unit/test_vector_store.py`
+- [x] Implement `sync_vectors_batch()` and auto-sync in `upsert_findings_batch()`
+- [x] Implement `GraphStore.semantic_search()` with k-NN cosine distance queries
+- [x] Filter out stale nodes and support `schema_type` filtering in vector search
+- [x] Purge `vec_findings` rows on `prune_stale_nodes()` and session deletion
+- [x] Write unit tests in `tests/unit/test_vector_store.py`

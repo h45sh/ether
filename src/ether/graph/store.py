@@ -21,6 +21,7 @@ try:
 except ImportError:
     sqlite_vec = None
 
+from ether.common.embeddings import get_embedding_engine
 from ether.graph.timeline import ActionTimelineRepository
 from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest
@@ -381,6 +382,18 @@ class GraphStore:
         """Delete a workspace and all its sessions/graphs (cascade)."""
         async with self._get_conn() as db:
             await db.execute("PRAGMA foreign_keys = ON")
+            if sqlite_vec is not None:
+                try:
+                    await db.execute(
+                        """DELETE FROM vec_findings WHERE node_id IN (
+                               SELECT n.id FROM nodes n
+                               JOIN sessions s ON n.session_id = s.id
+                               WHERE s.workspace_id = ?
+                           )""",
+                        (workspace_id,),
+                    )
+                except Exception as e:
+                    logger.warning(f"Error deleting workspace vectors: {e}")
             await db.execute(
                 """
                 DELETE FROM notes
@@ -400,6 +413,14 @@ class GraphStore:
         """Delete a single session, its graph data, and its notes."""
         async with self._get_conn() as db:
             await db.execute("PRAGMA foreign_keys = ON")
+            if sqlite_vec is not None:
+                try:
+                    await db.execute(
+                        "DELETE FROM vec_findings WHERE node_id IN (SELECT id FROM nodes WHERE session_id = ?)",
+                        (session_id,),
+                    )
+                except Exception as e:
+                    logger.warning(f"Error deleting session vectors: {e}")
             await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             await db.execute(
                 "DELETE FROM notes WHERE (scope_type = 'session' AND scope_id = ?) OR (scope_type = 'learning' AND scope_id = ?)",
@@ -735,6 +756,38 @@ class GraphStore:
                     [(r[0], r[1], r[2], r[3], action_id) for r in rel_edges],
                 )
 
+            # 5. Vector Indexing in vec_findings (sqlite-vec)
+            if sqlite_vec is not None:
+                engine = get_embedding_engine()
+                vector_delete_ids = []
+                vector_params = []
+                seen_vec = set()
+                for finding in findings:
+                    nid = self.generate_node_id(finding.schema_type, finding.pik)
+                    if nid in seen_vec:
+                        continue
+                    seen_vec.add(nid)
+                    try:
+                        semantic_text = finding.to_semantic_text()
+                        vec = engine.embed_text(semantic_text)
+                        serialized = sqlite_vec.serialize_float32(vec)
+                        vector_delete_ids.append((nid,))
+                        vector_params.append((nid, serialized))
+                    except Exception as e:
+                        logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
+
+                if vector_params:
+                    try:
+                        await db.executemany(
+                            "DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids
+                        )
+                        await db.executemany(
+                            "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)",
+                            vector_params,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error syncing vectors to vec_findings: {e}")
+
             await db.commit()
 
         # Update Bloom filter with all newly upserted node IDs and relationship nodes
@@ -823,6 +876,123 @@ class GraphStore:
             cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+    async def sync_vectors_batch(self, findings: List[BaseFinding]) -> int:
+        """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
+        if not findings or sqlite_vec is None:
+            return 0
+        engine = get_embedding_engine()
+        vector_delete_ids = []
+        vector_params = []
+        seen = set()
+        for finding in findings:
+            nid = self.generate_node_id(finding.schema_type, finding.pik)
+            if nid in seen:
+                continue
+            seen.add(nid)
+            try:
+                semantic_text = finding.to_semantic_text()
+                vec = engine.embed_text(semantic_text)
+                serialized = sqlite_vec.serialize_float32(vec)
+                vector_delete_ids.append((nid,))
+                vector_params.append((nid, serialized))
+            except Exception as e:
+                logger.warning(f"Could not compute semantic embedding for finding {nid}: {e}")
+
+        if not vector_params:
+            return 0
+
+        async with self._get_conn() as db:
+            await db.executemany("DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids)
+            await db.executemany(
+                "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)", vector_params
+            )
+            await db.commit()
+        return len(vector_params)
+
+    async def semantic_search(
+        self,
+        session_id: str,
+        query: str,
+        limit: int = 10,
+        min_score: float = 0.0,
+        schema_type: Optional[str] = None,
+        include_stale: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Semantic search against session findings using offline vector embeddings.
+
+        Args:
+            session_id: Active session ID to scope the search.
+            query: Natural language query (e.g. 'Apache HTTP Server path traversal').
+            limit: Maximum number of findings to return.
+            min_score: Minimum cosine similarity score [0.0, 1.0].
+            schema_type: Optional filter by schema_type (e.g. 'network.service').
+            include_stale: Whether to include findings from stale nodes.
+
+        Returns:
+            List of matching finding node dictionaries ordered by descending similarity,
+            with added 'similarity' and 'distance' fields.
+        """
+        if not query or not query.strip() or sqlite_vec is None:
+            return []
+
+        engine = get_embedding_engine()
+        query_vec = engine.embed_text(query)
+        serialized_query = sqlite_vec.serialize_float32(query_vec)
+
+        # Retrieve a generous candidate pool from vec0 (e.g. up to 10x limit or 100)
+        # to guarantee accurate ranking after session and schema filtering
+        k_candidates = max(limit * 10, 100)
+
+        async with self._get_conn() as db:
+            db.row_factory = aiosqlite.Row
+
+            sql = """
+                SELECT n.*, sub.distance
+                FROM (
+                    SELECT node_id, distance
+                    FROM vec_findings
+                    WHERE embedding MATCH ? AND k = ?
+                ) sub
+                JOIN nodes n ON sub.node_id = n.id
+                WHERE n.session_id = ?
+            """
+            params: List[Any] = [serialized_query, k_candidates, session_id]
+
+            if not include_stale:
+                sql += " AND n.status != 'stale'"
+
+            if schema_type:
+                sql += " AND n.schema_type = ?"
+                params.append(schema_type)
+
+            sql += " ORDER BY sub.distance ASC LIMIT ?"
+            params.append(limit)
+
+            cursor = await db.execute(sql, params)
+            rows = await cursor.fetchall()
+
+            results: List[Dict[str, Any]] = []
+            for r in rows:
+                item = dict(r)
+                distance = item.get("distance", 1.0)
+                similarity = max(0.0, min(1.0, 1.0 - distance))
+                if similarity < min_score:
+                    continue
+                item["similarity"] = round(similarity, 4)
+                if isinstance(item.get("pik_json"), str):
+                    try:
+                        item["pik"] = json.loads(item["pik_json"])
+                    except Exception:
+                        pass
+                if isinstance(item.get("data_json"), str):
+                    try:
+                        item["data"] = json.loads(item["data_json"])
+                    except Exception:
+                        pass
+                results.append(item)
+
+            return results
 
     async def reconcile_state_decay(
         self, session_id: str, now: Optional[datetime] = None
@@ -940,6 +1110,20 @@ class GraphStore:
         cutoff = (now - timedelta(seconds=max_age_seconds)).strftime("%Y-%m-%d %H:%M:%S")
 
         async with self._get_conn() as db:
+            if sqlite_vec is not None:
+                try:
+                    await db.execute(
+                        """DELETE FROM vec_findings
+                           WHERE node_id IN (
+                               SELECT id FROM nodes
+                               WHERE session_id = ?
+                                 AND status = 'stale'
+                                 AND datetime(last_seen_at) < datetime(?)
+                           )""",
+                        (session_id, cutoff),
+                    )
+                except Exception as e:
+                    logger.warning(f"Error purging stale vectors from vec_findings: {e}")
             cursor = await db.execute(
                 """DELETE FROM nodes
                    WHERE session_id = ?
