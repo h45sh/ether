@@ -52,6 +52,7 @@ markers = [
     "tier0: Microsecond AST invariants and property-based mathematical tests",
     "fast: Fast in-memory engine and domain logic tests (< 5s)",
     "fuzz: Hostile stream and adapter parser fuzzing tests",
+    "benchmark: Performance and regression benchmarks",
 ]
 
 [tool.ruff]

@@ -40,7 +40,13 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 - [x] **Dual Policy Seam:** `GatePolicy.SAFE` (blocks metadata, enforces CIDR) vs. `GatePolicy.UNRESTRICTED`.
 - [x] **Deterministic State Machine:** SQLite WAL GraphStore with SHA-256 PIK hashing.
 - [x] **Universal Fuzzing Matrix:** 11 built-in adapters passing 4-stream adversarial fuzzing.
-- [x] **Comprehensive Regression Suite:** 183 unit and integration tests passing in <10s.
+- [x] **Comprehensive Regression Suite:** 199 unit and integration tests passing in <10s.
+- [x] **Headless Performance Benchmarking & Regression Gate (`tests/benchmarks/test_perf_benchmarks.py`):**
+  - Continuous regression benchmarks verifying SQLite WAL ingestion (>250 findings/sec), composite query latency (<500ms for 5,000 nodes), Pydantic model throughput (>15,000 models/sec), and `LogSpooler` memory bounds (<15MB resident RAM for 100k lines).
+- [x] **Hardened Logging & In-Memory Flight Recorder (`ether.common.logging`):**
+  - `SecureRotatingFileHandler` with atomic `0o600` permissions.
+  - `SanitizingLogFormatter` with automated regex scrubbing for API keys, bearer tokens, passwords, and SSH keys.
+  - `FlightRecorder` in-memory circular trace buffer (`deque(maxlen=200)`) and global unhandled exception traps.
 - [x] **Category 2 Security Standards:** Atomic `0o600` file permissions (`atomic_create_file`), prompt boundary neutralization (`sanitize_untrusted_output`), and tiered file protection.
 - [ ] **Lightweight Headless CLI (`ether`):**
   - `ether run <tool> <target> [--json]`
@@ -81,9 +87,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Direct integration of `sqlite-vec` vector embeddings within SQLite.
   - Generates fast local vector embeddings for discovered services, banners, MITRE ATT&CK techniques, and CVE summaries.
   - Instant local semantic search and finding correlation with zero external API calls or network egress.
-- [ ] **Prompt Injection Defense Sandbox:**
+- [x] **Prompt Injection Defense Sandbox (`ether.core.sandbox`):**
   - Standardized `<untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`</untrusted_scan_output>` converted to `<\/untrusted_scan_output>`).
-  - Active detection of adversarial prompt injection embedded inside HTTP headers, SSL certificates, and DNS TXT records.
+  - Automatic redaction of private keys, authorization tokens, passwords, and API keys.
+  - Active neutralization of adversarial prompt injection embedded inside HTTP headers, SSL certificates, and DNS TXT records.
 
 ---
 
@@ -105,6 +112,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Dynamic disk spooling and chunk recycling keeping engine memory usage below **25 MB** under massive telemetry loads.
 - [ ] **Streaming Pub/Sub Event Bus:**
   - Real-time event streaming (`asyncio.Queue` / WebSockets) emitting live findings as they are parsed, enabling external dashboards or remote TUIs to attach and detach seamlessly.
+- [ ] **Continuous Telemetry, Metrics & Observability (`ether.telemetry`):**
+  - Prometheus `/metrics` and OpenTelemetry structured telemetry exporters.
+  - Runtime monitoring tracking subprocess execution latencies, backpressure queue depths, WAL checkpoint durations, and memory watermarks.
+  - System health diagnostics (`DiagnosticEngine`) auditing file descriptor headroom (`ulimit -n`), disk write pressure, and engine invariants.
 
 ---
 
