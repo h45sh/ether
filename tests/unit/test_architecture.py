@@ -104,3 +104,75 @@ def test_no_raw_os_system_or_shell_true():
     assert not violations, f"Security violation: Banned subprocess mechanisms found:\n" + "\n".join(
         violations
     )
+
+
+@pytest.mark.tier0
+def test_complete_unidirectional_layer_dag():
+    """Verify that the layer hierarchy strictly obeys a unidirectional downwards DAG.
+
+    Layer Hierarchy (Top to Bottom):
+      ether.cli
+        ↓
+      ether.gateway
+        ↓
+      ether.core
+        ↓
+      ether.graph
+        ↓
+      ether.registry
+        ↓
+      ether.schemas
+        ↓
+      ether.common
+    """
+    dag_rules = {
+        "common": [
+            "ether.schemas",
+            "ether.registry",
+            "ether.graph",
+            "ether.core",
+            "ether.gateway",
+            "ether.cli",
+        ],
+        "schemas": [
+            "ether.registry",
+            "ether.graph",
+            "ether.core",
+            "ether.gateway",
+            "ether.cli",
+        ],
+        "registry": ["ether.graph", "ether.core", "ether.gateway", "ether.cli"],
+        "graph": ["ether.core", "ether.gateway", "ether.cli"],
+        "core": ["ether.gateway", "ether.cli"],
+        "gateway": ["ether.cli"],
+    }
+
+    violations = []
+    for layer, banned in dag_rules.items():
+        layer_dir = SRC_ROOT / layer
+        if not layer_dir.is_dir():
+            continue
+
+        for py_file in _get_python_files(layer_dir):
+            with open(py_file, "r", encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=str(py_file))
+
+            for node in ast.walk(tree):
+                mod = ""
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    mod = node.module
+                elif isinstance(node, ast.Import):
+                    for name in node.names:
+                        mod = name.name
+
+                if mod:
+                    for b in banned:
+                        if mod == b or mod.startswith(b + "."):
+                            violations.append(
+                                f"[{layer}] {py_file.name}:{node.lineno} imports forbidden higher layer '{mod}'"
+                            )
+
+    assert not violations, (
+        f"Unidirectional Layer DAG violation: dependencies must flow strictly downwards:\n"
+        + "\n".join(violations)
+    )

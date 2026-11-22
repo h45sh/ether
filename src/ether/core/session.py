@@ -22,7 +22,6 @@ from typing import (
 from uuid import UUID
 
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
-from ether.gateway.gate import ActionGateway
 from ether.graph.store import GraphStore
 from ether.paths import get_action_log_path
 from ether.registry.adapter import ToolAdapter
@@ -31,6 +30,23 @@ from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest, JobStatus, JobStatusEnum
 
 # --- Protocols & Seams ---
+
+
+@runtime_checkable
+class ActionValidator(Protocol):
+    """Protocol for policy validation and entity variable resolution across execution boundaries."""
+
+    def resolve_entity_variables(self, pik: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Extract standard investigation variables ($TARGET, $PORT, $SERVICE, etc.)."""
+        ...
+
+    def interpolate_variables(self, text: str, variables: Dict[str, Any]) -> str:
+        """Replace $VAR placeholders in command text with resolved values."""
+        ...
+
+    async def validate_action(self, action: ActionRequest) -> bool:
+        """Validate an action request against registry, policy, and store state."""
+        ...
 
 
 @runtime_checkable
@@ -175,7 +191,7 @@ class ExecutionSession:
     def __init__(
         self,
         store: GraphStore,
-        gateway: ActionGateway,
+        gateway: ActionValidator,
         registry: ToolRegistry,
         command_runner: CommandRunner,
         user_env: Optional[Dict[str, str]] = None,

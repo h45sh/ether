@@ -133,7 +133,7 @@ class ActionGateway:
     def __init__(
         self,
         registry: ToolRegistry,
-        store: GraphStore,
+        store: Optional[GraphStore] = None,
         allowed_cidrs: Optional[List[str]] = None,
         policy: GatePolicy = GatePolicy.SAFE,
     ):
@@ -143,6 +143,18 @@ class ActionGateway:
         self._allowed_cidrs: Optional[List[Any]] = None
         if allowed_cidrs:
             self.set_allowed_cidrs(allowed_cidrs)
+
+    def preflight_verify(
+        self,
+        tool_name: str,
+        target: str,
+        flags: str = "",
+    ):
+        """Run preflight verification checks (binary availability, URL schemes, wordlists, and security gating)."""
+        from ether.gateway.preflight import PreflightVerifier
+
+        verifier = PreflightVerifier(registry=self.registry, policy=self.policy)
+        return verifier.verify(tool_name=tool_name, target=target, flags=flags)
 
     def set_allowed_cidrs(self, allowed_cidrs: Optional[List[str]]) -> None:
         """Configure declarative CIDR scope boundaries for engagements."""

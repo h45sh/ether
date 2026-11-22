@@ -18,7 +18,6 @@ from ether.core.session import (
     SubprocessCommandRunner,
 )
 from ether.gateway.gate import ActionGateway
-from ether.gateway.preflight import PreflightVerifier
 from ether.schemas.base import BaseFinding
 from ether.schemas.dns import DomainInfo
 from ether.schemas.network import NetworkHost
@@ -73,10 +72,10 @@ async def handle_run(args: Any, context: CliContext) -> int:
         print_error(f"Tool '{tool_name}' is not registered.")
         return EXIT_RUNTIME_ERROR
 
-    # 1. Preflight Verification Gate
-    verifier = PreflightVerifier(registry=registry)
+    # 1. Preflight Verification Gate via ActionGateway
+    gateway = ActionGateway(registry=registry, policy=context.policy)
     flags_str = " ".join(flags)
-    report = verifier.verify(tool_name=tool_name, target=target, flags=flags_str)
+    report = gateway.preflight_verify(tool_name=tool_name, target=target, flags=flags_str)
 
     if not report.is_valid:
         print_error(f"Preflight validation failed for '{tool_name}':")
@@ -92,6 +91,7 @@ async def handle_run(args: Any, context: CliContext) -> int:
 
     # 2. Database & Target Finding Setup
     async with context.open_store() as store:
+        gateway.store = store
         session_id = getattr(args, "session_id", None)
         if not session_id:
             _, sess_id = await store.get_or_create_learning_sandbox()
@@ -103,7 +103,6 @@ async def handle_run(args: Any, context: CliContext) -> int:
         # 3. Execution Session Setup
         executor = Executor()
         runner = SubprocessCommandRunner(executor)
-        gateway = ActionGateway(registry=registry, policy=context.policy)
         session = ExecutionSession(
             store=store,
             gateway=gateway,

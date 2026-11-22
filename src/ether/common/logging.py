@@ -20,29 +20,14 @@ import traceback
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
+from ether.common.secure_memory import (
+    sanitize_text_secrets,
+)
 from ether.paths import get_default_logs_dir, get_system_log_path
 
 logger = logging.getLogger("ether")
-
-# Sensitive token redaction regex patterns
-REDACT_PATTERNS: List[Tuple[re.Pattern, str]] = [
-    (
-        re.compile(
-            r"(?i)(api[_-]?key|secret|token|password|passwd|auth)\s*[:=]\s*['\"]?([^\s'\"]{6,})['\"]?"
-        ),
-        r"\1=***REDACTED***",
-    ),
-    (re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]{15,}"), "Bearer ***REDACTED***"),
-    (re.compile(r"sk-[A-Za-z0-9]{20,}"), "sk-***REDACTED***"),
-    (re.compile(r"ghp_[A-Za-z0-9]{20,}"), "ghp_***REDACTED***"),
-    (re.compile(r"://([^:]+):([^@]+)@"), r"://\1:***@"),
-    (
-        re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----"),
-        "-----BEGIN PRIVATE KEY----- [***REDACTED***] -----END PRIVATE KEY-----",
-    ),
-]
 
 
 class SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -83,10 +68,7 @@ class SanitizingLogFormatter(logging.Formatter):
     """Log formatter that automatically scrubs sensitive credentials, tokens, and keys."""
 
     def format(self, record: logging.LogRecord) -> str:
-        formatted = super().format(record)
-        for pattern, replacement in REDACT_PATTERNS:
-            formatted = pattern.sub(replacement, formatted)
-        return formatted
+        return sanitize_text_secrets(super().format(record))
 
 
 @dataclass
@@ -127,8 +109,7 @@ class FlightRecorder:
         safe_meta = {}
         for k, v in metadata.items():
             if isinstance(v, str):
-                for pattern, replacement in REDACT_PATTERNS:
-                    v = pattern.sub(replacement, v)
+                v = sanitize_text_secrets(v)
             safe_meta[k] = v
 
         crumb = Breadcrumb(

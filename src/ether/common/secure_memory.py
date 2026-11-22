@@ -6,7 +6,8 @@ lingering in the Python heap or process core dumps.
 """
 
 import ctypes
-from typing import Any, Optional, Set, Union
+import re
+from typing import Any, List, Optional, Set, Tuple, Union
 
 DEFAULT_SENSITIVE_KEYS: Set[str] = {
     "password",
@@ -25,6 +26,36 @@ DEFAULT_SENSITIVE_KEYS: Set[str] = {
     "credential",
     "credentials",
 }
+
+DEFAULT_REDACT_PATTERNS: List[Tuple[re.Pattern, str]] = [
+    (
+        re.compile(
+            r"(?i)(api[_-]?key|secret|token|password|passwd|auth)\s*[:=]\s*['\"]?([^\s'\"]{6,})['\"]?"
+        ),
+        r"\1=***REDACTED***",
+    ),
+    (re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]{15,}"), "Bearer ***REDACTED***"),
+    (re.compile(r"sk-[A-Za-z0-9]{20,}"), "sk-***REDACTED***"),
+    (re.compile(r"ghp_[A-Za-z0-9]{20,}"), "ghp_***REDACTED***"),
+    (re.compile(r"://([^:]+):([^@]+)@"), r"://\1:***@"),
+    (
+        re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----"),
+        "-----BEGIN PRIVATE KEY----- [***REDACTED***] -----END PRIVATE KEY-----",
+    ),
+]
+
+
+def sanitize_text_secrets(
+    text: str, patterns: Optional[List[Tuple[re.Pattern, str]]] = None
+) -> str:
+    """Scrub sensitive credentials, tokens, and private keys from an unstructured text stream."""
+    if not text:
+        return text
+    active_patterns = patterns or DEFAULT_REDACT_PATTERNS
+    sanitized = text
+    for pattern, replacement in active_patterns:
+        sanitized = pattern.sub(replacement, sanitized)
+    return sanitized
 
 
 def wipe_buffer(buf: Union[bytearray, ctypes.Array, Any]) -> None:

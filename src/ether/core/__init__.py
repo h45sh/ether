@@ -3,9 +3,16 @@
 from ether.core.diagnostics import DiagnosticCheck, DiagnosticEngine, DiagnosticReport
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
 from ether.core.sandbox import PromptInjectionSandbox
-from ether.core.session import ExecutionSession
+from ether.core.session import (
+    ActionValidator,
+    CommandRunner,
+    ExecutionSession,
+    TerminalSuspendContext,
+)
 
 __all__ = [
+    "ActionValidator",
+    "CommandRunner",
     "DiagnosticCheck",
     "DiagnosticEngine",
     "DiagnosticReport",
@@ -13,5 +20,6 @@ __all__ = [
     "Executor",
     "LogSpooler",
     "PromptInjectionSandbox",
+    "TerminalSuspendContext",
     "sanitize_subprocess_env",
 ]
