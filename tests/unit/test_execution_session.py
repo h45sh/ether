@@ -302,7 +302,6 @@ async def test_execution_session_cancel_coroutine():
     await store.close()
 
 
-
 @pytest.mark.asyncio
 async def test_privileged_action_cached_credentials_no_suspend():
     """When sudo credentials are authenticated (sudo -n true succeeds), TUI is not suspended."""

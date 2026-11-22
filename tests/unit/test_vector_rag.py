@@ -20,7 +20,11 @@ async def test_telemetry_compiler_rag_snapshot():
     ws_id, sess_id = await store.get_or_create_default_session()
 
     f1 = NetworkService.create(
-        host_ip="10.0.0.1", port=80, protocol="tcp", service_name="http", banner="Apache/2.4.49 (Unix)"
+        host_ip="10.0.0.1",
+        port=80,
+        protocol="tcp",
+        service_name="http",
+        banner="Apache/2.4.49 (Unix)",
     )
     f2 = VulnerabilityFound.create(
         host_ip="10.0.0.1",
@@ -45,7 +49,9 @@ async def test_telemetry_compiler_rag_snapshot():
     )
     assert len(snap_with_obj["rag_findings"]) >= 1
     top_rag = snap_with_obj["rag_findings"][0]
-    assert "apache" in top_rag["data_json"].lower() or "cve-2021-41773" in top_rag["data_json"].lower()
+    assert (
+        "apache" in top_rag["data_json"].lower() or "cve-2021-41773" in top_rag["data_json"].lower()
+    )
 
     await store.close()
 
@@ -85,7 +91,11 @@ async def test_mcp_search_findings_semantic():
             "limit": 5,
         },
     )
-    res_text = raw_res[0].text if isinstance(raw_res, list) else (raw_res.content[0].text if hasattr(raw_res, "content") else str(raw_res))
+    res_text = (
+        raw_res[0].text
+        if isinstance(raw_res, list)
+        else (raw_res.content[0].text if hasattr(raw_res, "content") else str(raw_res))
+    )
     data = json.loads(res_text)
 
     assert data["session_id"] == sess_id
@@ -104,7 +114,13 @@ async def test_mcp_search_findings_semantic():
             "schema_type": "vulnerability.found",
         },
     )
-    filtered_text = filtered_res[0].text if isinstance(filtered_res, list) else (filtered_res.content[0].text if hasattr(filtered_res, "content") else str(filtered_res))
+    filtered_text = (
+        filtered_res[0].text
+        if isinstance(filtered_res, list)
+        else (
+            filtered_res.content[0].text if hasattr(filtered_res, "content") else str(filtered_res)
+        )
+    )
     filtered_data = json.loads(filtered_text)
     for f in filtered_data["findings"]:
         assert f["schema_type"] == "vulnerability.found"

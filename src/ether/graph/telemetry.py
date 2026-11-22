@@ -318,10 +318,7 @@ class GraphTelemetryCompiler:
         )
 
         total_delta_count = (
-            len(added_nodes)
-            + len(updated_nodes)
-            + len(added_edges)
-            + len(anchored_migrations)
+            len(added_nodes) + len(updated_nodes) + len(added_edges) + len(anchored_migrations)
         )
         return {
             "session_id": self.session_id,

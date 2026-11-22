@@ -48,4 +48,3 @@ class CredentialFound(BaseFinding):
         if host_ip:
             parts.append(f"Host: {host_ip}")
         return ". ".join(parts) + "."
-

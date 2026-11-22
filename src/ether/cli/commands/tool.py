@@ -89,7 +89,9 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
     binary = getattr(meta, "binary", tool_name) if meta else tool_name
     bin_path = shutil.which(binary) if binary else None
     adapter = data.get("adapter")
-    is_installed = adapter.validate_install() if (tier == "coroutine" and adapter) else (bin_path is not None)
+    is_installed = (
+        adapter.validate_install() if (tier == "coroutine" and adapter) else (bin_path is not None)
+    )
 
     info = {
         "name": tool_name,
@@ -114,7 +116,9 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         print(f"Tool:        {info['name']}")
         print(f"Tier:        {info['tier']}")
         if tier == "coroutine":
-            print(f"Execution:   Native Async Coroutine ({'Ready' if is_installed else 'Dependencies missing'})")
+            print(
+                f"Execution:   Native Async Coroutine ({'Ready' if is_installed else 'Dependencies missing'})"
+            )
         else:
             print(
                 f"Binary:      {info['binary']} ({'Installed: ' + str(bin_path) if bin_path else 'NOT FOUND'})"

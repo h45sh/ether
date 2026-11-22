@@ -18,10 +18,18 @@ async def test_vector_indexing_and_semantic_search():
 
     # Create diverse findings
     f1 = NetworkService.create(
-        host_ip="10.0.0.1", port=80, protocol="tcp", service_name="http", banner="nginx/1.18.0 (Ubuntu)"
+        host_ip="10.0.0.1",
+        port=80,
+        protocol="tcp",
+        service_name="http",
+        banner="nginx/1.18.0 (Ubuntu)",
     )
     f2 = NetworkService.create(
-        host_ip="10.0.0.1", port=22, protocol="tcp", service_name="ssh", banner="OpenSSH 8.2p1 Ubuntu"
+        host_ip="10.0.0.1",
+        port=22,
+        protocol="tcp",
+        service_name="ssh",
+        banner="OpenSSH 8.2p1 Ubuntu",
     )
     f3 = VulnerabilityFound.create(
         host_ip="10.0.0.1",
@@ -50,7 +58,9 @@ async def test_vector_indexing_and_semantic_search():
     assert top_match["similarity"] > 0.0
 
     # 2. Semantic search for log4shell vulnerability
-    results_vuln = await store.semantic_search(sess_id, "Log4Shell remote code execution CVE-2021-44228", limit=5)
+    results_vuln = await store.semantic_search(
+        sess_id, "Log4Shell remote code execution CVE-2021-44228", limit=5
+    )
     assert len(results_vuln) >= 1
     assert results_vuln[0]["schema_type"] == "vulnerability.found"
     assert "cve-2021-44228" in results_vuln[0]["data_json"].lower()
@@ -108,7 +118,10 @@ async def test_vector_stale_and_pruning_lifecycle():
 
     # Mark stale
     async with store._get_conn() as db:
-        await db.execute("UPDATE nodes SET status = 'stale', last_seen_at = '2020-01-01 00:00:00' WHERE id = ?", (nid,))
+        await db.execute(
+            "UPDATE nodes SET status = 'stale', last_seen_at = '2020-01-01 00:00:00' WHERE id = ?",
+            (nid,),
+        )
         await db.commit()
 
     # Search with default (stale excluded)

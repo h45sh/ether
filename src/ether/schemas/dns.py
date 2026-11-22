@@ -69,7 +69,6 @@ class DnsRecord(BaseFinding):
         return ". ".join(parts) + "."
 
 
-
 class DomainInfo(BaseFinding):
     """Whois registration data for a domain — owner, registrar, dates. Produced by whois."""
 

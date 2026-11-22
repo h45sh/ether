@@ -1,17 +1,20 @@
 # Domain Knowledge: Storage & Graph Persistence (Tier 2)
 
 ## 1. Persistence Seams & Facades
-- **Unified Graph Store**: Graph database interactions are encapsulated inside `GraphStore` (`ether/engine/store.py:L1`) and `WorkspaceRepository` (`ether/engine/workspace_repository.py:L1`).
-- **No Direct UI SQLite Calls**: UI widgets (`ether/ui/`) must never import or invoke `db.execute()`. All mutations must route through `PowerWorkspaceFacade` (`ether/engine/power_facade.py:L16`) or `LearningSession`.
-- **Async Execution**: Never run synchronous, blocking SQLite calls directly on the Textual main thread or asyncio event loop. Disk queries and mutations run within dedicated threadpools or background workers.
+- **Unified Graph Store**: Graph database interactions are encapsulated inside `GraphStore` (`src/ether/graph/store.py`).
+- **Async Execution**: Never run synchronous, blocking SQLite calls directly on the event loop. Use `aiosqlite` with connection management via `GraphStore._get_conn()`.
+- **WAL Journaling**: SQLite connections use write-ahead logging (`PRAGMA journal_mode=WAL;`), synchronous normal mode, and foreign keys enabled on every connection.
 
 ## 2. Ingestion Performance & Atomic Micro-Batching
 - **Batch Insertion Mandate**: Executing individual `INSERT` statements inside loops is strictly prohibited ($O(N)$ transaction overhead). Bulk imports must use `db.executemany()` or `upsert_findings_batch()`.
-- **Throughput Contract**: GraphStore ingestion must maintain $\ge 2,000\text{ entities/sec}$ (hard floor $\ge 1,200\text{ entities/sec}$ under shared virtualized CI). 10,000 nodes/edges ingest 2.7x faster using atomic batching.
+- **Throughput Contract**: GraphStore ingestion must maintain $\ge 2,000\text{ entities/sec}$ (hard floor $\ge 1,200\text{ entities/sec}$ under shared virtualized CI).
 - **Bulk Query Scale Limits**: 5,000 nodes and 2,500 edges must be queried in $\le 500\text{ms}$ in SQLite via parameter-bound queries and indexed foreign keys.
-- **WAL Journaling**: SQLite connections use write-ahead logging (`PRAGMA journal_mode=WAL;`) and synchronous normal mode for high-concurrency readers.
 
-## 3. Lab Checkpointing Architecture (`.cyglab`)
-- **Quicksave / Load Checkpoint Pattern**: Educational exploration (Learning Mode) avoids continuous auto-save to prevent polluting databases with broken student states.
-- **Zero-Copy Serialization**: Uses zero-copy SQLite attachments (`ATTACH DATABASE`) to snapshot discovered graph nodes, terminal log buffers, Socratic tutor history, and reflection notes into `.cyglab` checkpoint bundles.
-- **Atomic Private File Permissions**: Checkpoint files and export archives must be created with explicit atomic private permissions (`0o600` for files, `0o700` for directories) via `os.open` with `O_CREAT | O_WRONLY | O_TRUNC` to prevent TOCTOU permission leakage.
+## 3. Vector Memory & Finding RAG (`sqlite-vec`)
+- **Embedded Offline Vector Memory**: Discovered services, technologies, endpoints, and vulnerabilities are automatically mapped to 384-dimensional unit vectors ($||v||_2 = 1.0$) using `VectorEmbeddingEngine` and indexed in `vec_findings USING vec0`.
+- **Sub-millisecond Retrieval**: Natural language queries search via k-NN cosine distance without network egress or remote API calls.
+- **Lifecycle Cleanup**: Vector embeddings are atomically synchronized on finding upsert and purged when stale nodes or sessions are deleted.
+
+## 4. Temporal State Decay & Invariant Identity Anchoring
+- **State Confidence Windows**: Nodes transition from `confirmed` to `flapping` or `stale` based on TTL windows.
+- **Cross-IP Identity Migration**: Ephemeral IP changes are resolved by anchoring Primary Identity Keys to invariant cryptographic fingerprints (`tls:<sha256>`, `ssh:<fingerprint>`, `favicon:<hash>`).

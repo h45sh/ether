@@ -115,4 +115,3 @@ def test_tool_registry_coroutine_discovery(tmp_path):
     tool = registry.get_tool("mock_coro")
     assert tool["manifest"].meta.execution_tier == "coroutine"
     assert tool["adapter"].execution_tier == "coroutine"
-

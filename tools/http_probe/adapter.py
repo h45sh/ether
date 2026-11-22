@@ -54,13 +54,11 @@ class HTTPProbeAdapter(ToolAdapter):
 
         if target.schema_type == "web.endpoint":
             url = target.pik.get("url") or target.data.get("url")
-            host_ip = (
-                target.data.get("host_ip")
-                or (target.parent.target_pik.get("host_ip") if target.parent else None)
+            host_ip = target.data.get("host_ip") or (
+                target.parent.target_pik.get("host_ip") if target.parent else None
             )
-            port = (
-                target.data.get("port")
-                or (target.parent.target_pik.get("port") if target.parent else None)
+            port = target.data.get("port") or (
+                target.parent.target_pik.get("port") if target.parent else None
             )
         elif target.schema_type == "network.service":
             host_ip = target.pik.get("host_ip") or target.data.get("host_ip")
@@ -196,9 +194,7 @@ class HTTPProbeAdapter(ToolAdapter):
                     fav_resp = await client.get(favicon_url)
                     if fav_resp.status_code == 200 and fav_resp.content:
                         favicon_hash = hashlib.sha256(fav_resp.content).hexdigest()
-                        await context.spool_line(
-                            f"[+] Favicon Hash (SHA-256): {favicon_hash}"
-                        )
+                        await context.spool_line(f"[+] Favicon Hash (SHA-256): {favicon_hash}")
                 except Exception:
                     pass
 
@@ -227,9 +223,7 @@ class HTTPProbeAdapter(ToolAdapter):
                 )
 
             endpoint_anchor = (
-                tls_anchor
-                if tls_anchor
-                else (f"favicon:{favicon_hash}" if favicon_hash else None)
+                tls_anchor if tls_anchor else (f"favicon:{favicon_hash}" if favicon_hash else None)
             )
             endpoint = WebEndpoint.create(
                 url=url,

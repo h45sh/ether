@@ -14,8 +14,7 @@ Ether requires a unified *Deep Module* abstraction where callers (`ExecutionSess
    ```python
    async def execute_action(
        self, target: str, params: Dict[str, Any], context: ExecutionContext
-   ) -> AsyncIterator[BaseFinding]:
-       ...
+   ) -> AsyncIterator[BaseFinding]: ...
    ```
 2. **Dual-Execution Protocol:**
    - **Tier A (Native Async Coroutines):** Implemented directly within the adapter as asynchronous generators using pure-Python async libraries (`httpx.AsyncClient`, `dns.asyncresolver`). Findings are yielded directly with zero OS process overhead.

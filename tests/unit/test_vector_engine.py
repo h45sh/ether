@@ -84,16 +84,18 @@ def test_finding_to_semantic_text():
 
     # 3. NetworkService
     svc = NetworkService.create(
-        host_ip="192.168.1.50", port=443, protocol="tcp", service_name="https", banner="nginx/1.18.0"
+        host_ip="192.168.1.50",
+        port=443,
+        protocol="tcp",
+        service_name="https",
+        banner="nginx/1.18.0",
     )
     sem_svc = svc.to_semantic_text()
     assert "https service on 192.168.1.50:443/tcp" in sem_svc
     assert "nginx/1.18.0" in sem_svc
 
     # 4. TLSCertificate
-    tls = TLSCertificate.create(
-        host_ip="192.168.1.50", port=443, fingerprint="a" * 64
-    )
+    tls = TLSCertificate.create(host_ip="192.168.1.50", port=443, fingerprint="a" * 64)
     sem_tls = tls.to_semantic_text()
     assert "TLS Certificate" in sem_tls
     assert "192.168.1.50:443" in sem_tls
@@ -108,7 +110,10 @@ def test_finding_to_semantic_text():
 
     # 6. WebTechnology
     tech = WebTechnology.create(
-        url="https://example.com", technology_name="React", version="18.2.0", categories=["UI Frameworks"]
+        url="https://example.com",
+        technology_name="React",
+        version="18.2.0",
+        categories=["UI Frameworks"],
     )
     sem_tech = tech.to_semantic_text()
     assert "Web Technology 'React'" in sem_tech
@@ -117,7 +122,11 @@ def test_finding_to_semantic_text():
 
     # 7. VulnerabilityFound
     vuln = VulnerabilityFound.create(
-        host_ip="192.168.1.50", vuln_id="CVE-2021-44228", port=8080, severity="CRITICAL", title="Log4Shell RCE"
+        host_ip="192.168.1.50",
+        vuln_id="CVE-2021-44228",
+        port=8080,
+        severity="CRITICAL",
+        title="Log4Shell RCE",
     )
     sem_vuln = vuln.to_semantic_text()
     assert "Vulnerability CVE-2021-44228" in sem_vuln
@@ -128,7 +137,10 @@ def test_finding_to_semantic_text():
 
     # 8. ExploitReference
     exp = ExploitReference.create(
-        exploit_id="EDB-50592", title="Log4j Remote Code Execution", cve_id="CVE-2021-44228", platform="java"
+        exploit_id="EDB-50592",
+        title="Log4j Remote Code Execution",
+        cve_id="CVE-2021-44228",
+        platform="java",
     )
     sem_exp = exp.to_semantic_text()
     assert "Exploit Reference EDB-50592" in sem_exp
@@ -142,6 +154,11 @@ def test_finding_to_semantic_text():
     assert "context 'ssh'" in sem_cred
 
     # 10. DnsRecord
-    dns = DnsRecord.create(domain="api.example.com", record_type="A", value="192.168.1.100", resolved_ip="192.168.1.100")
+    dns = DnsRecord.create(
+        domain="api.example.com",
+        record_type="A",
+        value="192.168.1.100",
+        resolved_ip="192.168.1.100",
+    )
     sem_dns = dns.to_semantic_text()
     assert "DNS Record: api.example.com A 192.168.1.100" in sem_dns

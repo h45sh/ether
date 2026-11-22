@@ -119,12 +119,7 @@ async def test_dnspython_execute_action_native(adapter):
 
     target = DnsRecord.create(domain="example.com", record_type="A", value="")
     with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
-        findings = [
-            f
-            async for f in adapter.execute_action(
-                target, {"raw_flags": "-t A,MX"}, ctx
-            )
-        ]
+        findings = [f async for f in adapter.execute_action(target, {"raw_flags": "-t A,MX"}, ctx)]
 
     # Verify findings
     assert len(findings) == 3  # DnsRecord(A), NetworkHost(93.184.216.34), DnsRecord(MX)
@@ -178,9 +173,7 @@ async def test_dnspython_execute_action_ptr(adapter):
 
     host_target = NetworkHost.create(ip="8.8.8.8")
     with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
-        findings = [
-            f async for f in adapter.execute_action(host_target, {}, ctx)
-        ]
+        findings = [f async for f in adapter.execute_action(host_target, {}, ctx)]
 
     assert len(findings) == 1
     rec = findings[0]
@@ -214,9 +207,7 @@ async def test_dnspython_execute_action_nxdomain(adapter):
 
     target = DnsRecord.create(domain="nonexistent.invalid", record_type="A", value="")
     with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
-        findings = [
-            f async for f in adapter.execute_action(target, {}, ctx)
-        ]
+        findings = [f async for f in adapter.execute_action(target, {}, ctx)]
 
     assert len(findings) == 0
     text_spooled = [line for line, _ in spooled_lines]
@@ -263,15 +254,9 @@ async def test_dnspython_ttl_and_soa_anchor_extraction(adapter):
 
     target = DnsRecord.create(domain="example.com", record_type="SOA", value="")
     with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
-        findings = [
-            f
-            async for f in adapter.execute_action(
-                target, {"raw_flags": "-t SOA"}, ctx
-            )
-        ]
+        findings = [f async for f in adapter.execute_action(target, {"raw_flags": "-t SOA"}, ctx)]
 
     assert len(findings) == 1
     soa_rec = findings[0]
     assert soa_rec.ttl_seconds == 7200
     assert soa_rec.anchor_hash == "soa:2026112201"
-

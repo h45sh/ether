@@ -515,7 +515,8 @@ class PreflightVerifier:
 
         # Check for native coroutine tier
         is_coroutine = (
-            manifest and getattr(getattr(manifest, "meta", None), "execution_tier", None) == "coroutine"
+            manifest
+            and getattr(getattr(manifest, "meta", None), "execution_tier", None) == "coroutine"
         ) or (adapter and getattr(adapter, "execution_tier", None) == "coroutine")
 
         if is_coroutine or tool_name in ("dnspython", "http_probe"):
@@ -528,7 +529,9 @@ class PreflightVerifier:
                                 severity="error",
                                 title=f"Tool dependency for '{tool_name}' is not installed",
                                 description=f"Required Python libraries for '{tool_name}' are not importable.",
-                                remediation_hint=INSTALLATION_HINTS.get(tool_name, f"pip install {tool_name}"),
+                                remediation_hint=INSTALLATION_HINTS.get(
+                                    tool_name, f"pip install {tool_name}"
+                                ),
                             )
                         )
                 except Exception:

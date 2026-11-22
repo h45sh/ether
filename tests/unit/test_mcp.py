@@ -306,7 +306,3 @@ async def test_mcp_query_graph_include_stale():
     assert h1_id in node_ids_all
 
     await store.close()
-
-
-
-

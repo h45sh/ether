@@ -299,7 +299,9 @@ async def test_cli_graph_search(tmp_path, capsys):
     assert "10.10.10.5" in captured.out
 
     # 2. Search JSON output
-    code = main(["graph", "search", sess_id, "Debian Linux database host", "--json", "--db", db_file])
+    code = main(
+        ["graph", "search", sess_id, "Debian Linux database host", "--json", "--db", db_file]
+    )
     assert code == EXIT_SUCCESS
     captured = capsys.readouterr()
     results = json.loads(captured.out)
@@ -313,6 +315,3 @@ async def test_cli_graph_search(tmp_path, capsys):
     assert code == EXIT_SUCCESS
     captured = capsys.readouterr()
     assert "No semantic matches found" in captured.out
-
-
-

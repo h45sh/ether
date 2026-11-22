@@ -150,16 +150,12 @@ async def test_compute_graph_diff_by_action_id(tmp_path):
     assert diff["total_delta_count"] >= 2
 
     # s2 (port 443) must be in added_nodes
-    added_ports = [
-        n["pik"]["port"] for n in diff["added_nodes"] if "port" in n["pik"]
-    ]
+    added_ports = [n["pik"]["port"] for n in diff["added_nodes"] if "port" in n["pik"]]
     assert 443 in added_ports
     assert 80 not in added_ports
 
     # h1 was updated in action-002, so it should be in updated_nodes
-    updated_ips = [
-        n["pik"]["ip"] for n in diff["updated_nodes"] if "ip" in n["pik"]
-    ]
+    updated_ips = [n["pik"]["ip"] for n in diff["updated_nodes"] if "ip" in n["pik"]]
     assert "10.0.0.1" in updated_ips
 
     # Edges added by action-002
@@ -222,4 +218,3 @@ async def test_compute_graph_diff_with_temporal_decay_and_anchoring(tmp_path):
     assert diff2["status_breakdown"]["confirmed"] >= 1
 
     await store.close()
-

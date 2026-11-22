@@ -11,4 +11,3 @@ class PolicyViolationError(EtherError):
     """Raised when an operation violates security policy boundaries (e.g. SSRF, metadata access)."""
 
     pass
-

@@ -196,7 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
     search_p.add_argument("session_id", help="Session ID to search")
     search_p.add_argument("query", help="Natural language query string")
     search_p.add_argument(
-        "-l", "--limit", dest="limit", type=int, default=10, help="Maximum findings to return (default: 10)"
+        "-l",
+        "--limit",
+        dest="limit",
+        type=int,
+        default=10,
+        help="Maximum findings to return (default: 10)",
     )
     search_p.add_argument(
         "-m",

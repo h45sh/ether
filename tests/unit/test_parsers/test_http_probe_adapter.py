@@ -75,10 +75,7 @@ async def test_http_probe_ssrf_bypassed_in_unrestricted(adapter):
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
         findings = [
-            f
-            async for f in adapter.execute_action(
-                target, {"policy": "unrestricted"}, ctx
-            )
+            f async for f in adapter.execute_action(target, {"policy": "unrestricted"}, ctx)
         ]
 
     types = [f.schema_type for f in findings]
@@ -107,10 +104,7 @@ async def test_http_probe_execute_action_success(adapter):
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
         findings = [
-            f
-            async for f in adapter.execute_action(
-                target, {"policy": "unrestricted"}, ctx
-            )
+            f async for f in adapter.execute_action(target, {"policy": "unrestricted"}, ctx)
         ]
 
     assert len(findings) >= 3  # NetworkHost, NetworkService, WebEndpoint, WebTechnology
@@ -142,7 +136,9 @@ async def test_http_probe_tls_fingerprint_and_favicon_anchoring(adapter):
         spooled.append(line)
 
     ctx = ExecutionContext(action_id="act-test-tls", session_id="sess-test", spool_fn=fake_spool)
-    target = WebEndpoint.create(url="https://secure.example.com/", host_ip="93.184.216.34", port=443)
+    target = WebEndpoint.create(
+        url="https://secure.example.com/", host_ip="93.184.216.34", port=443
+    )
 
     mock_resp = httpx.Response(
         status_code=200,

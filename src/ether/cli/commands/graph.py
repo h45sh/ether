@@ -247,7 +247,9 @@ async def handle_graph_search(args: Any, context: CliContext) -> int:
     session_id = getattr(args, "session_id", None)
     query = getattr(args, "query", None)
     if not session_id or not query:
-        print_error("session_id and query are required. Usage: ether graph search <session_id> '<query>'")
+        print_error(
+            "session_id and query are required. Usage: ether graph search <session_id> '<query>'"
+        )
         return EXIT_RUNTIME_ERROR
 
     limit = int(getattr(args, "limit", 10) or 10)
@@ -293,7 +295,9 @@ async def handle_graph_search(args: Any, context: CliContext) -> int:
         elif st == "web.technology":
             summary = f"{data.get('technology_name')} on {pik.get('url')}"
         elif st == "vulnerability.found":
-            summary = f"{pik.get('vuln_id')} ({data.get('severity', 'UNKNOWN')}): {data.get('title', '')}"
+            summary = (
+                f"{pik.get('vuln_id')} ({data.get('severity', 'UNKNOWN')}): {data.get('title', '')}"
+            )
         elif st == "credential.found":
             summary = f"User '{pik.get('username')}' in context '{pik.get('context')}'"
         else:

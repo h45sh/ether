@@ -121,9 +121,7 @@ def create_mcp_server(
         # Fetch incident edges
         all_edges = await store.get_all_edges(sess_id)
         incident_edges = [
-            e
-            for e in all_edges
-            if e["source_id"] == entity_id or e["target_id"] == entity_id
+            e for e in all_edges if e["source_id"] == entity_id or e["target_id"] == entity_id
         ]
 
         try:
@@ -295,7 +293,9 @@ def create_mcp_server(
                     "error": "PreflightGateRejected",
                     "message": f"Execution of '{tool_name}' against '{target}' rejected by policy {gw.policy.value}.",
                     "errors": error_list,
-                    "remediation": error_list[0]["remediation"] if error_list else "Adjust target scope or policy.",
+                    "remediation": error_list[0]["remediation"]
+                    if error_list
+                    else "Adjust target scope or policy.",
                 },
                 indent=2,
             )

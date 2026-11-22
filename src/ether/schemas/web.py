@@ -170,4 +170,3 @@ class WebTechnology(BaseFinding):
         if cpe:
             parts.append(f"CPE: {cpe}")
         return ". ".join(parts) + "."
-

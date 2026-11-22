@@ -219,4 +219,3 @@ def test_tools_layer_purity():
         f"Layer DAG violation: Tools in tools/ must never import from higher layers:\n"
         + "\n".join(violations)
     )
-

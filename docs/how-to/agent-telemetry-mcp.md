@@ -163,7 +163,9 @@ async def agent_reasoning_step(store: GraphStore, session_id: str, current_objec
 
 if __name__ == "__main__":
     store = GraphStore("~/.ether/ether.db")
-    asyncio.run(agent_reasoning_step(store, "session-abc", "Find remote code execution on web ports"))
+    asyncio.run(
+        agent_reasoning_step(store, "session-abc", "Find remote code execution on web ports")
+    )
 ```
 
 ---

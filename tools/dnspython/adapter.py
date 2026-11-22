@@ -155,7 +155,9 @@ class DnsPythonAdapter(ToolAdapter):
                                 r_type_str = dns.rdatatype.to_text(rdataset.rdtype)
                                 for rdata in rdataset:
                                     val = str(rdata).rstrip(".")
-                                    ttl_sec = int(rdataset.ttl) if hasattr(rdataset, "ttl") else 3600
+                                    ttl_sec = (
+                                        int(rdataset.ttl) if hasattr(rdataset, "ttl") else 3600
+                                    )
                                     await context.spool_line(
                                         f"    {full_name} {ttl_sec} IN {r_type_str} {val}"
                                     )

@@ -374,5 +374,3 @@ async def test_upsert_temporal_tracking_and_observation_count():
     assert node_after["action_id"] == "act-2"
 
     await store.close()
-
-

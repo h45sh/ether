@@ -26,8 +26,7 @@ Deliver **Milestone 2.2** of the Agent Telemetry Protocol by implementing:
    ```python
    async def execute_action(
        self, target: str, params: Dict[str, Any], context: ExecutionContext
-   ) -> AsyncIterator[BaseFinding]:
-       ...
+   ) -> AsyncIterator[BaseFinding]: ...
    ```
 2. **Dual-Execution Protocol:**
    - **Tier A (Native Async Coroutines):** Implemented directly within `asyncio` using non-blocking async network libraries (`httpx`, `dns.asyncresolver`). Findings are yielded directly with zero OS process forks.
