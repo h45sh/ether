@@ -69,10 +69,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 *Target: v0.3.0*
 *Focus: Deep Module interfaces for Autonomous AI Agents and In-Process Telemetry.*
 
-- [ ] **Unified Protocol Adapter Seam (`ToolAdapter` Dual-Execution Protocol):**
+- [x] **Unified Protocol Adapter Seam (`ToolAdapter` Dual-Execution Protocol):**
   - *Deep Module Design*: Deepen the `ToolAdapter` interface so callers and sessions do not care whether an execution is an OS subprocess or a native async coroutine.
-  - Expose a single execution entry point at the seam: `execute_action(target, params) -> AsyncIterator[BaseFinding]`.
-  - **Tier A In-Process Async Coroutines**: Zero-fork high-concurrency adapters (`httpx` HTTP discovery, `sslyze` TLS evaluation, DNS fast-resolvers) running directly within the asyncio loop (10,000+ targets, <150MB RAM).
+  - Expose a single execution entry point at the seam: `execute_action(target, params, context) -> AsyncIterator[BaseFinding]`.
+  - **Tier A In-Process Async Coroutines**: Zero-fork high-concurrency adapters (`http_probe` HTTP discovery with SSRF defense, `dnspython` DNS resolution & AXFR) running directly within the asyncio loop (10,000+ targets, <150MB RAM).
   - Automatically falls back to binary subprocess execution for compiled tools (`nmap`, `nuclei`, `ffuf`).
 - [x] **Native Model Context Protocol (MCP) Server (`ether.mcp`):**
   - Stdio and Server-Sent Events (SSE) server allowing Cursor, Claude Desktop, and autonomous agent swarms to drive Ether directly.
