@@ -9,11 +9,11 @@ Verify end-to-end functionality using an in-memory MCP client channel.
 
 **Blocked by:** 02: Deterministic Action-Scoped Graph Diffing Engine
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Create `src/ether/mcp/__init__.py` and `src/ether/mcp/server.py` using `mcp.server.fastmcp` or `mcp.server.Server`
-- [ ] Implement session binding resolver (CLI option, environment variable, or active default)
-- [ ] Implement `query_graph` tool returning normalized findings and counts
-- [ ] Implement `inspect_entity` tool returning detailed PIK, attributes, and relationships
-- [ ] Implement `get_diff` tool invoking `GraphTelemetryCompiler.compute_graph_diff`
-- [ ] Add in-memory client integration tests in `tests/unit/test_mcp.py`
+- [x] Create `src/ether/mcp/__init__.py` and `src/ether/mcp/server.py` using `mcp.server.fastmcp` or `mcp.server.Server`
+- [x] Implement session binding resolver (CLI option, environment variable, or active default)
+- [x] Implement `query_graph` tool returning normalized findings and counts
+- [x] Implement `inspect_entity` tool returning detailed PIK, attributes, and relationships
+- [x] Implement `get_diff` tool invoking `GraphTelemetryCompiler.compute_graph_diff`
+- [x] Add in-memory client integration tests in `tests/unit/test_mcp.py`
