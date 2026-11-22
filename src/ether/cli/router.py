@@ -189,10 +189,11 @@ def build_parser() -> argparse.ArgumentParser:
     snap_p.add_argument("--entity-id", dest="entity_id", help="Selected entity node ID")
 
     diff_p = telemetry_subs.add_parser(
-        "diff", parents=[common_options], help="Compute graph diff since baseline"
+        "diff", parents=[common_options], help="Compute graph diff by action ID or since baseline"
     )
     diff_p.add_argument("session_id", help="Session ID")
-    diff_p.add_argument("--baseline", dest="baseline", required=True, help="Baseline timestamp")
+    diff_p.add_argument("--action-id", dest="action_id", help="Action ID to diff")
+    diff_p.add_argument("--baseline", dest="baseline", help="Baseline timestamp")
 
     # 7. logs
     logs_parser = subparsers.add_parser(

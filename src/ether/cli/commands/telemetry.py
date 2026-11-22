@@ -32,19 +32,20 @@ async def handle_telemetry_snapshot(args: Any, context: CliContext) -> int:
 
 
 async def handle_telemetry_diff(args: Any, context: CliContext) -> int:
-    """Compute zero-token semantic graph delta since a baseline timestamp."""
+    """Compute zero-token semantic graph delta by action_id or since a baseline timestamp."""
     session_id = getattr(args, "session_id", None)
     baseline = getattr(args, "baseline", None)
+    action_id = getattr(args, "action_id", None)
     if not session_id:
         print_error("session_id is required.")
         return EXIT_RUNTIME_ERROR
-    if baseline is None:
-        print_error("--baseline timestamp is required.")
+    if baseline is None and action_id is None:
+        print_error("Either --action-id or --baseline timestamp is required.")
         return EXIT_RUNTIME_ERROR
 
     async with context.open_store() as store:
         compiler = GraphTelemetryCompiler(store, session_id)
-        diff = await compiler.compute_graph_diff(baseline_timestamp=baseline)
+        diff = await compiler.compute_graph_diff(baseline_timestamp=baseline, action_id=action_id)
 
     print_json(diff)
     return EXIT_SUCCESS

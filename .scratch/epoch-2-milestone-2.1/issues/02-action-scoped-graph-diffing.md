@@ -5,10 +5,10 @@ Enhance the telemetry compiler to compute deterministic, action-scoped set-theor
 
 **Blocked by:** 01: Schema Auto-Migration and Action Attribution
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Implement `action_id` filtering in `GraphTelemetryCompiler.compute_graph_diff`
-- [ ] Retain fallback timestamp-based diffing for baseline timestamps
-- [ ] Standardize the returned `Delta Envelope` payload structure
-- [ ] Ensure diff computation reports `tokens_consumed: 0` and total delta count
-- [ ] Add unit tests in `tests/unit/test_telemetry.py` verifying exact set-theoretic delta accuracy without clock drift
+- [x] Implement `action_id` filtering in `GraphTelemetryCompiler.compute_graph_diff`
+- [x] Retain fallback timestamp-based diffing for baseline timestamps
+- [x] Standardize the returned `Delta Envelope` payload structure
+- [x] Ensure diff computation reports `tokens_consumed: 0` and total delta count
+- [x] Add unit tests in `tests/unit/test_telemetry.py` verifying exact set-theoretic delta accuracy without clock drift

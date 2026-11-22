@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     data_json TEXT NOT NULL,
     status TEXT DEFAULT 'confirmed',
     action_id TEXT,
+    created_action_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (session_id, id),
@@ -177,6 +178,8 @@ class GraphStore:
             node_cols = {row[1] for row in await cursor.fetchall()}
             if "action_id" not in node_cols:
                 await db.execute("ALTER TABLE nodes ADD COLUMN action_id TEXT")
+            if "created_action_id" not in node_cols:
+                await db.execute("ALTER TABLE nodes ADD COLUMN created_action_id TEXT")
             if "created_at" not in node_cols:
                 await db.execute(
                     "ALTER TABLE nodes ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
@@ -594,12 +597,13 @@ class GraphStore:
                     json.dumps(meta["data"]),
                     meta["status"],
                     action_id,
+                    action_id,
                 )
                 for nid, meta in node_metadata.items()
             ]
             await db.executemany(
-                """INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status, action_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status, action_id, created_action_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(session_id, id) DO UPDATE SET
                        data_json = excluded.data_json,
                        status = excluded.status,
@@ -614,8 +618,8 @@ class GraphStore:
                 rel_nodes.extend(assoc_nodes.values())
             if rel_nodes:
                 await db.executemany(
-                    "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json, action_id) VALUES (?, ?, ?, ?, ?, ?)",
-                    [(r[0], r[1], r[2], r[3], r[4], action_id) for r in rel_nodes],
+                    "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json, action_id, created_action_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
                 )
 
             rel_edges = list(parent_edges | assoc_edges)

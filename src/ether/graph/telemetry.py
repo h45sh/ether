@@ -191,54 +191,89 @@ class GraphTelemetryCompiler:
         }
 
     async def compute_graph_diff(
-        self, baseline_timestamp: Union[float, str, datetime]
+        self,
+        baseline_timestamp: Optional[Union[float, str, datetime]] = None,
+        action_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Compute the set-theoretic graph delta since baseline_timestamp: Δ = S_(t+1) \\ S_t."""
+        """Compute the set-theoretic graph delta: Δ = S_(t+1) \\ S_t.
+
+        Can be queried by exact `action_id` (action-scoped diff) or `baseline_timestamp`.
+        """
         nodes = await self.store.get_all_nodes(self.session_id)
         edges = await self.store.get_all_edges(self.session_id)
-        baseline_ts = _parse_timestamp(baseline_timestamp)
 
         added_nodes = []
         updated_nodes = []
-        for n in nodes:
-            created_at = _parse_timestamp(n.get("created_at"))
-            updated_at = _parse_timestamp(n.get("updated_at"))
-            if created_at > baseline_ts:
-                added_nodes.append(
-                    {
-                        "id": n["id"],
-                        "schema_type": n["schema_type"],
-                        "pik": json.loads(n["pik_json"]),
-                        "data": json.loads(n["data_json"]),
-                    }
-                )
-            elif updated_at > baseline_ts:
-                updated_nodes.append(
-                    {
-                        "id": n["id"],
-                        "schema_type": n["schema_type"],
-                        "pik": json.loads(n["pik_json"]),
-                        "data": json.loads(n["data_json"]),
-                    }
-                )
-
         added_edges = []
-        for e in edges:
-            edge_ts = _parse_timestamp(e.get("created_at") or e.get("updated_at"))
-            if edge_ts > baseline_ts:
-                added_edges.append(
-                    {
-                        "session_id": e.get("session_id", self.session_id),
-                        "source_id": e["source_id"],
-                        "target_id": e["target_id"],
-                        "relation_type": e.get("relation_type", "relates_to"),
-                    }
-                )
 
+        if action_id:
+            for n in nodes:
+                if n.get("action_id") == action_id:
+                    node_item = {
+                        "id": n["id"],
+                        "schema_type": n["schema_type"],
+                        "pik": json.loads(n["pik_json"]),
+                        "data": json.loads(n["data_json"]),
+                    }
+                    if n.get("created_action_id") == action_id:
+                        added_nodes.append(node_item)
+                    else:
+                        updated_nodes.append(node_item)
+
+            for e in edges:
+                if e.get("action_id") == action_id:
+                    added_edges.append(
+                        {
+                            "session_id": e.get("session_id", self.session_id),
+                            "source_id": e["source_id"],
+                            "target_id": e["target_id"],
+                            "relation_type": e.get("relation_type", "relates_to"),
+                        }
+                    )
+        elif baseline_timestamp is not None:
+            baseline_ts = _parse_timestamp(baseline_timestamp)
+            for n in nodes:
+                created_at = _parse_timestamp(n.get("created_at"))
+                updated_at = _parse_timestamp(n.get("updated_at"))
+                if created_at > baseline_ts:
+                    added_nodes.append(
+                        {
+                            "id": n["id"],
+                            "schema_type": n["schema_type"],
+                            "pik": json.loads(n["pik_json"]),
+                            "data": json.loads(n["data_json"]),
+                        }
+                    )
+                elif updated_at > baseline_ts:
+                    updated_nodes.append(
+                        {
+                            "id": n["id"],
+                            "schema_type": n["schema_type"],
+                            "pik": json.loads(n["pik_json"]),
+                            "data": json.loads(n["data_json"]),
+                        }
+                    )
+
+            for e in edges:
+                edge_ts = _parse_timestamp(e.get("created_at") or e.get("updated_at"))
+                if edge_ts > baseline_ts:
+                    added_edges.append(
+                        {
+                            "session_id": e.get("session_id", self.session_id),
+                            "source_id": e["source_id"],
+                            "target_id": e["target_id"],
+                            "relation_type": e.get("relation_type", "relates_to"),
+                        }
+                    )
+
+        total_delta_count = len(added_nodes) + len(updated_nodes) + len(added_edges)
         return {
+            "session_id": self.session_id,
+            "action_id": action_id,
             "baseline_timestamp": baseline_timestamp,
             "added_nodes": added_nodes,
             "updated_nodes": updated_nodes,
             "added_edges": added_edges,
+            "total_delta_count": total_delta_count,
             "tokens_consumed": 0,
         }
