@@ -96,3 +96,22 @@ _Avoid_: Bouncing host, unstable port, dynamic target
 A standardized, deterministic `<type>:<hash>` fingerprint indexing an entity to its persistent cryptographic or behavioral identity.
 _Avoid_: Fingerprint key, identity token, cert hash
 
+## Vector Memory & Finding RAG (Epoch 2)
+
+**vec0 Virtual Table**:
+A native SQLite virtual table engine provided by `sqlite-vec` enabling in-process cosine, L2, and dot-product vector search directly over 384-dimensional finding embeddings.
+_Avoid_: Vector database, vector index file, embedding cache
+
+**Vector Embedding Engine**:
+A deterministic, pure-offline component that maps finding text strings to 384-dimensional unit vector float arrays without remote network egress.
+_Avoid_: Remote embedder, OpenAI wrapper, cloud vectorizer
+
+**Semantic Text Template**:
+A declarative, human-readable stringification method on `BaseFinding` (`to_semantic_text()`) that structures finding attributes into clean natural language sentences for optimal vector retrieval.
+_Avoid_: Raw JSON dump, stringified dict, toString
+
+**Finding RAG**:
+The retrieval-augmented generation pattern in `GraphTelemetryCompiler` and MCP tools that pulls semantically related vulnerabilities, services, and credentials based on an agent's tactical objective.
+_Avoid_: Document search, semantic lookup, finding search
+
+
