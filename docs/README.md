@@ -1,62 +1,93 @@
 # Ether Documentation Hub
 
-Welcome to the **Ether** documentation hub.
+Welcome to the **Ether Documentation Hub**.
 
-Ether is an open-source, reactive process supervisor, AST validator, and deterministic graph telemetry engine for cybersecurity tooling and autonomous AI security agents.
+Ether is a headless, reactive process supervisor, AST validator, and deterministic graph telemetry engine for cybersecurity tooling and autonomous AI agents.
 
-Following the **[Diátaxis Framework](https://diataxis.fr/)**, the documentation is structured across four distinct modes: **Tutorials** (getting started), **How-To Guides** (solving operational problems), **Reference** (APIs and schemas), and **Explanation** (architecture and invariants).
+Our documentation strictly follows the **[Diátaxis Framework](https://diataxis.fr/)**, organizing knowledge across four distinct modes: **Tutorials** (learning-oriented), **How-To Guides** (problem-oriented), **Reference** (information-oriented), and **Explanation** (understanding-oriented).
 
 ---
 
-## Documentation Navigation
+## 🎯 Find Documentation by Your Goal
+
+Select your persona or operational goal to jump directly to the relevant guides:
+
+### 🤖 I am building or connecting an AI Agent (Claude, Cursor, Swarms)
+* **Start here:** [Quickstart Tutorial](tutorials/quickstart.md) — Walk through an end-to-end session from scratch.
+* **Integrate MCP:** [Agent Telemetry & MCP Integration Guide](how-to/agent-telemetry-mcp.md) — Connect Claude Desktop, Cursor, or agent swarms via native MCP tools.
+* **Understand Zero-Token Diffs:** [Architecture Deep Dive](explanation/architecture.md) — Learn how set-theoretic deltas save 98% of context tokens.
+
+### 🛡️ I am a Security Operator or Red-Teamer (CLI & Beast Mode)
+* **Master the CLI:** [Headless CLI Operations Manual](how-to/cli-usage.md) — Full reference for all 8 subcommands (`doctor`, `tool`, `run`, `session`, `graph`, `telemetry`, `logs`, `mcp`).
+* **Unconstrained Execution:** Learn how to unlock raw, unconstrained execution using `--policy unrestricted` in [GatePolicy Reference](reference/engineering-standards.md).
+* **Forensic Archiving:** Export and import encrypted session databases using AES-256-GCM in [CLI Operations Guide](how-to/cli-usage.md#7-exporting--importing-investigation-archives).
+
+### 💻 I am a Python Developer or Tool Author (SDK & Adapters)
+* **Programmatic Quickstart:** Embed Ether into Python apps via [Quickstart Tutorial](tutorials/quickstart.md#step-8-taking-it-programmatic-python-sdk).
+* **Write Custom Adapters:** [Authoring Pluggable Tool Adapters](how-to/author-adapters.md) — Create Tier A in-process async coroutines or Tier B subprocess parsers.
+* **Inspect Finding Schemas:** [Schema Registry Catalog](reference/schema-registry.md) — Specifications for all 18 normalized Pydantic finding models.
+
+### 🚀 I am a DevOps or Platform Engineer (Docker & CI/CD)
+* **Container Workflows:** Run Ether via multi-arch container images in the [README Quickstart](../README.md#method-4-docker-container-for-containerized--cloud-workflows).
+* **Automated CI Security Gates:** Integrate automated regression scanning with `ether run` into your CI pipelines.
+* **Performance Benchmarks:** Inspect verified throughput, query latency, and memory ceilings in [Mechanical Performance Benchmarks](benchmarks/README.md).
+
+---
+
+## 🗺️ Diátaxis Documentation Navigation Matrix
 
 ```text
-                                  PRACTICAL
-                                     ▲
-                                     │
-           Tutorials                 │             How-To Guides
-     (Learning-Oriented)             │          (Problem-Oriented)
-  "Show me how to get started"       │      "Show me how to solve a task"
-  - [Quickstart Tutorial]            │      - [Authoring Tool Adapters]
-    (tutorials/quickstart.md)        │        (how-to/author-adapters.md)
-                                     │      - [Headless CLI Operations]
-                                     │        (how-to/cli-usage.md)
-                                     │      - [Contributing Guidelines]
-                                     │        (how-to/contributing.md)
- ────────────────────────────────────┼────────────────────────────────────
-                                     │
-             Explanation             │               Reference
-     (Understanding-Oriented)        │         (Information-Oriented)
-   "Help me understand how it works" │     "Give me the technical specs"
-   - [Architecture Deep Dive]        │     - [Schema Registry]
-     (explanation/architecture.md)   │       (reference/schema-registry.md)
-   - [Database & Graph State]        │     - [Domain Glossary]
-     (explanation/database.md)       │       (reference/glossary.md)
-                                     │     - [Engineering Standards]
-                                     │       (reference/engineering-standards.md)
-                                     ▼
-                                THEORETICAL
+                                  PRACTICAL (Doing)
+                                         ▲
+                                         │
+               Tutorials                 │             How-To Guides
+          (Learning-Oriented)            │          (Problem-Oriented)
+       "Show me how to get started"      │      "Show me how to solve a task"
+       - [Quickstart Tutorial]           │      - [Headless CLI Operations]
+         (tutorials/quickstart.md)       │        (how-to/cli-usage.md)
+                                         │      - [Agent Telemetry & MCP]
+                                         │        (how-to/agent-telemetry-mcp.md)
+                                         │      - [Authoring Tool Adapters]
+                                         │        (how-to/author-adapters.md)
+                                         │      - [Contributing Guidelines]
+                                         │        (how-to/contributing.md)
+     ────────────────────────────────────┼────────────────────────────────────
+                                         │
+                 Explanation             │               Reference
+          (Understanding-Oriented)       │         (Information-Oriented)
+        "Help me understand the why"     │     "Give me the technical specs"
+        - [Architecture Deep Dive]       │     - [Schema Registry (18 Models)]
+          (explanation/architecture.md)  │        (reference/schema-registry.md)
+        - [Database & Graph State]       │     - [Engineering Standards]
+          (explanation/database.md)      │        (reference/engineering-standards.md)
+        - [Performance Benchmarks]       │     - [Domain Glossary]
+          (benchmarks/README.md)         │        (reference/glossary.md)
+                                         │     - [Master Roadmap (5 Epochs)]
+                                         │        (../ROADMAP.md)
+                                         ▼
+                                 THEORETICAL (Knowing)
 ```
 
 ---
 
-## Direct Links
+## Direct Documentation Links
 
-### 1. Tutorials
-* **[Quickstart Tutorial](tutorials/quickstart.md)**: Initialize SQLite WAL storage, discover adapters, and upsert findings in 5 minutes.
+### 1. Tutorials (Learning)
+* **[Quickstart Tutorial](tutorials/quickstart.md)**: A 10-minute hands-on lesson guiding you through diagnostics, session creation, supervised scanning, semantic vector search, AI telemetry deltas, and encrypted forensic export.
 
-### 2. How-To Guides
-* **[Agent Telemetry & MCP Integration](how-to/agent-telemetry-mcp.md)**: Connect autonomous AI agents (Cursor, Claude Desktop) via native MCP server with zero-token diffs and finding RAG.
-* **[Authoring Pluggable Tool Adapters](how-to/author-adapters.md)**: Add new security tools to Ether using `ToolAdapter` (Tier A async coroutines & Tier B binaries) and `manifest.toml`.
-* **[Headless CLI Operations](how-to/cli-usage.md)**: Running scans, inspecting sessions, querying entity graphs, and exporting investigations.
-* **[Contributing Guidelines](how-to/contributing.md)**: Coding standards, mechanical quality gates, and pull request checklist.
+### 2. How-To Guides (Problem-Solving)
+* **[Headless CLI Operations Manual](how-to/cli-usage.md)**: Authoritative operational manual for all 8 subcommands, global flags, and error handling.
+* **[Agent Telemetry & MCP Integration](how-to/agent-telemetry-mcp.md)**: Step-by-step setup for Claude Desktop, Cursor, and custom agent swarms with zero-token diffs and finding RAG.
+* **[Authoring Pluggable Tool Adapters](how-to/author-adapters.md)**: Complete guide to implementing Tier A in-process async coroutines and Tier B subprocess tool adapters with `manifest.toml`.
+* **[Contributing Guidelines](how-to/contributing.md)**: Developer setup, code standards, PR checklists, and mechanical quality gates.
 
-### 3. Reference
-* **[Schema Registry](reference/schema-registry.md)**: Official catalog of all 18 normalized finding models (`BaseFinding`, `network.host`, `network.service`, `vulnerability.found`).
-* **[Engineering Standards](reference/engineering-standards.md)**: AST mechanical gates, zero UI imports, memory caps, and testing invariants.
-* **[Domain Glossary](reference/glossary.md)**: Authoritative ubiquitous language and terminology.
+### 3. Reference (Facts & Specifications)
+* **[Schema Registry](reference/schema-registry.md)**: Authoritative specification of all 18 normalized finding schemas, Primary Identity Keys (PIK), and child relations.
+* **[Engineering Standards](reference/engineering-standards.md)**: Strict headless invariants, deep module principles, memory limits, and testing standards.
+* **[Domain Glossary](reference/glossary.md)**: Ubiquitous language defining core concepts like PIK, Zero-Token Diff, Flapping State, and Beast Mode.
+* **[Performance Benchmarks](benchmarks/README.md)**: Quantitative speed, throughput, and memory measurements verified across CI and release preflights.
 
-### 4. Explanation
-* **[Architecture Overview](explanation/architecture.md)**: Deep module philosophy, pure core vs. imperative shell, and layer DAG.
-* **[Database & Graph Telemetry](explanation/database.md)**: SQLite WAL mode, Primary Identity Key (PIK) hashing, graph node merging, and event sourcing.
-* **[Master Roadmap](../ROADMAP.md)**: The 5 Evolutionary Epochs to the ultimate ideal state of the engine.
+### 4. Explanation (Architecture & Design)
+* **[Architecture Overview](explanation/architecture.md)**: Deep module philosophy, information hiding, unidirectional layer DAG, and reactive event loops.
+* **[Database & Graph State](explanation/database.md)**: SQLite WAL mode, Primary Identity Key hashing, idempotent upserts, temporal state decay, and offline vector indexing.
+* **[Master Roadmap](../ROADMAP.md)**: The 5 Evolutionary Epochs from hardened substrate to the ultimate headless security engine.

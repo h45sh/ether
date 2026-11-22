@@ -176,3 +176,85 @@ All untrusted scan output processed by Ether's MCP server and telemetry engine i
 1. Wrapped in structural `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags.
 2. Breakout sequences (`</untrusted_scan_output>`) are escaped to `<\/untrusted_scan_output>`.
 3. Secret tokens, private keys, and passwords are automatically redacted.
+
+---
+
+## 6. Multi-Client Setup Reference
+
+### A. Claude Desktop
+Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "ether": {
+      "command": "/absolute/path/to/ether/.venv/bin/ether",
+      "args": ["mcp"],
+      "env": {
+        "ETHER_DATA_DIR": "/home/user/.ether"
+      }
+    }
+  }
+}
+```
+
+### B. Cursor IDE
+Create or edit `.cursor/mcp.json` in your workspace root:
+
+```json
+{
+  "mcpServers": {
+    "ether": {
+      "command": "/absolute/path/to/ether/.venv/bin/ether",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### C. Containerized Agent (Docker)
+When running your agent harness in a container, expose Ether over Server-Sent Events (SSE):
+
+```bash
+# In Ether container
+docker run -d --name ether-mcp -p 8000:8000 -v ~/.ether:/root/.ether ether:latest mcp --transport sse --port 8000
+```
+
+Configure your agent client with the SSE URL: `http://localhost:8000/sse`.
+
+---
+
+## 7. Practical Agent Prompts & Workflows
+
+Once connected to Ether via MCP, give your agent natural language objectives:
+
+### Scenario 1: Autonomous Web Reconnaissance
+> *"Connect to Ether and perform initial reconnaissance against target domain scanme.nmap.org. First execute http_probe, check the graph for endpoints, and then search for open technologies."*
+- **Agent Action Flow:**
+  1. `execute_tool(tool_name="http_probe", target="https://scanme.nmap.org")`
+  2. `get_diff(action_id=...)` -> Agent receives zero-token delta of new endpoints and technologies.
+  3. `search_findings_semantic(query="web servers and API endpoints")` -> Agent pinpoints relevant services.
+
+### Scenario 2: Targeted Vulnerability Verification
+> *"Inspect the current engagement session for any hosts running Apache or OpenSSH. If discovered, run nuclei with web-cve tags and report newly confirmed vulnerability nodes."*
+- **Agent Action Flow:**
+  1. `query_graph(schema_type="network.service")` -> Discovers port 80/443.
+  2. `execute_tool(tool_name="nuclei", target="https://10.0.0.1", arguments={"raw_flags": "-t cves/"})`
+  3. `inspect_entity(entity_id=...)` -> Deep inspection of vulnerability nodes and incident relations.
+
+---
+
+## 8. Troubleshooting & Verification
+
+### Test Using the Official MCP Inspector
+You can verify your Ether MCP server locally using the Anthropic MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector /absolute/path/to/ether/.venv/bin/ether mcp
+```
+The inspector web UI will launch at `http://localhost:5173`, allowing you to inspect tool schemas and execute test calls directly.
+
+### Common Issues
+* **`command not found: ether`**: Ensure you supply the absolute path to `.venv/bin/ether` in your JSON config, or activate your virtual environment in your shell.
+* **Missing external tools (`nmap`, `nuclei`)**: Run `./scripts/install_deps.sh` to install system binaries, or rely on native in-process coroutine adapters (`http_probe`, `dnspython`).
+

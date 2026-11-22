@@ -249,3 +249,52 @@ ether mcp --transport sse --port 8000
 * `get_diff`: Retrieve zero-token delta envelope for an action or baseline timestamp.
 * `search_findings_semantic`: Natural language vector search via `sqlite-vec`.
 * `abort_action`: Terminate active running background scan tasks.
+
+---
+
+## 10. Real-World Goal-Oriented CLI Workflows
+
+### Workflow A: End-to-End External Surface Discovery Pipeline
+Automate a multi-stage target reconnaissance pass across passive DNS, port discovery, and web probing:
+
+```bash
+# 1. Create a dedicated engagement session
+SESS=$(ether session create "Target Discovery: example.com" --json | jq -r '.session_id')
+
+# 2. Run passive DNS discovery
+ether run subfinder example.com --session-id "$SESS"
+
+# 3. Probe discovered HTTP endpoints & fetch favicons (coroutine)
+ether run http_probe https://example.com --session-id "$SESS"
+
+# 4. Run targeted port scan against discovered host IP
+ether run nmap 93.184.216.34 --session-id "$SESS" --params '{"raw_flags": "-sV -p 80,443"}'
+
+# 5. Review all discovered findings
+ether graph list-nodes "$SESS"
+```
+
+### Workflow B: High-Speed Vulnerability Triaging with Vector Memory
+Quickly locate critical assets and vulnerabilities across large engagement graphs:
+
+```bash
+# Search for web services running outdated Apache or Nginx
+ether graph search <SESSION_ID> "outdated Apache or Nginx web servers"
+
+# Search for critical CVEs and remote code execution findings
+ether graph search <SESSION_ID> "remote code execution CVE vulnerabilities" --limit 5
+
+# Inspect deep relationships (host, service, CVE edges) for a specific node ID
+ether graph inspect-node <SESSION_ID> <NODE_ID>
+```
+
+### Workflow C: Encrypted Forensic Delivery & Client Handoff
+Securely snapshot and hand off the entire engagement database:
+
+```bash
+# Export the entire session graph, event timeline, and notes to an encrypted bundle
+ether graph export <SESSION_ID> -o engagement_deliverable.enc --encrypt --passphrase "ClientSecret2026"
+
+# Verify on another workstation
+ether graph import engagement_deliverable.enc --passphrase "ClientSecret2026" --json
+```
