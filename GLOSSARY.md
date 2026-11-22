@@ -59,3 +59,21 @@ _Avoid_: Archive locking, session freeze, close session
 **Event Log**:
 An append-only, chronologically ordered sequence of every action executed and finding recorded within a session.
 _Avoid_: Audit trail, transaction log, history table
+
+## Dual-Execution Engine (Epoch 2)
+
+**Dual-Execution Protocol**:
+A unified execution model allowing tool adapters to execute either as high-throughput native async coroutines or isolated OS subprocesses behind an identical generator seam.
+_Avoid_: Hybrid runtime, mixed runner, polyglot executor
+
+**Tier A Adapter (Native Async Coroutine)**:
+A zero-fork, memory-bounded tool adapter implemented directly within the asyncio event loop for ultra-high-throughput operations.
+_Avoid_: In-memory tool, Python plugin, light runner
+
+**Tier B Adapter (Binary Subprocess)**:
+A supervised process adapter executing compiled binaries via isolated OS subprocesses with output streaming, disk spooling, and secret scrubbing.
+_Avoid_: External tool, heavy runner, OS binary
+
+**Execution Context**:
+The contextual execution environment passed to adapters providing action attribution, disk logging sinks, secret scrubbing, and process runner hooks.
+_Avoid_: Run context, env bag, worker state
