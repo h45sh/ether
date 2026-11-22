@@ -19,12 +19,15 @@ async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
         return EXIT_RUNTIME_ERROR
 
     schema_type = getattr(args, "type", None)
+    include_stale = bool(getattr(args, "include_stale", False))
 
     async with context.open_store() as store:
         if schema_type:
-            nodes = await store.query(schema_type, session_id=session_id)
+            nodes = await store.query(
+                schema_type, session_id=session_id, include_stale=include_stale
+            )
         else:
-            nodes = await store.get_all_nodes(session_id)
+            nodes = await store.get_all_nodes(session_id, include_stale=include_stale)
 
     if context.is_json:
         parsed_nodes = []
@@ -215,5 +218,25 @@ async def handle_graph_import(args: Any, context: CliContext) -> int:
         print_json({"session_id": session_id, "imported_nodes": imported_count})
     else:
         print(f"[+] Successfully imported {imported_count} nodes into session '{session_id}'")
+
+    return EXIT_SUCCESS
+
+
+async def handle_graph_prune(args: Any, context: CliContext) -> int:
+    """Prune decayed stale nodes older than max_age_seconds from a session."""
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required.")
+        return EXIT_RUNTIME_ERROR
+
+    max_age = int(getattr(args, "max_age", 604800))
+
+    async with context.open_store() as store:
+        pruned_count = await store.prune_stale_nodes(session_id, max_age_seconds=max_age)
+
+    if context.is_json:
+        print_json({"session_id": session_id, "pruned_nodes": pruned_count})
+    else:
+        print(f"[+] Successfully pruned {pruned_count} stale node(s) from session '{session_id}'.")
 
     return EXIT_SUCCESS

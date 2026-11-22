@@ -51,6 +51,7 @@ def create_mcp_server(
         session_id: Optional[str] = None,
         schema_type: Optional[str] = None,
         limit: int = 100,
+        include_stale: bool = False,
     ) -> str:
         """Query normalized cybersecurity findings and entities in the graph.
 
@@ -58,12 +59,15 @@ def create_mcp_server(
             session_id: Target session ID (optional, defaults to active session).
             schema_type: Filter by schema type (e.g. 'network.host', 'network.service').
             limit: Maximum number of nodes to return (default: 100).
+            include_stale: Whether to include decayed stale nodes (default: False).
         """
         sess_id = await _resolve_session(session_id)
         if schema_type:
-            raw_nodes = await store.query(schema_type, session_id=sess_id)
+            raw_nodes = await store.query(
+                schema_type, session_id=sess_id, include_stale=include_stale
+            )
         else:
-            raw_nodes = await store.get_all_nodes(sess_id)
+            raw_nodes = await store.get_all_nodes(sess_id, include_stale=include_stale)
 
         limited_nodes: List[Dict[str, Any]] = []
         for n in raw_nodes[:limit]:
@@ -274,6 +278,7 @@ def create_mcp_server(
                 "exit_code": exit_code,
                 "error": err_msg,
                 "diff": diff,
+                "status_breakdown": diff.get("status_breakdown", {}),
                 "summary": f"Execution of {tool_name} completed with {diff['total_delta_count']} new or updated findings.",
             }
             if include_raw:

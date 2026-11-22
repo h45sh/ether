@@ -263,8 +263,47 @@ async def test_mcp_execute_coroutine_tool_success():
     data = json.loads(res.content[0].text)
     assert data["status"] == "completed"
     assert data["diff"]["total_delta_count"] >= 1
+    assert "status_breakdown" in data
     assert "untrusted_output" in data
     assert "Test Page" in data["untrusted_output"]
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_query_graph_include_stale():
+    """Verify that MCP query_graph respects include_stale parameter."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id = await store.create_workspace("StaleMcpWS")
+    sess_id = await store.create_session(ws_id, "StaleMcpSess")
+
+    h1 = NetworkHost.create(ip="10.0.0.1")
+    h2 = NetworkHost.create(ip="10.0.0.2")
+
+    h1_id = await store.upsert_finding(sess_id, h1)
+    h2_id = await store.upsert_finding(sess_id, h2)
+
+    # Manually decay h1 to stale
+    async with store.connection() as db:
+        await db.execute("UPDATE nodes SET status = 'stale' WHERE id = ?", (h1_id,))
+        await db.commit()
+
+    server = create_mcp_server(store, default_session_id=sess_id)
+
+    # Default query (include_stale=False)
+    res_active = await server.call_tool("query_graph", {})
+    data_active = json.loads(res_active.content[0].text)
+    node_ids_active = [n["id"] for n in data_active["nodes"]]
+    assert h2_id in node_ids_active
+    assert h1_id not in node_ids_active
+
+    # With include_stale=True
+    res_all = await server.call_tool("query_graph", {"include_stale": True})
+    data_all = json.loads(res_all.content[0].text)
+    node_ids_all = [n["id"] for n in data_all["nodes"]]
+    assert h2_id in node_ids_all
+    assert h1_id in node_ids_all
 
     await store.close()
 

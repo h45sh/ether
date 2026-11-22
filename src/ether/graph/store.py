@@ -758,19 +758,24 @@ class GraphStore:
         node_ids = await self.upsert_findings_batch(session_id, [finding], action_id=action_id)
         return node_ids[0] if node_ids else ""
 
-    async def query(self, schema_type: str, session_id: Optional[str] = None) -> List[Dict]:
+    async def query(
+        self,
+        schema_type: str,
+        session_id: Optional[str] = None,
+        include_stale: bool = False,
+    ) -> List[Dict]:
         """Fetch all nodes of a specific schema type."""
         async with self._get_conn() as db:
             db.row_factory = aiosqlite.Row
+            conditions = ["schema_type = ?"]
+            params: list[Any] = [schema_type]
             if session_id:
-                cursor = await db.execute(
-                    "SELECT * FROM nodes WHERE session_id = ? AND schema_type = ?",
-                    (session_id, schema_type),
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT * FROM nodes WHERE schema_type = ?", (schema_type,)
-                )
+                conditions.append("session_id = ?")
+                params.append(session_id)
+            if not include_stale:
+                conditions.append("status != 'stale'")
+            where_clause = " WHERE " + " AND ".join(conditions)
+            cursor = await db.execute(f"SELECT * FROM nodes{where_clause}", params)
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
@@ -886,9 +891,6 @@ class GraphStore:
                             new_status = "stale"
                     elif current_status == "proposed":
                         new_status = "stale"
-                else:
-                    if current_status == "stale":
-                        new_status = "confirmed"
 
                 if new_status != current_status:
                     transitions.append({"id": nid, "from": current_status, "to": new_status})

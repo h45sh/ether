@@ -224,3 +224,57 @@ def test_cli_mcp_parser_and_help(capsys):
     assert "--session-id" in captured.out
     assert "--port" in captured.out
 
+
+@pytest.mark.asyncio
+async def test_cli_graph_list_nodes_include_stale_and_prune(tmp_path, capsys):
+    """Verify 'ether graph list-nodes --include-stale' and 'ether graph prune'."""
+    db_file = str(tmp_path / "graph_stale_cli.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    h1 = NetworkHost.create(ip="10.0.0.1")
+    h2 = NetworkHost.create(ip="10.0.0.2")
+    h1_id = await store.upsert_finding(sess_id, h1)
+    await store.upsert_finding(sess_id, h2)
+
+    # Decay h1 to stale with an old last_seen_at
+    async with store.connection() as db:
+        await db.execute(
+            "UPDATE nodes SET status = 'stale', last_seen_at = '2020-01-01 00:00:00' WHERE id = ?",
+            (h1_id,),
+        )
+        await db.commit()
+    await store.close()
+
+    # 1. Default list-nodes without --include-stale (JSON)
+    code = main(["graph", "list-nodes", sess_id, "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    nodes = json.loads(captured.out)
+    assert len(nodes) == 1
+    assert nodes[0]["pik"]["ip"] == "10.0.0.2"
+
+    # 2. list-nodes with --include-stale (JSON)
+    code = main(["graph", "list-nodes", sess_id, "--include-stale", "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    nodes_all = json.loads(captured.out)
+    assert len(nodes_all) == 2
+
+    # 3. Prune stale nodes
+    code = main(["graph", "prune", sess_id, "--max-age", "3600", "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    prune_res = json.loads(captured.out)
+    assert prune_res["pruned_nodes"] == 1
+
+    # 4. list-nodes with --include-stale now only has 1 node left
+    code = main(["graph", "list-nodes", sess_id, "--include-stale", "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    nodes_remaining = json.loads(captured.out)
+    assert len(nodes_remaining) == 1
+    assert nodes_remaining[0]["pik"]["ip"] == "10.0.0.2"
+
+

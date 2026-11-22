@@ -11,6 +11,7 @@ from ether.cli.commands.graph import (
     handle_graph_export,
     handle_graph_import,
     handle_graph_list_nodes,
+    handle_graph_prune,
 )
 from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.mcp import handle_mcp
@@ -155,6 +156,21 @@ def build_parser() -> argparse.ArgumentParser:
     nodes_p.add_argument(
         "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.host)"
     )
+    nodes_p.add_argument(
+        "--include-stale", action="store_true", help="Include decayed stale nodes in listing"
+    )
+
+    prune_p = graph_subs.add_parser(
+        "prune", parents=[common_options], help="Prune decayed stale nodes from session graph"
+    )
+    prune_p.add_argument("session_id", help="Session ID to prune")
+    prune_p.add_argument(
+        "--max-age",
+        dest="max_age",
+        type=int,
+        default=604800,
+        help="Max age in seconds for stale nodes (default: 604800 / 7 days)",
+    )
 
     export_p = graph_subs.add_parser(
         "export", parents=[common_options], help="Export session graph"
@@ -288,6 +304,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_graph_export(args, context))
             elif args.graph_action == "import":
                 return _run_coroutine(handle_graph_import(args, context))
+            elif args.graph_action == "prune":
+                return _run_coroutine(handle_graph_prune(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":

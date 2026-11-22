@@ -5,10 +5,10 @@ Update `GraphTelemetryCompiler.compute_graph_diff()` in `src/ether/graph/telemet
 
 **Blocked by:** 02: Deterministic State Decay Engine & Stale Query Filtering, 03: Invariant Identity Anchoring & Cross-IP Migration
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Update `GraphTelemetryCompiler.compute_graph_diff()` to reconcile decay and emit `status_breakdown`
-- [ ] Include status shifts in `updated_nodes` and identity migrations in `anchored_migrations`
-- [ ] Update MCP `query_graph` tool with `include_stale: bool = False` parameter
-- [ ] Update CLI `ether graph list-nodes` with `--include-stale` and add `ether graph prune`
-- [ ] Write unit tests in `tests/unit/test_graph_telemetry.py` and `tests/unit/test_mcp.py`
+- [x] Update `GraphTelemetryCompiler.compute_graph_diff()` to reconcile decay and emit `status_breakdown`
+- [x] Include status shifts in `updated_nodes` and identity migrations in `anchored_migrations`
+- [x] Update MCP `query_graph` tool with `include_stale: bool = False` parameter
+- [x] Update CLI `ether graph list-nodes` with `--include-stale` and add `ether graph prune`
+- [x] Write unit tests in `tests/unit/test_graph_telemetry.py` and `tests/unit/test_mcp.py`

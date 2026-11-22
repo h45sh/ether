@@ -169,3 +169,57 @@ async def test_compute_graph_diff_by_action_id(tmp_path):
 
     await store.close()
 
+
+@pytest.mark.asyncio
+async def test_compute_graph_diff_with_temporal_decay_and_anchoring(tmp_path):
+    """Verify that compute_graph_diff reconciles temporal decay and includes migrations and status breakdown."""
+    db_file = str(tmp_path / "diff_decay_test.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+
+    ws_id = await store.create_workspace("DecayDiffWS")
+    sess_id = await store.create_session(ws_id, "DecayDiffSess")
+
+    # 1. Action 1: Discovers Service on IP 192.168.1.10 with TLS cert and 10s TTL
+    svc1 = NetworkService.create(
+        host_ip="192.168.1.10",
+        port=443,
+        service_name="https",
+        tls_cert_sha256="cert_hash_12345",
+        ttl_seconds=10,
+    )
+    ids1 = await store.upsert_findings_batch(sess_id, [svc1], action_id="act-001")
+    node1_id = ids1[0]
+
+    compiler = GraphTelemetryCompiler(store, sess_id)
+    diff1 = await compiler.compute_graph_diff(action_id="act-001")
+
+    assert diff1["status_breakdown"]["confirmed"] >= 1
+    assert diff1["status_breakdown"]["stale"] == 0
+    assert diff1["anchored_migrations"] == []
+
+    # 2. Action 2: Asset migrates to IP 10.0.0.50 with same TLS cert
+    svc2 = NetworkService.create(
+        host_ip="10.0.0.50",
+        port=443,
+        service_name="https",
+        tls_cert_sha256="cert_hash_12345",
+        ttl_seconds=10,
+    )
+    ids2 = await store.upsert_findings_batch(sess_id, [svc2], action_id="act-002")
+    node2_id = ids2[0]
+
+    diff2 = await compiler.compute_graph_diff(action_id="act-002")
+
+    # Must contain anchored migration
+    assert len(diff2["anchored_migrations"]) == 1
+    assert diff2["anchored_migrations"][0]["anchor_hash"] == "tls:cert_hash_12345"
+    assert diff2["anchored_migrations"][0]["from_node_id"] == node1_id
+    assert diff2["anchored_migrations"][0]["to_node_id"] == node2_id
+
+    # Node 1 is now stale, Node 2 is confirmed
+    assert diff2["status_breakdown"]["stale"] >= 1
+    assert diff2["status_breakdown"]["confirmed"] >= 1
+
+    await store.close()
+

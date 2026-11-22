@@ -199,8 +199,20 @@ class GraphTelemetryCompiler:
 
         Can be queried by exact `action_id` (action-scoped diff) or `baseline_timestamp`.
         """
-        nodes = await self.store.get_all_nodes(self.session_id)
+        # 1. Reconcile state decay deterministically before computing delta
+        decay_info = await self.store.reconcile_state_decay(self.session_id)
+        status_counts = decay_info.get("status_breakdown") or decay_info.get("status_counts", {})
+        status_breakdown = {
+            "confirmed": status_counts.get("confirmed", 0),
+            "flapping": status_counts.get("flapping", 0),
+            "stale": status_counts.get("stale", 0),
+        }
+        transitions = decay_info.get("transitions", [])
+        transition_map = {t["id"]: t for t in transitions}
+
+        nodes = await self.store.get_all_nodes(self.session_id, include_stale=True)
         edges = await self.store.get_all_edges(self.session_id)
+        node_map = {n["id"]: n for n in nodes}
 
         added_nodes = []
         updated_nodes = []
@@ -214,7 +226,12 @@ class GraphTelemetryCompiler:
                         "schema_type": n["schema_type"],
                         "pik": json.loads(n["pik_json"]),
                         "data": json.loads(n["data_json"]),
+                        "status": n.get("status", "confirmed"),
                     }
+                    if n["id"] in transition_map:
+                        t = transition_map[n["id"]]
+                        node_item["new_attributes"] = {"status": t["to"]}
+                        node_item["previous_attributes"] = {"status": t["from"]}
                     if n.get("created_action_id") == action_id:
                         added_nodes.append(node_item)
                     else:
@@ -235,24 +252,21 @@ class GraphTelemetryCompiler:
             for n in nodes:
                 created_at = _parse_timestamp(n.get("created_at"))
                 updated_at = _parse_timestamp(n.get("updated_at"))
+                node_item = {
+                    "id": n["id"],
+                    "schema_type": n["schema_type"],
+                    "pik": json.loads(n["pik_json"]),
+                    "data": json.loads(n["data_json"]),
+                    "status": n.get("status", "confirmed"),
+                }
+                if n["id"] in transition_map:
+                    t = transition_map[n["id"]]
+                    node_item["new_attributes"] = {"status": t["to"]}
+                    node_item["previous_attributes"] = {"status": t["from"]}
                 if created_at > baseline_ts:
-                    added_nodes.append(
-                        {
-                            "id": n["id"],
-                            "schema_type": n["schema_type"],
-                            "pik": json.loads(n["pik_json"]),
-                            "data": json.loads(n["data_json"]),
-                        }
-                    )
+                    added_nodes.append(node_item)
                 elif updated_at > baseline_ts:
-                    updated_nodes.append(
-                        {
-                            "id": n["id"],
-                            "schema_type": n["schema_type"],
-                            "pik": json.loads(n["pik_json"]),
-                            "data": json.loads(n["data_json"]),
-                        }
-                    )
+                    updated_nodes.append(node_item)
 
             for e in edges:
                 edge_ts = _parse_timestamp(e.get("created_at") or e.get("updated_at"))
@@ -266,7 +280,35 @@ class GraphTelemetryCompiler:
                         }
                     )
 
-        total_delta_count = len(added_nodes) + len(updated_nodes) + len(added_edges)
+        # Include nodes that underwent state transitions during this diff run
+        seen_ids = {n["id"] for n in added_nodes} | {n["id"] for n in updated_nodes}
+        for t in transitions:
+            nid = t["id"]
+            if nid not in seen_ids and nid in node_map:
+                n = node_map[nid]
+                updated_nodes.append(
+                    {
+                        "id": nid,
+                        "schema_type": n["schema_type"],
+                        "pik": json.loads(n["pik_json"]),
+                        "data": json.loads(n["data_json"]),
+                        "status": t["to"],
+                        "new_attributes": {"status": t["to"]},
+                        "previous_attributes": {"status": t["from"]},
+                    }
+                )
+                seen_ids.add(nid)
+
+        anchored_migrations = await self.store.get_anchored_migrations(
+            self.session_id, action_id=action_id
+        )
+
+        total_delta_count = (
+            len(added_nodes)
+            + len(updated_nodes)
+            + len(added_edges)
+            + len(anchored_migrations)
+        )
         return {
             "session_id": self.session_id,
             "action_id": action_id,
@@ -274,6 +316,8 @@ class GraphTelemetryCompiler:
             "added_nodes": added_nodes,
             "updated_nodes": updated_nodes,
             "added_edges": added_edges,
+            "status_breakdown": status_breakdown,
+            "anchored_migrations": anchored_migrations,
             "total_delta_count": total_delta_count,
             "tokens_consumed": 0,
         }
