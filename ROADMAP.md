@@ -40,7 +40,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 - [x] **Dual Policy Seam:** `GatePolicy.SAFE` (blocks metadata, enforces CIDR) vs. `GatePolicy.UNRESTRICTED`.
 - [x] **Deterministic State Machine:** SQLite WAL GraphStore with SHA-256 PIK hashing.
 - [x] **Universal Fuzzing Matrix:** 11 built-in adapters passing 4-stream adversarial fuzzing.
-- [x] **Comprehensive Regression Suite:** 199 unit and integration tests passing in <10s.
+- [x] **Comprehensive Regression Suite:** 217 unit and integration tests passing in <12s.
 - [x] **Headless Performance Benchmarking & Regression Gate (`tests/benchmarks/test_perf_benchmarks.py`):**
   - Continuous regression benchmarks verifying SQLite WAL ingestion (>250 findings/sec), composite query latency (<500ms for 5,000 nodes), Pydantic model throughput (>15,000 models/sec), and `LogSpooler` memory bounds (<15MB resident RAM for 100k lines).
 - [x] **Hardened Logging & In-Memory Flight Recorder (`ether.common.logging`):**
@@ -48,10 +48,14 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - `SanitizingLogFormatter` with automated regex scrubbing for API keys, bearer tokens, passwords, and SSH keys.
   - `FlightRecorder` in-memory circular trace buffer (`deque(maxlen=200)`) and global unhandled exception traps.
 - [x] **Category 2 Security Standards:** Atomic `0o600` file permissions (`atomic_create_file`), prompt boundary neutralization (`sanitize_untrusted_output`), and tiered file protection.
-- [ ] **Lightweight Headless CLI (`ether`):**
-  - `ether run <tool> <target> [--json]`
-  - `ether graph list-nodes <session_id>`
-  - `ether graph export <session_id> -o out.db`
+- [x] **Lightweight Headless CLI (`ether`):**
+  - `ether doctor` (environment and dependency diagnostics across distros)
+  - `ether tool list` & `ether tool info <tool>` (inspection of registered tool adapters)
+  - `ether run <tool> <target> [--flags ...] [--json] [--policy safe|unrestricted]` (supervised execution and stream parsing)
+  - `ether session list` & `ether session create <name>` (investigation session management)
+  - `ether graph list-nodes <session_id>` & `ether graph export <session_id> -o out.json` (deterministic graph querying and export)
+  - `ether telemetry snapshot <session_id>` & `ether telemetry diff <session_id> --baseline <ts>` (agent telemetry protocol)
+  - `ether logs [--limit 50] [--crashes]` (runtime and post-mortem flight recorder logs)
 - [ ] **Encrypted Session Database Archives (`cryptography`):**
   - *Transferred from CyGuide Engine Core*
   - AES-256-GCM authenticated encryption for exported session databases with Argon2id passphrase key derivation (`ether graph export --encrypt`).
