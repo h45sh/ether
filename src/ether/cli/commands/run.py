@@ -43,7 +43,9 @@ def _infer_target_finding(target: str) -> BaseFinding:
     if "/" in target:
         try:
             ipaddress.ip_network(target, strict=False)
-            return BaseFinding(schema_type="network.netblock", pik={"cidr": target}, data={"cidr": target})
+            return BaseFinding(
+                schema_type="network.netblock", pik={"cidr": target}, data={"cidr": target}
+            )
         except ValueError:
             pass
 
@@ -61,7 +63,9 @@ async def handle_run(args: Any, context: CliContext) -> int:
         flags.extend(shlex.split(f) if isinstance(f, str) else [str(f)])
 
     if not tool_name or not target:
-        print_error("Both tool and target are required. Usage: ether run <tool> <target> [flags...]")
+        print_error(
+            "Both tool and target are required. Usage: ether run <tool> <target> [flags...]"
+        )
         return EXIT_RUNTIME_ERROR
 
     registry = context.get_registry()

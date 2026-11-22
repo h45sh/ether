@@ -41,7 +41,9 @@ def test_diagnostic_report_summary_and_serialization():
         healthy=True,
         checks=[
             DiagnosticCheck(name="C1", category="Test", status="ok", message="pass"),
-            DiagnosticCheck(name="C2", category="Test", status="warning", message="warn", remedy="fix it"),
+            DiagnosticCheck(
+                name="C2", category="Test", status="warning", message="warn", remedy="fix it"
+            ),
             DiagnosticCheck(name="C3", category="Test", status="error", message="fail"),
         ],
     )
@@ -61,8 +63,16 @@ def test_format_terminal_report():
     report = DiagnosticReport(
         healthy=False,
         checks=[
-            DiagnosticCheck(name="Tool: nmap", category="Tools", status="info", message="not found", remedy=INSTALLATION_HINTS["nmap"]),
-            DiagnosticCheck(name="DB", category="Database", status="error", message="bad db", remedy="repair it"),
+            DiagnosticCheck(
+                name="Tool: nmap",
+                category="Tools",
+                status="info",
+                message="not found",
+                remedy=INSTALLATION_HINTS["nmap"],
+            ),
+            DiagnosticCheck(
+                name="DB", category="Database", status="error", message="bad db", remedy="repair it"
+            ),
         ],
     )
 

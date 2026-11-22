@@ -29,7 +29,12 @@ async def handle_session_list(args: Any, context: CliContext) -> int:
 
     headers = ["SESSION ID", "WORKSPACE ID", "NAME", "CREATED AT"]
     rows = [
-        [s.get("id", ""), s.get("workspace_id", ""), s.get("name", ""), str(s.get("created_at", ""))[:19]]
+        [
+            s.get("id", ""),
+            s.get("workspace_id", ""),
+            s.get("name", ""),
+            str(s.get("created_at", ""))[:19],
+        ]
         for s in sessions
     ]
     print_table(headers, rows)

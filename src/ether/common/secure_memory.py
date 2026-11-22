@@ -51,7 +51,9 @@ class SecureBuffer:
         elif isinstance(data, (bytes, bytearray)):
             encoded = bytes(data)
         else:
-            raise TypeError(f"SecureBuffer accepts bytes, bytearray, or str, got {type(data).__name__}")
+            raise TypeError(
+                f"SecureBuffer accepts bytes, bytearray, or str, got {type(data).__name__}"
+            )
 
         self._buf: bytearray = bytearray(encoded)
         self._wiped: bool = False

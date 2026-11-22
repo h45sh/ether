@@ -55,7 +55,14 @@ async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
             pik_display = n.get("pik_json", "")
         if len(pik_display) > 40:
             pik_display = pik_display[:37] + "..."
-        rows.append([n.get("id", "")[:12], n.get("schema_type", ""), pik_display, n.get("status", "confirmed")])
+        rows.append(
+            [
+                n.get("id", "")[:12],
+                n.get("schema_type", ""),
+                pik_display,
+                n.get("status", "confirmed"),
+            ]
+        )
 
     print_table(headers, rows)
     return EXIT_SUCCESS
@@ -179,7 +186,9 @@ async def handle_graph_import(args: Any, context: CliContext) -> int:
                 existing = await store.get_session(session_id)
                 if not existing:
                     ws_id, _ = await store.get_or_create_learning_sandbox()
-                    await store.create_session(ws_id, f"Imported {session_id[:8]}", session_id=session_id)
+                    await store.create_session(
+                        ws_id, f"Imported {session_id[:8]}", session_id=session_id
+                    )
             else:
                 ws_id, sess_id = await store.get_or_create_learning_sandbox()
                 session_id = sess_id

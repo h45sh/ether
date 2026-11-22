@@ -72,15 +72,21 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         "installed": bin_path is not None,
         "category": getattr(manifest, "category", "general"),
         "description": getattr(manifest, "description", ""),
-        "input_accepts": getattr(manifest.input, "accepts", []) if hasattr(manifest, "input") else [],
-        "output_emits": getattr(manifest.output, "emits", []) if hasattr(manifest, "output") else [],
+        "input_accepts": getattr(manifest.input, "accepts", [])
+        if hasattr(manifest, "input")
+        else [],
+        "output_emits": getattr(manifest.output, "emits", [])
+        if hasattr(manifest, "output")
+        else [],
     }
 
     if context.is_json:
         print_json(info)
     else:
         print(f"Tool:        {info['name']}")
-        print(f"Binary:      {info['binary']} ({'Installed: ' + str(bin_path) if bin_path else 'NOT FOUND'})")
+        print(
+            f"Binary:      {info['binary']} ({'Installed: ' + str(bin_path) if bin_path else 'NOT FOUND'})"
+        )
         print(f"Category:    {info['category']}")
         print(f"Description: {info['description']}")
         print(f"Input:       {', '.join(info['input_accepts']) or 'None'}")

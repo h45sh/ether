@@ -140,7 +140,10 @@ def test_cli_run_blocks_cloud_metadata(tmp_path, capsys):
     code = main(["run", "nmap", "169.254.169.254", "--db", db_file])
     assert code == EXIT_RUNTIME_ERROR
     captured = capsys.readouterr()
-    assert "Preflight validation failed" in captured.err or "SSRF_CLOUD_METADATA_PROHIBITED" in captured.err
+    assert (
+        "Preflight validation failed" in captured.err
+        or "SSRF_CLOUD_METADATA_PROHIBITED" in captured.err
+    )
 
 
 @pytest.mark.asyncio
@@ -160,13 +163,20 @@ async def test_cli_graph_encrypted_export_and_import(tmp_path, capsys):
     await store.close()
 
     # 2. Encrypted Export
-    code = main([
-        "graph", "export", sess_id,
-        "-o", enc_archive,
-        "--encrypt",
-        "--passphrase", passphrase,
-        "--db", db_source,
-    ])
+    code = main(
+        [
+            "graph",
+            "export",
+            sess_id,
+            "-o",
+            enc_archive,
+            "--encrypt",
+            "--passphrase",
+            passphrase,
+            "--db",
+            db_source,
+        ]
+    )
     assert code == EXIT_SUCCESS
     capsys.readouterr()
 
@@ -176,12 +186,18 @@ async def test_cli_graph_encrypted_export_and_import(tmp_path, capsys):
     assert data.startswith(b"ETHER_SECURE_ARC")
 
     # 3. Import into new target DB
-    code = main([
-        "graph", "import", enc_archive,
-        "--passphrase", passphrase,
-        "--db", db_target,
-        "--json",
-    ])
+    code = main(
+        [
+            "graph",
+            "import",
+            enc_archive,
+            "--passphrase",
+            passphrase,
+            "--db",
+            db_target,
+            "--json",
+        ]
+    )
     assert code == EXIT_SUCCESS
     captured = capsys.readouterr()
     import_result = json.loads(captured.out)
@@ -195,4 +211,3 @@ async def test_cli_graph_encrypted_export_and_import(tmp_path, capsys):
     piks = [json.loads(n["pik_json"]).get("ip") for n in nodes if "pik_json" in n]
     assert "172.16.0.5" in piks
     await target_store.close()
-

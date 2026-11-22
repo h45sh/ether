@@ -176,7 +176,9 @@ def test_preflight_wordlist_macro_unseeded_remedy(tmp_path):
     assert wordlist_warns[0].can_auto_remedy
 
     # Apply remedy
-    t, f, msg = verifier.apply_remedy(wordlist_warns[0], target="http://127.0.0.1:8080", flags="-w @common.txt")
+    t, f, msg = verifier.apply_remedy(
+        wordlist_warns[0], target="http://127.0.0.1:8080", flags="-w @common.txt"
+    )
     assert "Extracted" in msg
     assert t == "http://127.0.0.1:8080"
 
@@ -197,7 +199,9 @@ def test_default_tool_targets_coverage_and_preflight():
         non_binary_errors = [
             i for i in report.issues if i.severity == "error" and i.category != "binary"
         ]
-        assert not non_binary_errors, f"Tool {tool_name} failed preflight on default target: {non_binary_errors}"
+        assert not non_binary_errors, (
+            f"Tool {tool_name} failed preflight on default target: {non_binary_errors}"
+        )
 
         guidance = get_tool_target_guidance(tool_name)
         assert bool(guidance)

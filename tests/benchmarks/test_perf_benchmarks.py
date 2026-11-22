@@ -152,7 +152,9 @@ def test_log_spooler_throughput_and_bounded_memory(tmp_path):
 
     chunk_lines = 100
     total_lines = 100000
-    chunk = "".join(f"BENCH_LOG_LINE_{i:06d}: target 192.168.1.1 open port\n" for i in range(chunk_lines))
+    chunk = "".join(
+        f"BENCH_LOG_LINE_{i:06d}: target 192.168.1.1 open port\n" for i in range(chunk_lines)
+    )
 
     for _ in range(total_lines // chunk_lines):
         spooler.write(chunk)
@@ -164,6 +166,10 @@ def test_log_spooler_throughput_and_bounded_memory(tmp_path):
     tracemalloc.stop()
 
     throughput = total_lines / elapsed
-    assert throughput > 30000, f"Spooler throughput was {throughput:.0f} lines/sec (expected > 30,000)"
-    assert peak_mem < 15 * 1024 * 1024, f"Peak memory {peak_mem / 1024 / 1024:.2f}MB exceeded 15MB bound"
+    assert throughput > 30000, (
+        f"Spooler throughput was {throughput:.0f} lines/sec (expected > 30,000)"
+    )
+    assert peak_mem < 15 * 1024 * 1024, (
+        f"Peak memory {peak_mem / 1024 / 1024:.2f}MB exceeded 15MB bound"
+    )
     assert (tmp_path / "spooler_bench.log").exists()

@@ -91,18 +91,24 @@ def decrypt_bytes(
 ) -> bytes:
     """Decrypt payload using AES-256-GCM, verifying integrity and authentication tag."""
     if len(archive_bytes) < HEADER_SIZE + 16:  # Must have header + at least 16-byte auth tag
-        raise InvalidArchiveFormatError("Archive data is too short to be a valid Ether secure archive.")
+        raise InvalidArchiveFormatError(
+            "Archive data is too short to be a valid Ether secure archive."
+        )
 
     # 1. Verify Magic Header
     magic = archive_bytes[: len(MAGIC_HEADER)]
     if magic != MAGIC_HEADER:
-        raise InvalidArchiveFormatError(f"Invalid magic header: expected {MAGIC_HEADER!r}, got {magic!r}")
+        raise InvalidArchiveFormatError(
+            f"Invalid magic header: expected {MAGIC_HEADER!r}, got {magic!r}"
+        )
 
     # 2. Verify Version
     offset = len(MAGIC_HEADER)
     version = archive_bytes[offset]
     if version != CURRENT_VERSION:
-        raise InvalidArchiveFormatError(f"Unsupported archive version: {version} (expected {CURRENT_VERSION})")
+        raise InvalidArchiveFormatError(
+            f"Unsupported archive version: {version} (expected {CURRENT_VERSION})"
+        )
     offset += 1
 
     # 3. Extract Salt & Nonce
@@ -121,7 +127,9 @@ def decrypt_bytes(
         plaintext = aesgcm.decrypt(nonce, ciphertext, AAD_TAG)
         return plaintext
     except InvalidTag as exc:
-        raise TamperedArchiveError("Decryption failed: archive is corrupted, tampered with, or passphrase is wrong.") from exc
+        raise TamperedArchiveError(
+            "Decryption failed: archive is corrupted, tampered with, or passphrase is wrong."
+        ) from exc
 
 
 def encrypt_file(
@@ -159,7 +167,9 @@ def decrypt_file(
     with open(input_path, "rb") as f:
         archive_bytes = f.read()
 
-    plaintext = decrypt_bytes(archive_bytes, passphrase, iterations=iterations, memory_cost=memory_cost)
+    plaintext = decrypt_bytes(
+        archive_bytes, passphrase, iterations=iterations, memory_cost=memory_cost
+    )
 
     out_dir = os.path.dirname(os.path.abspath(output_path))
     if out_dir:

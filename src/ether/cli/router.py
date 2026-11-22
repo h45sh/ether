@@ -48,12 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to tool adapters directory (default: bundled tools/)",
     )
     common_options.add_argument(
-        "-j", "--json",
+        "-j",
+        "--json",
         action="store_true",
         help="Output in machine-readable JSON format",
     )
     common_options.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose debug logging to stderr",
     )
@@ -94,7 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tool_subs = tool_parser.add_subparsers(dest="tool_action")
     tool_subs.add_parser("list", parents=[common_options], help="List all available tools")
-    tool_info_p = tool_subs.add_parser("info", parents=[common_options], help="Show details for a tool")
+    tool_info_p = tool_subs.add_parser(
+        "info", parents=[common_options], help="Show details for a tool"
+    )
     tool_info_p.add_argument("name", help="Name of the tool to inspect")
 
     # 3. run
@@ -111,7 +115,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Extra flags to pass to the tool binary",
     )
-    run_parser.add_argument("-s", "--session-id", dest="session_id", help="Session ID to record findings into")
+    run_parser.add_argument(
+        "-s", "--session-id", dest="session_id", help="Session ID to record findings into"
+    )
 
     # 4. session
     session_parser = subparsers.add_parser(
@@ -121,10 +127,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     session_subs = session_parser.add_subparsers(dest="session_action")
     sess_list_p = session_subs.add_parser("list", parents=[common_options], help="List sessions")
-    sess_list_p.add_argument("-w", "--workspace-id", dest="workspace_id", help="Filter by workspace ID")
-    sess_create_p = session_subs.add_parser("create", parents=[common_options], help="Create a new session")
-    sess_create_p.add_argument("name", nargs="?", default="New Session", help="Session display name")
-    sess_create_p.add_argument("-w", "--workspace-id", dest="workspace_id", help="Target workspace ID")
+    sess_list_p.add_argument(
+        "-w", "--workspace-id", dest="workspace_id", help="Filter by workspace ID"
+    )
+    sess_create_p = session_subs.add_parser(
+        "create", parents=[common_options], help="Create a new session"
+    )
+    sess_create_p.add_argument(
+        "name", nargs="?", default="New Session", help="Session display name"
+    )
+    sess_create_p.add_argument(
+        "-w", "--workspace-id", dest="workspace_id", help="Target workspace ID"
+    )
 
     # 5. graph
     graph_parser = subparsers.add_parser(
@@ -133,14 +147,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Query and export deterministic entity graphs",
     )
     graph_subs = graph_parser.add_subparsers(dest="graph_action")
-    nodes_p = graph_subs.add_parser("list-nodes", parents=[common_options], help="List finding nodes")
+    nodes_p = graph_subs.add_parser(
+        "list-nodes", parents=[common_options], help="List finding nodes"
+    )
     nodes_p.add_argument("session_id", help="Session ID to inspect")
-    nodes_p.add_argument("-t", "--type", dest="type", help="Filter by schema_type (e.g. network.host)")
+    nodes_p.add_argument(
+        "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.host)"
+    )
 
-    export_p = graph_subs.add_parser("export", parents=[common_options], help="Export session graph")
+    export_p = graph_subs.add_parser(
+        "export", parents=[common_options], help="Export session graph"
+    )
     export_p.add_argument("session_id", help="Session ID to export")
     export_p.add_argument("-o", "--output", dest="output", help="Output JSON or archive file path")
-    export_p.add_argument("--encrypt", action="store_true", help="Encrypt export using AES-256-GCM + Argon2id")
+    export_p.add_argument(
+        "--encrypt", action="store_true", help="Encrypt export using AES-256-GCM + Argon2id"
+    )
     export_p.add_argument("--passphrase", dest="passphrase", help="Passphrase for encryption")
 
     import_p = graph_subs.add_parser(
@@ -157,12 +179,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Agent telemetry protocol: knapsack snapshots and zero-token diffs",
     )
     telemetry_subs = telemetry_parser.add_subparsers(dest="telemetry_action")
-    snap_p = telemetry_subs.add_parser("snapshot", parents=[common_options], help="Compile token-budgeted snapshot")
+    snap_p = telemetry_subs.add_parser(
+        "snapshot", parents=[common_options], help="Compile token-budgeted snapshot"
+    )
     snap_p.add_argument("session_id", help="Session ID")
-    snap_p.add_argument("--max-tokens", dest="max_tokens", type=int, default=4000, help="Max token budget")
+    snap_p.add_argument(
+        "--max-tokens", dest="max_tokens", type=int, default=4000, help="Max token budget"
+    )
     snap_p.add_argument("--entity-id", dest="entity_id", help="Selected entity node ID")
 
-    diff_p = telemetry_subs.add_parser("diff", parents=[common_options], help="Compute graph diff since baseline")
+    diff_p = telemetry_subs.add_parser(
+        "diff", parents=[common_options], help="Compute graph diff since baseline"
+    )
     diff_p.add_argument("session_id", help="Session ID")
     diff_p.add_argument("--baseline", dest="baseline", required=True, help="Baseline timestamp")
 
@@ -173,7 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inspect system runtime logs and crash traces",
     )
     logs_parser.add_argument("--limit", type=int, default=50, help="Number of lines to tail")
-    logs_parser.add_argument("--crashes", action="store_true", help="Show recent unhandled crash summary")
+    logs_parser.add_argument(
+        "--crashes", action="store_true", help="Show recent unhandled crash summary"
+    )
 
     return parser
 

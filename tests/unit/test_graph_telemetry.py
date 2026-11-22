@@ -60,7 +60,9 @@ async def test_compile_telemetry_snapshot_with_selected_entity(tmp_path):
     await store.upsert_finding(sess_id, service)
 
     compiler = GraphTelemetryCompiler(store, sess_id)
-    snapshot = await compiler.compile_telemetry_snapshot(selected_entity_id=host_id, max_tokens=2000)
+    snapshot = await compiler.compile_telemetry_snapshot(
+        selected_entity_id=host_id, max_tokens=2000
+    )
 
     assert snapshot["session_id"] == sess_id
     assert snapshot["session_name"] == "TeleSess"
@@ -111,9 +113,7 @@ async def test_compute_graph_diff_zero_tokens(tmp_path):
 
     # Nodes updated after baseline
     affected_piks = [
-        n["pik"]["ip"]
-        for n in (diff["added_nodes"] + diff["updated_nodes"])
-        if "ip" in n["pik"]
+        n["pik"]["ip"] for n in (diff["added_nodes"] + diff["updated_nodes"]) if "ip" in n["pik"]
     ]
     assert "10.0.0.2" in affected_piks
     assert "10.0.0.1" not in affected_piks

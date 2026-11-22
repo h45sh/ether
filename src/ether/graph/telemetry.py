@@ -30,9 +30,7 @@ def _parse_timestamp(val: Any) -> float:
             pass
         try:
             return (
-                datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
+                datetime.strptime(val, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
             )
         except Exception:
             pass
