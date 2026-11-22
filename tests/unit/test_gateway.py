@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from ether.gateway.gate import ActionGateway, ActionValidationError
+from ether.gateway.gate import ActionGateway, ActionValidationError, GatePolicy
 from ether.graph.store import GraphStore
 from ether.schemas.dns import DnsRecord
 from ether.schemas.network import NetworkHost
@@ -387,5 +387,22 @@ async def test_gateway_cidr_scope_enforcement(tmp_path):
     # 3. Dynamic reconfiguration of scope
     gateway.set_allowed_cidrs(None)
     assert await gateway.validate_action(action_out_scope) is True
+
+    # 4. UNRESTRICTED policy allows out-of-scope targets and metadata
+    gateway_unrestricted = ActionGateway(
+        mock_registry,
+        store,
+        allowed_cidrs=["10.0.0.0/8"],
+        policy=GatePolicy.UNRESTRICTED,
+    )
+    assert await gateway_unrestricted.validate_action(action_out_scope) is True
+
+    action_metadata = ActionRequest(
+        session_id=uuid4(),
+        tool_name="curl",
+        params={"raw_flags": "http://169.254.169.254/latest/meta-data/"},
+        triggered_by=ActionSource.USER,
+    )
+    assert await gateway_unrestricted.validate_action(action_metadata) is True
 
     await store.close()

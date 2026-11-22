@@ -238,12 +238,6 @@ class ActionGateway:
                     "Target in command arguments violates authorized engagement CIDR scope."
                 )
 
-        # Enforce engagement CIDR scope boundaries if configured
-        if self._allowed_cidrs and not self.validate_target_scope(raw_flags):
-            raise ActionValidationError(
-                "Target in command arguments violates authorized engagement CIDR scope."
-            )
-
         # 2. Resolve Tool
         tool_data = self.registry.get_tool(action.tool_name)
 
