@@ -92,6 +92,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_ws_status ON sessions(workspace_id, stat
 CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);
 CREATE INDEX IF NOT EXISTS idx_notes_scope ON notes(scope_type, scope_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_session_updated ON nodes(session_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id);
+CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id);
 """
 
 
@@ -169,44 +171,9 @@ class GraphStore:
             yield self._conn
 
     async def initialize(self):
-        """Create tables if they don't exist and run non-destructive schema migrations."""
+        """Create tables and indices if they don't exist."""
         async with self._get_conn() as db:
             await db.executescript(SCHEMA_DDL)
-
-            # Non-destructive schema migration for nodes
-            cursor = await db.execute("PRAGMA table_info(nodes)")
-            node_cols = {row[1] for row in await cursor.fetchall()}
-            if "action_id" not in node_cols:
-                await db.execute("ALTER TABLE nodes ADD COLUMN action_id TEXT")
-            if "created_action_id" not in node_cols:
-                await db.execute("ALTER TABLE nodes ADD COLUMN created_action_id TEXT")
-            if "created_at" not in node_cols:
-                await db.execute(
-                    "ALTER TABLE nodes ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                )
-
-            # Non-destructive schema migration for edges
-            cursor = await db.execute("PRAGMA table_info(edges)")
-            edge_cols = {row[1] for row in await cursor.fetchall()}
-            if "action_id" not in edge_cols:
-                await db.execute("ALTER TABLE edges ADD COLUMN action_id TEXT")
-            if "created_at" not in edge_cols:
-                await db.execute(
-                    "ALTER TABLE edges ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                )
-            if "updated_at" not in edge_cols:
-                await db.execute(
-                    "ALTER TABLE edges ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                )
-
-            # Ensure action_id indices exist after columns are guaranteed
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id)"
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id)"
-            )
-
             await db.commit()
 
     async def check_integrity(self) -> tuple[str, list[str]]:
@@ -230,13 +197,13 @@ class GraphStore:
                 pass
             self._conn = None
 
-    async def get_or_create_learning_sandbox(self) -> tuple[str, str]:
-        """Ensure the singleton Learning Sandbox and its session exist and return their IDs."""
+    async def get_or_create_default_session(self) -> tuple[str, str]:
+        """Ensure the default workspace and session exist and return their IDs (ws_id, sess_id)."""
         async with self._get_conn() as db:
             db.row_factory = aiosqlite.Row
-            # 1. Check for existing Learning Sandbox
+            # 1. Check for existing Default Workspace
             cursor = await db.execute(
-                "SELECT id FROM workspaces WHERE name = 'Learning Sandbox' LIMIT 1"
+                "SELECT id FROM workspaces WHERE name = 'Default Workspace' LIMIT 1"
             )
             row = await cursor.fetchone()
             if row:
@@ -245,12 +212,12 @@ class GraphStore:
                 ws_id = str(uuid.uuid4())
                 await db.execute(
                     "INSERT INTO workspaces (id, name, status) VALUES (?, ?, ?)",
-                    (ws_id, "Learning Sandbox", "SYSTEM"),
+                    (ws_id, "Default Workspace", "SYSTEM"),
                 )
 
-            # 2. Check for existing Guided Session
+            # 2. Check for existing Default Session
             cursor = await db.execute(
-                "SELECT id FROM sessions WHERE workspace_id = ? AND name = 'Guided Session' LIMIT 1",
+                "SELECT id FROM sessions WHERE workspace_id = ? AND name = 'Default Session' LIMIT 1",
                 (ws_id,),
             )
             row = await cursor.fetchone()
@@ -260,11 +227,15 @@ class GraphStore:
                 sess_id = str(uuid.uuid4())
                 await db.execute(
                     "INSERT INTO sessions (id, workspace_id, name, status) VALUES (?, ?, ?, ?)",
-                    (sess_id, ws_id, "Guided Session", "SYSTEM"),
+                    (sess_id, ws_id, "Default Session", "SYSTEM"),
                 )
 
             await db.commit()
             return ws_id, sess_id
+
+    async def get_or_create_learning_sandbox(self) -> tuple[str, str]:
+        """Legacy compatibility alias for get_or_create_default_session."""
+        return await self.get_or_create_default_session()
 
     # --- Workspace Management ---
 

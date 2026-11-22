@@ -43,7 +43,7 @@ def create_mcp_server(
             return session_id
         if default_session_id:
             return default_session_id
-        _, sess_id = await store.get_or_create_learning_sandbox()
+        _, sess_id = await store.get_or_create_default_session()
         return sess_id
 
     @server.tool()

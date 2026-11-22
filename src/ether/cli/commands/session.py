@@ -48,7 +48,7 @@ async def handle_session_create(args: Any, context: CliContext) -> int:
 
     async with context.open_store() as store:
         if not workspace_id:
-            ws_id, sess_id = await store.get_or_create_learning_sandbox()
+            ws_id, sess_id = await store.get_or_create_default_session()
             workspace_id = ws_id
 
         sess_id = await store.create_session(workspace_id, name)

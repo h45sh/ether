@@ -1,4 +1,4 @@
-"""CLI entrypoint for CyGuide pure-Python DNS probe."""
+"""CLI entrypoint for Ether pure-Python DNS probe."""
 
 import argparse
 import json
@@ -147,7 +147,7 @@ def resolve_records(
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="CyGuide Pure-Python DNS Probe")
+    parser = argparse.ArgumentParser(description="Ether Pure-Python DNS Probe")
     parser.add_argument("target", help="Domain name or IP address to probe")
     parser.add_argument(
         "-t", "--type", default="A", help="DNS Record Type (A, AAAA, MX, NS, TXT, SOA, PTR, AXFR)"
@@ -183,7 +183,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
     # Human-readable dig-style output
     server_str = parsed.server or "system-default"
-    print(f"; <<>> CyGuide DNS Probe (dnspython) <<>> {parsed.target} {parsed.type.upper()}")
+    print(f"; <<>> Ether DNS Probe (dnspython) <<>> {parsed.target} {parsed.type.upper()}")
     print(f";; SERVER: {server_str}#53")
     print(f";; QUERY TIME: {elapsed_ms} msec")
     print(f";; WHEN: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")

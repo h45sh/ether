@@ -1,4 +1,4 @@
-"""Network interface and local host (LHOST) discovery utilities for CyGuide."""
+"""Network interface and local host (LHOST) discovery utilities for Ether."""
 
 import socket
 import subprocess

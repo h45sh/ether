@@ -128,7 +128,7 @@ async def test_mcp_execute_tool_success_with_diff():
 
     store = GraphStore(":memory:")
     await store.initialize()
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
     registry = ToolRegistry()
     registry.load_tools()
@@ -182,7 +182,7 @@ async def test_mcp_execute_tool_timeout_fallback():
 
     store = GraphStore(":memory:")
     await store.initialize()
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
     registry = ToolRegistry()
     registry.load_tools()

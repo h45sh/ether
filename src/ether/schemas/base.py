@@ -1,6 +1,6 @@
 # PROTECTED FILE — See CONTRIBUTING.md before modifying.
 # Changes to this file require team agreement.
-"""Foundational Pydantic models for CyGuide findings."""
+"""Foundational Pydantic models for Ether findings."""
 
 from datetime import UTC, datetime
 from typing import Any, ClassVar, Dict, List, Literal, Optional

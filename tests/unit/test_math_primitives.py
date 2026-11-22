@@ -1,4 +1,4 @@
-"""Unit and property tests for CyGuide high-performance mathematical and algorithmic primitives.
+"""Unit and property tests for Ether high-performance mathematical and algorithmic primitives.
 
 Tests cover:
 1. IPRadixTrie: O(W) bitwise Patricia Radix Trie for IPv4 & IPv6 prefix matching and SSRF/CIDR policy.

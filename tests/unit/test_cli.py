@@ -157,7 +157,7 @@ async def test_cli_graph_encrypted_export_and_import(tmp_path, capsys):
     # 1. Populate source DB
     store = GraphStore(db_source)
     await store.initialize()
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
     h = NetworkHost.create(ip="172.16.0.5", hostname="encrypted-host.corp")
     await store.upsert_finding(sess_id, h)
     await store.close()

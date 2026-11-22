@@ -22,7 +22,7 @@ async def test_multi_tool_investigation_pipeline(tmp_path):
     store = GraphStore(str(db_path))
     await store.initialize()
 
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
     # --- STEP 1: Subdomain Discovery (Subfinder) ---
     subfinder_adapter = SubfinderAdapter()

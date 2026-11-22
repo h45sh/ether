@@ -1,4 +1,4 @@
-"""High-performance mathematical and algorithmic primitives for CyGuide.
+"""High-performance mathematical and algorithmic primitives for Ether.
 
 This unified deep module provides foundational data structures and discrete algorithms:
 1. IPRadixTrie: O(W) binary Patricia Radix Trie for IPv4 & IPv6 longest-prefix matching.

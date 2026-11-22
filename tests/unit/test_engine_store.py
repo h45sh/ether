@@ -26,16 +26,16 @@ async def test_store_initialization():
 
 
 @pytest.mark.asyncio
-async def test_learning_sandbox_creation():
+async def test_default_session_creation():
     store = GraphStore(":memory:")
     await store.initialize()
 
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
     assert ws_id is not None
     assert sess_id is not None
 
     # Run again, should return the same IDs
-    ws_id2, sess_id2 = await store.get_or_create_learning_sandbox()
+    ws_id2, sess_id2 = await store.get_or_create_default_session()
     assert ws_id == ws_id2
     assert sess_id == sess_id2
     await store.close()
@@ -45,7 +45,7 @@ async def test_learning_sandbox_creation():
 async def test_upsert_and_query_finding():
     store = GraphStore(":memory:")
     await store.initialize()
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
     host = NetworkHost.create(ip="127.0.0.1", hostname="localhost")
     node_id = await store.upsert_finding(sess_id, host)
@@ -61,7 +61,7 @@ async def test_upsert_and_query_finding():
 async def test_graph_wiring_parent():
     store = GraphStore(":memory:")
     await store.initialize()
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
     # Upsert a service (which has a parent NetworkHost)
     service = NetworkService.create(host_ip="10.0.0.1", port=443, protocol="tcp")
@@ -208,21 +208,21 @@ async def test_store_trusted_schema_and_permissions(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_learning_sandbox_preserves_user_sessions():
-    """Verify that get_or_create_learning_sandbox preserves existing sessions and never auto-deletes."""
+async def test_default_session_preserves_user_sessions():
+    """Verify that get_or_create_default_session preserves existing sessions and never auto-deletes."""
     store = GraphStore(":memory:")
     await store.initialize()
 
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
-    # Manually inject sessions into Learning Sandbox
+    # Manually inject sessions into Default Workspace
     async with store.connection() as conn:
         await conn.execute(
             "INSERT INTO sessions (id, workspace_id, name) VALUES ('user-lab-1', ?, 'Custom Lab')",
             (ws_id,),
         )
         await conn.execute(
-            "INSERT INTO sessions (id, workspace_id, name) VALUES ('user-lab-2', ?, 'Guided Session (Imported 1)')",
+            "INSERT INTO sessions (id, workspace_id, name) VALUES ('user-lab-2', ?, 'Default Session (Imported 1)')",
             (ws_id,),
         )
         await conn.commit()
@@ -231,57 +231,25 @@ async def test_learning_sandbox_preserves_user_sessions():
     sessions_before = await store.list_sessions(ws_id)
     assert len(sessions_before) == 3
 
-    # Re-invoking get_or_create_learning_sandbox must safely return existing Guided Session without deleting user sessions
-    new_ws_id, new_sess_id = await store.get_or_create_learning_sandbox()
+    # Re-invoking get_or_create_default_session must safely return existing Default Session without deleting user sessions
+    new_ws_id, new_sess_id = await store.get_or_create_default_session()
     assert new_ws_id == ws_id
     assert new_sess_id == sess_id
 
     sessions_after = await store.list_sessions(ws_id)
     assert len(sessions_after) == 3
     session_names = {s["name"] for s in sessions_after}
-    assert "Guided Session" in session_names
+    assert "Default Session" in session_names
     assert "Custom Lab" in session_names
-    assert "Guided Session (Imported 1)" in session_names
+    assert "Default Session (Imported 1)" in session_names
 
     await store.close()
 
 
 @pytest.mark.asyncio
-async def test_schema_auto_migration_action_id_and_created_at(tmp_path):
-    """Verify that initialize() safely adds action_id and created_at to legacy databases."""
-    db_file = str(tmp_path / "legacy.db")
-
-    # Manually create legacy schema without action_id or created_at
-    import aiosqlite
-
-    async with aiosqlite.connect(db_file) as conn:
-        await conn.execute(
-            """
-            CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT DEFAULT 'ACTIVE');
-        """
-        )
-        await conn.execute(
-            """
-            CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT DEFAULT 'ACTIVE');
-        """
-        )
-        await conn.execute(
-            """
-            CREATE TABLE nodes (session_id TEXT NOT NULL, id TEXT NOT NULL, schema_type TEXT NOT NULL, pik_json TEXT NOT NULL, data_json TEXT NOT NULL, status TEXT DEFAULT 'confirmed', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (session_id, id));
-        """
-        )
-        await conn.execute(
-            """
-            CREATE TABLE edges (session_id TEXT NOT NULL, source_id TEXT NOT NULL, target_id TEXT NOT NULL, relation_type TEXT NOT NULL, PRIMARY KEY (session_id, source_id, target_id, relation_type));
-        """
-        )
-        await conn.execute(
-            """
-            CREATE TABLE event_log (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, action_payload TEXT, result_payload TEXT, human_readable TEXT, schema_type TEXT, finding_json TEXT, closed INTEGER DEFAULT 0);
-        """
-        )
-        await conn.commit()
-
+async def test_schema_initialization_tables_columns_and_indices(tmp_path):
+    """Verify that initialize() sets up all required tables, columns, and indices."""
+    db_file = str(tmp_path / "init.db")
     store = GraphStore(db_file)
     await store.initialize()
 
@@ -289,13 +257,20 @@ async def test_schema_auto_migration_action_id_and_created_at(tmp_path):
         cursor = await conn.execute("PRAGMA table_info(nodes)")
         node_cols = {row[1] for row in await cursor.fetchall()}
         assert "action_id" in node_cols
+        assert "created_action_id" in node_cols
         assert "created_at" in node_cols
+        assert "updated_at" in node_cols
 
         cursor = await conn.execute("PRAGMA table_info(edges)")
         edge_cols = {row[1] for row in await cursor.fetchall()}
         assert "action_id" in edge_cols
         assert "created_at" in edge_cols
         assert "updated_at" in edge_cols
+
+        cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        indices = {r[0] for r in await cursor.fetchall()}
+        assert "idx_nodes_session_action" in indices
+        assert "idx_edges_session_action" in indices
 
     await store.close()
 
@@ -305,7 +280,7 @@ async def test_upsert_findings_with_action_id():
     """Verify that findings and relationships correctly record action_id."""
     store = GraphStore(":memory:")
     await store.initialize()
-    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    ws_id, sess_id = await store.get_or_create_default_session()
 
     service = NetworkService.create(
         host_ip="10.0.0.1",

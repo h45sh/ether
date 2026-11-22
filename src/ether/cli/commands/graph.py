@@ -185,12 +185,12 @@ async def handle_graph_import(args: Any, context: CliContext) -> int:
                 # Ensure session exists
                 existing = await store.get_session(session_id)
                 if not existing:
-                    ws_id, _ = await store.get_or_create_learning_sandbox()
+                    ws_id, _ = await store.get_or_create_default_session()
                     await store.create_session(
                         ws_id, f"Imported {session_id[:8]}", session_id=session_id
                     )
             else:
-                ws_id, sess_id = await store.get_or_create_learning_sandbox()
+                ws_id, sess_id = await store.get_or_create_default_session()
                 session_id = sess_id
 
         imported_count = 0

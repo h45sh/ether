@@ -1,4 +1,4 @@
-"""Pytest configuration and global canonical fixtures for CyGuide."""
+"""Pytest configuration and global canonical fixtures for Ether."""
 
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List

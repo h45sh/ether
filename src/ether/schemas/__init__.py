@@ -1,4 +1,4 @@
-"""Canonical findings and intelligence schemas for CyGuide."""
+"""Canonical findings and intelligence schemas for Ether."""
 
 from ether.schemas.base import BaseFinding, Relation
 from ether.schemas.credential import CredentialFound

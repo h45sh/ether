@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ether import paths
 
-# Wordlists located in packaged assets directory inside cyguide package
+# Wordlists located in packaged assets directory inside ether package
 BUNDLED_WORDLISTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "wordlists"
 
 # Matches {wordlist} or {wordlist:name}

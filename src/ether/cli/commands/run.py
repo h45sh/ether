@@ -91,7 +91,7 @@ async def handle_run(args: Any, context: CliContext) -> int:
         gateway.store = store
         session_id = getattr(args, "session_id", None)
         if not session_id:
-            _, sess_id = await store.get_or_create_learning_sandbox()
+            _, sess_id = await store.get_or_create_default_session()
             session_id = sess_id
 
         target_finding = _infer_target_finding(target)

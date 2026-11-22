@@ -91,9 +91,9 @@ flags = ["-d", "{domain}", "-oJ", "-silent"]
 concept = "Unix Pipeline Philosophy & Structured Telemetry Ingestion"
 explanation = """
 Modern reconnaissance relies on composable, streaming architectures.
-Emitting output as JSON Lines (-oJ) accompanied by '-silent' suppresses ASCII art banners, allowing downstream automation (like CyGuide's Action Gateway) to parse domain names, discovered IPs, and provider sources in real time without regex fragility.
+Emitting output as JSON Lines (-oJ) accompanied by '-silent' suppresses ASCII art banners, allowing downstream automation (like Ether's Action Gateway) to parse domain names, discovered IPs, and provider sources in real time without regex fragility.
 """
-packet_wire_summary = "Tool streams newline-delimited JSON objects -> CyGuide ActionGateway -> SQLite entity graph"
+packet_wire_summary = "Tool streams newline-delimited JSON objects -> Ether ActionGateway -> SQLite entity graph"
 remediation = "Automate continuous discovery pipelines to alert SOC teams when new unauthorized subdomains emerge."
 
 [power]
