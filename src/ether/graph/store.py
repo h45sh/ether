@@ -16,6 +16,11 @@ from typing import Any, Dict, List, Optional, Set
 
 import aiosqlite
 
+try:
+    import sqlite_vec
+except ImportError:
+    sqlite_vec = None
+
 from ether.graph.timeline import ActionTimelineRepository
 from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest
@@ -102,6 +107,10 @@ CREATE INDEX IF NOT EXISTS idx_notes_scope ON notes(scope_type, scope_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_session_updated ON nodes(session_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id);
 CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS vec_findings USING vec0(
+    node_id text primary key,
+    embedding float[384] distance_metric=cosine
+);
 """
 
 
@@ -165,6 +174,13 @@ class GraphStore:
                     if db_dir:
                         os.makedirs(db_dir, exist_ok=True)
                 self._conn = await aiosqlite.connect(self.db_path)
+                if sqlite_vec is not None:
+                    try:
+                        await self._conn.enable_load_extension(True)
+                        await self._conn.load_extension(sqlite_vec.loadable_path())
+                        await self._conn.enable_load_extension(False)
+                    except Exception as e:
+                        logger.warning(f"Could not load sqlite-vec extension: {e}")
                 await self._conn.execute("PRAGMA foreign_keys = ON")
                 await self._conn.execute("PRAGMA trusted_schema = OFF")
                 await self._conn.execute("PRAGMA busy_timeout = 5000")

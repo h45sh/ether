@@ -12,9 +12,9 @@ Ensure backward and cross-platform compatibility, handle in-memory `:memory:` da
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Add `sqlite-vec>=0.1.9` to `pyproject.toml` dependencies
-- [ ] Load `sqlite_vec.loadable_path()` in `GraphStore._get_conn()`
-- [ ] Add `vec_findings` virtual table to `SCHEMA_DDL`
-- [ ] Write unit tests in `tests/unit/test_vector_ddl.py` verifying virtual table creation and extension loading
+- [x] Add `sqlite-vec>=0.1.9` to `pyproject.toml` dependencies
+- [x] Load `sqlite_vec.loadable_path()` in `GraphStore._get_conn()`
+- [x] Add `vec_findings` virtual table to `SCHEMA_DDL`
+- [x] Write unit tests in `tests/unit/test_vector_ddl.py` verifying virtual table creation and extension loading
