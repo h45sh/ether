@@ -5,10 +5,10 @@ Implement the Invariant Identity Anchoring engine in `src/ether/graph/store.py`.
 
 **Blocked by:** 01: Database DDL Schema Extensions & BaseFinding Model Update
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Implement cross-IP anchor reconciliation logic in `GraphStore.upsert_findings_batch()`
-- [ ] Automatically wire `anchored_identity` relationship edges when identical anchors are observed on new IPs
-- [ ] Transition previous location nodes to `stale` upon migration
-- [ ] Add anchor extraction helpers to `NetworkService`, `WebEndpoint`, and `DnsRecord`
-- [ ] Write unit tests in `tests/unit/test_identity_anchoring.py` verifying cross-IP migration without duplicate orphan nodes
+- [x] Implement cross-IP anchor reconciliation logic in `GraphStore.upsert_findings_batch()`
+- [x] Automatically wire `anchored_identity` relationship edges when identical anchors are observed on new IPs
+- [x] Transition previous location nodes to `stale` upon migration
+- [x] Add anchor extraction helpers to `NetworkService`, `WebEndpoint`, and `DnsRecord`
+- [x] Write unit tests in `tests/unit/test_identity_anchoring.py` verifying cross-IP migration without duplicate orphan nodes

@@ -12,7 +12,17 @@ class DnsRecord(BaseFinding):
     pik_fields: ClassVar[List[str]] = ["domain", "type", "value"]
 
     @classmethod
-    def create(cls, domain: str, record_type: str, value: str, resolved_ip: Optional[str] = None):
+    def create(
+        cls,
+        domain: str,
+        record_type: str,
+        value: str,
+        resolved_ip: Optional[str] = None,
+        soa_serial: Optional[str] = None,
+        ttl_seconds: Optional[int] = None,
+        anchor_hash: Optional[str] = None,
+        **kwargs,
+    ):
         pik = {
             "domain": domain.lower().strip(),
             "type": record_type.upper(),
@@ -27,7 +37,26 @@ class DnsRecord(BaseFinding):
                 )
             )
 
-        return cls(pik=pik, associations=associations, data={**pik, "resolved_ip": resolved_ip})
+        data = {**pik, "resolved_ip": resolved_ip, **kwargs}
+        if soa_serial:
+            data["soa_serial"] = soa_serial
+            if not anchor_hash:
+                anchor_hash = (
+                    f"soa:{soa_serial}"
+                    if not str(soa_serial).startswith("soa:")
+                    else str(soa_serial)
+                )
+        elif record_type.upper() == "SOA" and not anchor_hash:
+            data["soa_serial"] = value.strip()
+            anchor_hash = f"soa:{value.strip()}"
+
+        return cls(
+            pik=pik,
+            associations=associations,
+            data=data,
+            ttl_seconds=ttl_seconds if ttl_seconds is not None else 3600,
+            anchor_hash=anchor_hash,
+        )
 
 
 class DomainInfo(BaseFinding):

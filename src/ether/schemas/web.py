@@ -12,7 +12,15 @@ class WebEndpoint(BaseFinding):
     pik_fields: ClassVar[list[str]] = ["url"]
 
     @classmethod
-    def create(cls, url: str, host_ip: Optional[str] = None, port: Optional[int] = None, **kwargs):
+    def create(
+        cls,
+        url: str,
+        host_ip: Optional[str] = None,
+        port: Optional[int] = None,
+        favicon_hash: Optional[str] = None,
+        anchor_hash: Optional[str] = None,
+        **kwargs,
+    ):
         parent = None
         if host_ip and port:
             parent = Relation(
@@ -24,8 +32,17 @@ class WebEndpoint(BaseFinding):
                 },
                 via="hosts_endpoint",
             )
+        data = {"url": url, **kwargs}
+        if favicon_hash:
+            data["favicon_hash"] = favicon_hash
+            if not anchor_hash:
+                anchor_hash = (
+                    f"favicon:{favicon_hash}"
+                    if not favicon_hash.startswith("favicon:")
+                    else favicon_hash
+                )
 
-        return cls(pik={"url": url}, parent=parent, data={"url": url, **kwargs})
+        return cls(pik={"url": url}, parent=parent, data=data, anchor_hash=anchor_hash)
 
 
 class WebResource(BaseFinding):

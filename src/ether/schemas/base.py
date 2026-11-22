@@ -5,7 +5,7 @@
 from datetime import UTC, datetime
 from typing import Any, ClassVar, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ether.common.canonicalize import canonicalize_mapping
 
@@ -70,3 +70,41 @@ class BaseFinding(BaseModel):
         if isinstance(v, dict):
             return canonicalize_mapping(v)
         return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_anchor_hash(cls, values: Any) -> Any:
+        """Derive cryptographic anchor_hash from data dictionary if not explicitly provided."""
+        if isinstance(values, dict):
+            if not values.get("anchor_hash"):
+                inner_data = values.get("data")
+                if isinstance(inner_data, dict):
+                    for key in (
+                        "anchor_hash",
+                        "tls_cert_sha256",
+                        "ssh_hostkey_fingerprint",
+                        "favicon_hash",
+                        "soa_serial",
+                    ):
+                        val = inner_data.get(key)
+                        if val:
+                            prefix = (
+                                "tls"
+                                if "tls" in key
+                                else (
+                                    "ssh"
+                                    if "ssh" in key
+                                    else (
+                                        "favicon"
+                                        if "favicon" in key
+                                        else ("soa" if "soa" in key else "")
+                                    )
+                                )
+                            )
+                            values["anchor_hash"] = (
+                                f"{prefix}:{val}"
+                                if prefix and not str(val).startswith(f"{prefix}:")
+                                else str(val)
+                            )
+                            break
+        return values

@@ -648,7 +648,67 @@ class GraphStore:
                     [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
                 )
 
-            rel_edges = list(parent_edges | assoc_edges)
+            # 4.5 Invariant Identity Anchoring & Cross-IP Migration
+            migration_edges: set = set()
+            stale_migrated_node_ids: set = set()
+            migration_event_params = []
+
+            for nid, meta in node_metadata.items():
+                anchor = meta.get("anchor_hash")
+                if not anchor:
+                    continue
+                cursor = await db.execute(
+                    """
+                    SELECT n.id, n.status,
+                           (SELECT 1 FROM edges e
+                            WHERE e.session_id = n.session_id
+                              AND e.source_id = n.id
+                              AND e.target_id = ?
+                              AND e.relation_type = 'anchored_identity') as has_edge
+                    FROM nodes n
+                    WHERE n.session_id = ? AND n.anchor_hash = ? AND n.id != ?
+                    ORDER BY n.updated_at DESC
+                    """,
+                    (nid, session_id, anchor, nid),
+                )
+                matching_nodes = await cursor.fetchall()
+                for old_id, old_status, has_edge in matching_nodes:
+                    migration_edges.add((session_id, old_id, nid, "anchored_identity"))
+                    if old_status != "stale":
+                        stale_migrated_node_ids.add(old_id)
+                    if not has_edge:
+                        migration_event_params.append(
+                            (
+                                session_id,
+                                "identity.migration",
+                                json.dumps(
+                                    {
+                                        "anchor_hash": anchor,
+                                        "from_node_id": old_id,
+                                        "to_node_id": nid,
+                                    }
+                                ),
+                                f"Anchored identity migration: {old_id} -> {nid} ({anchor})",
+                                json.dumps({"action_id": action_id} if action_id else {}),
+                                "{}",
+                            )
+                        )
+
+            if stale_migrated_node_ids:
+                placeholders = ",".join("?" for _ in stale_migrated_node_ids)
+                await db.execute(
+                    f"UPDATE nodes SET status = 'stale', updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id IN ({placeholders})",
+                    [session_id, *stale_migrated_node_ids],
+                )
+
+            if migration_event_params:
+                await db.executemany(
+                    """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    migration_event_params,
+                )
+
+            rel_edges = list(parent_edges | assoc_edges | migration_edges)
             if rel_edges:
                 await db.executemany(
                     """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
@@ -871,6 +931,34 @@ class GraphStore:
             )
             await db.commit()
             return cursor.rowcount
+
+    async def get_anchored_migrations(
+        self,
+        session_id: str,
+        action_id: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
+        """Fetch anchored identity migrations recorded for a session."""
+        async with self._get_conn() as db:
+            db.row_factory = aiosqlite.Row
+            query = """
+                SELECT finding_json, timestamp, action_payload
+                FROM event_log
+                WHERE session_id = ? AND schema_type = 'identity.migration'
+                ORDER BY timestamp ASC
+            """
+            cursor = await db.execute(query, (session_id,))
+            rows = await cursor.fetchall()
+            migrations = []
+            for r in rows:
+                try:
+                    payload = json.loads(r["finding_json"])
+                    act_meta = json.loads(r["action_payload"]) if r["action_payload"] else {}
+                    if action_id and act_meta.get("action_id") != action_id:
+                        continue
+                    migrations.append(payload)
+                except Exception:
+                    continue
+            return migrations
 
     async def get_all_edges(self, session_id: str) -> List[Dict]:
         async with self._get_conn() as db:

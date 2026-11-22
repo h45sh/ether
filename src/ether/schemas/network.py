@@ -29,16 +29,37 @@ class NetworkService(BaseFinding):
         port: int,
         protocol: str = "tcp",
         service_name: Optional[str] = None,
+        tls_cert_sha256: Optional[str] = None,
+        ssh_hostkey_fingerprint: Optional[str] = None,
+        anchor_hash: Optional[str] = None,
         **kwargs,
     ):
         pik = {"host_ip": host_ip, "port": port, "protocol": protocol}
+        data = {**pik, "service_name": service_name, **kwargs}
+        if tls_cert_sha256:
+            data["tls_cert_sha256"] = tls_cert_sha256
+            if not anchor_hash:
+                anchor_hash = (
+                    f"tls:{tls_cert_sha256}"
+                    if not tls_cert_sha256.startswith("tls:")
+                    else tls_cert_sha256
+                )
+        if ssh_hostkey_fingerprint:
+            data["ssh_hostkey_fingerprint"] = ssh_hostkey_fingerprint
+            if not anchor_hash:
+                anchor_hash = (
+                    f"ssh:{ssh_hostkey_fingerprint}"
+                    if not ssh_hostkey_fingerprint.startswith("ssh:")
+                    else ssh_hostkey_fingerprint
+                )
 
         return cls(
             pik=pik,
             parent=Relation(
                 target_type="network.host", target_pik={"ip": host_ip}, via="has_service"
             ),
-            data={**pik, "service_name": service_name, **kwargs},
+            data=data,
+            anchor_hash=anchor_hash,
         )
 
 
@@ -61,7 +82,18 @@ class TLSCertificate(BaseFinding):
     pik_fields: ClassVar[list[str]] = ["fingerprint"]
 
     @classmethod
-    def create(cls, fingerprint: str, host_ip: str, port: int, **kwargs):
+    def create(
+        cls,
+        fingerprint: str,
+        host_ip: str,
+        port: int,
+        anchor_hash: Optional[str] = None,
+        **kwargs,
+    ):
+        if not anchor_hash and fingerprint:
+            anchor_hash = (
+                f"tls:{fingerprint}" if not fingerprint.startswith("tls:") else fingerprint
+            )
         return cls(
             pik={"fingerprint": fingerprint},
             parent=Relation(
@@ -75,4 +107,5 @@ class TLSCertificate(BaseFinding):
                 "port": port,
                 **kwargs,
             },
+            anchor_hash=anchor_hash,
         )
