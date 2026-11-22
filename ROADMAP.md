@@ -65,14 +65,19 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### Epoch 2: The Agent Telemetry Protocol (MCP & Zero-Token Diffs)
+### Epoch 2: The Agent Telemetry Protocol (MCP, Deep Seams & Zero-Token Diffs)
 *Target: v0.3.0*
-*Focus: Turning Ether into the foundational operating system for Autonomous AI Security Agents.*
+*Focus: Deep Module interfaces for Autonomous AI Agents and In-Process Telemetry.*
 
+- [ ] **Unified Protocol Adapter Seam (`ToolAdapter` Dual-Execution Protocol):**
+  - *Deep Module Design*: Deepen the `ToolAdapter` interface so callers and sessions do not care whether an execution is an OS subprocess or a native async coroutine.
+  - Expose a single execution entry point at the seam: `execute_action(target, params) -> AsyncIterator[BaseFinding]`.
+  - **Tier A In-Process Async Coroutines**: Zero-fork high-concurrency adapters (`httpx` HTTP discovery, `sslyze` TLS evaluation, DNS fast-resolvers) running directly within the asyncio loop (10,000+ targets, <150MB RAM).
+  - Automatically falls back to binary subprocess execution for compiled tools (`nmap`, `nuclei`, `ffuf`).
 - [ ] **Native Model Context Protocol (MCP) Server (`ether.mcp`):**
-  - Stdio and Server-Sent Events (SSE) server allowing Cursor, Claude Desktop, and LangGraph agents to drive security tools directly through structured MCP tools.
-  - Core tools: `execute_tool`, `query_graph`, `get_diff`, `inspect_entity`, `abort_action`.
-- [ ] **Deterministic Graph Diffing Engine:**
+  - Stdio and Server-Sent Events (SSE) server allowing Cursor, Claude Desktop, and autonomous agent swarms to drive Ether directly.
+  - Minimal high-leverage interface (5 core tools): `execute_tool`, `query_graph`, `get_diff`, `inspect_entity`, `abort_action`.
+- [ ] **Deterministic Zero-Token Graph Diffing Engine:**
   - After any action completes, compute the exact set-theoretic delta:
     $$\Delta = S_{t+1} \setminus S_t$$
   - Return compact semantic diffs to agents:
@@ -84,8 +89,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
     }
     ```
   - **Result:** Reduces agent LLM context window consumption by **98%** compared to reading raw stdout.
+- [ ] **Temporal Graph State Decay & Cryptographic Invariance (`GraphStore`):**
+  - **Time-to-Live (TTL) State Decay**: Node state confidence decay windows (`confirmed`, `flapping`, `stale`) handling container churn and fast-flux DNS rotation without orphan node pollution.
+  - **Invariant Identity Anchoring**: Decouple logical service identity from volatile IP addresses by anchoring Primary Identity Keys (PIK) to persistent cryptographic fingerprints (TLS cert SHA-256, SSH host keys, HTTP favicon/ETag hashes).
 - [ ] **Embedded Offline Vector Memory & Finding RAG (`sqlite-vec`):**
-  - *Transferred from CyGuide Engine Core*
   - Direct integration of `sqlite-vec` vector embeddings within SQLite.
   - Generates fast local vector embeddings for discovered services, banners, MITRE ATT&CK techniques, and CVE summaries.
   - Instant local semantic search and finding correlation with zero external API calls or network egress.
@@ -93,24 +100,16 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Standardized `<untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`</untrusted_scan_output>` converted to `<\/untrusted_scan_output>`).
   - Automatic redaction of private keys, authorization tokens, passwords, and API keys.
   - Active neutralization of adversarial prompt injection embedded inside HTTP headers, SSL certificates, and DNS TXT records.
-- [ ] **Dynamic Target Dynamics & State Decay (TTL & Flapping Defense):**
-  - Graph node state confidence decay windows and status flags (`confirmed`, `flapping`, `stale`).
-  - Graceful handling of container churn, ephemeral microservices, and fast-flux DNS rotation without polluting the graph with orphan nodes.
-- [ ] **Invariant Identity Anchoring:**
-  - Decoupling logical service identity from volatile IP addresses.
-  - Anchoring Primary Identity Keys (PIK) to persistent cryptographic fingerprints: TLS certificate SHA-256 digests, SSH host key fingerprints, HTTP favicon/ETag hashes, and service UUIDs.
 
 ---
 
 ### Epoch 3: High-Throughput Chained Execution & Pipeline DAG
 *Target: v0.4.0*
-*Focus: Multi-stage, high-concurrency reconnaissance pipelines and in-process async coroutine scaling.*
+*Focus: Reactive pipeline DAGs, kernel-bypass tools, and deception defense.*
 
-- [ ] **Three-Tier Arsenal Architecture (Async Coroutines vs. Compiled Binaries vs. PTY):**
-  - **Tier A (Native In-Process Async Coroutines):** Zero-fork, high-concurrency protocol adapters (`httpx`, `sslyze`, `scapy`, `arjun`) capable of interrogating 10,000+ endpoints concurrently with <150 MB RAM footprint.
-  - **Tier B (Internet-Scale Compiled Binaries):** High-throughput adapters for kernel-bypass tools (`masscan`, `zmap`, `katana`) streaming raw JSON directly into bounded memory ring buffers.
-  - **Tier C (Supervised POSIX PTYs):** Terminal emulation for interactive sessions (`msfconsole`, `gdb`, live shells).
-- [ ] **Chained Pipeline Engine (Unix Pipe Metaphor for Security):**
+- [ ] **High-Throughput Arsenal Expansion (Tier B Kernel-Bypass Binaries):**
+  - High-throughput adapters for kernel-bypass tools (`masscan`, `zmap`, `katana`) streaming raw JSON directly into bounded memory ring buffers.
+- [ ] **Chained Reactive Pipeline Engine (Unix Pipe Metaphor for Security):**
   - Allow declarative piping of security tools where findings from tool A automatically parameterize tool B:
     ```bash
     ether pipeline "subfinder(target=$DOMAIN) | dnspython | httpx | nuclei"
