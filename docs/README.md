@@ -46,8 +46,9 @@ Following the **[Diátaxis Framework](https://diataxis.fr/)**, the documentation
 * **[Quickstart Tutorial](tutorials/quickstart.md)**: Initialize SQLite WAL storage, discover adapters, and upsert findings in 5 minutes.
 
 ### 2. How-To Guides
-* **[Authoring Pluggable Tool Adapters](how-to/author-adapters.md)**: Add new security tools to Ether using `ToolAdapter` and `manifest.toml`.
-* **[Headless CLI Operations](how-to/cli-usage.md)**: Running scans, inspecting sessions, and exporting investigations.
+* **[Agent Telemetry & MCP Integration](how-to/agent-telemetry-mcp.md)**: Connect autonomous AI agents (Cursor, Claude Desktop) via native MCP server with zero-token diffs and finding RAG.
+* **[Authoring Pluggable Tool Adapters](how-to/author-adapters.md)**: Add new security tools to Ether using `ToolAdapter` (Tier A async coroutines & Tier B binaries) and `manifest.toml`.
+* **[Headless CLI Operations](how-to/cli-usage.md)**: Running scans, inspecting sessions, querying entity graphs, and exporting investigations.
 * **[Contributing Guidelines](how-to/contributing.md)**: Coding standards, mechanical quality gates, and pull request checklist.
 
 ### 3. Reference

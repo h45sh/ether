@@ -152,7 +152,8 @@ Our documentation follows the **[Diátaxis Framework](https://diataxis.fr/)**:
 | Quadrant | Document | Description |
 | :--- | :--- | :--- |
 | **Tutorial** | [Quickstart Guide](docs/tutorials/quickstart.md) | First steps initializing graphs, loading adapters, and querying telemetry. |
-| **How-To** | [Authoring Tool Adapters](docs/how-to/author-adapters.md) | Specification for writing streaming parsers in `tools/`. |
+| **How-To** | [Agent Telemetry & MCP](docs/how-to/agent-telemetry-mcp.md) | Connecting AI agents (Cursor, Claude) via native MCP with zero-token diffs and RAG. |
+| **How-To** | [Authoring Tool Adapters](docs/how-to/author-adapters.md) | Specification for writing streaming parsers in `tools/` (Tier A & Tier B). |
 | **How-To** | [Headless CLI Operations](docs/how-to/cli-usage.md) | Running tool sessions and investigations headless from CLI. |
 | **How-To** | [Contributing Standards](docs/how-to/contributing.md) | Pull request guidelines, AST checks, and code hygiene. |
 | **Reference** | [Schema Registry](docs/reference/schema-registry.md) | Complete catalog of 18 normalized `BaseFinding` schemas. |
