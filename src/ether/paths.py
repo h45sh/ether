@@ -160,3 +160,17 @@ def get_git_branch(target_dir: Optional[str] = None) -> str:
             break
         cur = parent
     return ""
+
+
+def atomic_create_file(path: str, content: str = "") -> None:
+    """Atomically create a private file with mode 0o600 (-rw-------) preventing TOCTOU vulnerabilities."""
+    base_dir = os.path.dirname(os.path.abspath(path))
+    if base_dir:
+        os.makedirs(base_dir, mode=0o700, exist_ok=True)
+    flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
+    fd = os.open(path, flags, 0o600)
+    try:
+        if content:
+            os.write(fd, content.encode("utf-8"))
+    finally:
+        os.close(fd)

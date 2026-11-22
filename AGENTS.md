@@ -123,3 +123,28 @@ Ether adheres to the **"Review Proof, Not Code"** engineering model:
    - `pytest -m tier0`: AST invariants, mathematical properties (<2s).
    - `pytest -m fast`: Fast in-memory process, graph, and gateway tests (<5s).
    - `pytest -m fuzz`: Universal security tool adapter fuzzing suite.
+
+---
+
+## 8. Codebase Tiered File Protection Policy
+
+All contributors and autonomous agents must adhere to the file modification governance policy:
+
+| Tier | Category | Files | Policy |
+| :--- | :--- | :--- | :--- |
+| **Tier 1** | **Frozen Core** | `ether/schemas/base.py`<br>`ether/graph/store.py`<br>`ether/common/canonicalize.py`<br>`ether/registry/registry.py`<br>`ether/paths.py` | Foundational engine infrastructure. Must not be modified casually. Zero breaking contract changes without architectural review. |
+| **Tier 2** | **Review Required** | `tools/*/adapter.py`<br>`ether/schemas/*.py`<br>`ether/core/executor.py`<br>`ether/core/session.py`<br>`ether/gateway/gate.py` | Core runtime and normalization components. Any modification requires full regression testing verifying backward compatibility. |
+| **Tier 3** | **Free to Change** | `docs/`<br>`scripts/`<br>`tests/`<br>`ROADMAP.md` | Layouts, developer guides, tests, and operational scripts. |
+
+---
+
+## 9. Security Invariants (Atomic Permissions & AI Sandboxing)
+
+1. **Atomic File Permissions (TOCTOU Defense):**
+   - Files containing credentials, operator notes, or sensitive state must be created atomically with permission mode `0o600` (`-rw-------`) via `atomic_create_file(path, content)`.
+   - Never create with default umask and `chmod` afterwards. Application data directories must use `0o700`.
+2. **AI Prompt Injection Boundary:**
+   - Untrusted target scanner outputs passed to AI models must be wrapped inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags using `sanitize_untrusted_output()`.
+   - Neutralizes closing tag breakouts by escaping `</untrusted_scan_output>` to `<\/untrusted_scan_output>`.
+3. **Forensic Session Immutability:**
+   - Sessions marked as `closed = 1` in the database are forensically sealed. Mutation attempts against closed sessions raise `PermissionError`.

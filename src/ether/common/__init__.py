@@ -12,6 +12,7 @@ from ether.common.algorithms import (
 )
 
 __all__ = [
+    "sanitize_untrusted_output",
     "ANSI_ESCAPE_RE",
     "BloomFilter",
     "CTF_FLAG_RE",
@@ -166,3 +167,11 @@ def strip_scanner_noise(raw_text: str) -> str:
         cleaned.append(stripped)
 
     return "\n".join(cleaned[-60:]) if cleaned else raw_text[-1500:]
+
+
+def sanitize_untrusted_output(raw_text: str) -> str:
+    """Wrap untrusted scanner output in protective boundary tags and neutralize breakout attempts."""
+    if not raw_text:
+        return "<untrusted_scan_output>\n</untrusted_scan_output>"
+    neutralized = raw_text.replace("</untrusted_scan_output>", r"<\/untrusted_scan_output>")
+    return f"<untrusted_scan_output>\n{neutralized}\n</untrusted_scan_output>"

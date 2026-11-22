@@ -140,22 +140,22 @@ from tools.mytool.adapter import MyToolAdapter
 
 
 async def test_run():
- store = GraphStore(":memory:")
- await store.initialize()
+    store = GraphStore(":memory:")
+    await store.initialize()
 
- adapter = MyToolAdapter()
- executor = Executor(store)
+    adapter = MyToolAdapter()
+    executor = Executor(store)
 
- # Run against a mock target or local test server
- target = WebEndpoint.create(url="http://127.0.0.1:8000")
- cmd = adapter.build_command(target, {})
- print(f"Executing: {' '.join(cmd)}")
+    # Run against a mock target or local test server
+    target = WebEndpoint.create(url="http://127.0.0.1:8000")
+    cmd = adapter.build_command(target, {})
+    print(f"Executing: {' '.join(cmd)}")
 
- await store.close()
+    await store.close()
 
 
 if __name__ == "__main__":
- asyncio.run(test_run())
+    asyncio.run(test_run())
 ```
 
 ---
