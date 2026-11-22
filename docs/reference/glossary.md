@@ -89,3 +89,48 @@ _Avoid_: Diff blob, patch payload, change list
 **Sync-with-Fallback Execution**:
 An execution pattern where tool invocations are awaited synchronously up to a configured deadline, automatically falling back to detached background supervision if the operation exceeds the threshold.
 _Avoid_: Hybrid polling, timeout detach, deferred execution
+
+---
+
+## Temporal Graph Decay & Identity Invariance (Epoch 2)
+
+**Confidence Decay Window**:
+A bounded time interval (`ttl_seconds`) during which an entity finding remains in a `confirmed` status before transitioning to `flapping` or `stale`.
+_Avoid_: Cache TTL, record expiration, delete timeout
+
+**Invariant Identity Anchoring**:
+The architectural mechanism that decouples logical entity identity from volatile IP addresses by binding Primary Identity Keys to persistent cryptographic fingerprints.
+_Avoid_: Fixed IP mapping, static binding, hardware lock
+
+**Cross-IP Migration**:
+The deterministic graph reconciliation process where an entity observed at a new IP address inherits the historical lineage and edges of its previous instance.
+_Avoid_: IP update, node overwrite, alias merge
+
+**Flapping Node**:
+An entity whose observation status or bound network address oscillates rapidly across successive actions within its active time-to-live window.
+_Avoid_: Bouncing host, unstable port, dynamic target
+
+**Anchor Hash**:
+A standardized, deterministic `<type>:<hash>` fingerprint indexing an entity to its persistent cryptographic or behavioral identity.
+_Avoid_: Fingerprint key, identity token, cert hash
+
+---
+
+## Vector Memory & Finding RAG (Epoch 2)
+
+**vec0 Virtual Table**:
+A native SQLite virtual table engine provided by `sqlite-vec` enabling in-process cosine, L2, and dot-product vector search directly over 384-dimensional finding embeddings.
+_Avoid_: Vector database, vector index file, embedding cache
+
+**Vector Embedding Engine**:
+A deterministic, pure-offline component that maps finding text strings to 384-dimensional unit vector float arrays without remote network egress.
+_Avoid_: Remote embedder, OpenAI wrapper, cloud vectorizer
+
+**Semantic Text Template**:
+A declarative, human-readable stringification method on `BaseFinding` (`to_semantic_text()`) that structures finding attributes into clean natural language sentences for optimal vector retrieval.
+_Avoid_: Raw JSON dump, stringified dict, toString
+
+**Finding RAG**:
+The retrieval-augmented generation pattern in `GraphTelemetryCompiler` and MCP tools that pulls semantically related vulnerabilities, services, and credentials based on an agent's tactical objective.
+_Avoid_: Document search, semantic lookup, finding search
+

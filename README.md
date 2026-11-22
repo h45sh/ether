@@ -135,7 +135,7 @@ pytest -m tier0
 # Run Universal Adapter Fuzzing Suite across all 11 tool adapters
 pytest -m fuzz
 
-# Run Full Regression Suite (166 tests)
+# Run Full Regression Suite (284 tests)
 pytest tests/
 
 # Code Style & Quality Check
@@ -166,8 +166,8 @@ Our documentation follows the **[Diátaxis Framework](https://diataxis.fr/)**:
 
 ## Master Roadmap Summary
 
-- **Epoch 1:** Hardened Substrate & Decoupled Core *(Current - v0.1.0)*
-- **Epoch 2:** Autonomous Agent Telemetry Protocol (MCP & Zero-Token Diffs) *(v0.3.0)*
+- **Epoch 1:** Hardened Substrate & Decoupled Core *(v0.1.0 – v0.2.0 - Complete)*
+- **Epoch 2:** Autonomous Agent Telemetry Protocol (MCP & Zero-Token Diffs) *(v0.3.0 - Complete)*
 - **Epoch 3:** High-Throughput Chained Execution & Pipeline DAG *(v0.4.0)*
 - **Epoch 4:** The Unrestricted "Beast" Offensive Engine (PTY & Attack Paths) *(v0.5.0)*
 - **Epoch 5:** Distributed Sovereign Mesh & Global Telemetry *(v1.0.0+)*
