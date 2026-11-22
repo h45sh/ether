@@ -8,14 +8,11 @@ from uuid import UUID
 
 from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
 from ether.cli.formatters import print_error, print_json
-from ether.core.executor import Executor
 from ether.core.session import (
     ExecutionChunk,
     ExecutionCompleted,
     ExecutionFailed,
-    ExecutionSession,
     ExecutionStarted,
-    SubprocessCommandRunner,
 )
 from ether.gateway.gate import ActionGateway
 from ether.schemas.base import BaseFinding
@@ -100,15 +97,8 @@ async def handle_run(args: Any, context: CliContext) -> int:
         target_finding = _infer_target_finding(target)
         target_node_id = await store.upsert_finding(session_id, target_finding)
 
-        # 3. Execution Session Setup
-        executor = Executor()
-        runner = SubprocessCommandRunner(executor)
-        session = ExecutionSession(
-            store=store,
-            gateway=gateway,
-            registry=registry,
-            command_runner=runner,
-        )
+        # 3. Execution Session Setup via Gateway
+        session = gateway.create_session()
 
         action = ActionRequest(
             session_id=UUID(session_id),
@@ -152,5 +142,5 @@ async def handle_run(args: Any, context: CliContext) -> int:
                         }
                     )
 
-        await executor.shutdown()
+        await session.shutdown()
         return exit_code

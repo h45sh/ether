@@ -492,3 +492,24 @@ async def test_privileged_action_missing_sudo_binary():
     assert job.status == JobStatusEnum.FAILED
     assert any("'sudo' binary not found" in c for c in chunks_received)
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_create_factory():
+    store = GraphStore(":memory:")
+    await store.initialize()
+
+    # 1. Zero-boilerplate factory
+    session = ExecutionSession.create(store)
+    assert session.store is store
+    assert session.gateway is not None
+    assert session.registry is not None
+    assert session.runner is not None
+
+    # 2. ActionGateway factory
+    gateway = ActionGateway(registry=session.registry, store=store)
+    gateway_session = gateway.create_session()
+    assert gateway_session.gateway is gateway
+    assert gateway_session.store is store
+
+    await store.close()

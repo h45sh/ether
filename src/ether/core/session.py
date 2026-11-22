@@ -49,6 +49,34 @@ class ActionValidator(Protocol):
         ...
 
 
+class PassthroughActionValidator:
+    """Default non-restricting action validator for standalone execution sessions."""
+
+    def resolve_entity_variables(self, pik: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        resolved: Dict[str, Any] = {}
+        if pik:
+            target = pik.get("ip") or pik.get("domain") or pik.get("host_ip")
+            if target:
+                resolved["TARGET"] = target
+            if "port" in pik:
+                resolved["PORT"] = pik["port"]
+            if "service" in pik:
+                resolved["SERVICE"] = pik["service"]
+            if "protocol" in pik:
+                resolved["PROTOCOL"] = pik["protocol"]
+        return resolved
+
+    def interpolate_variables(self, text: str, variables: Dict[str, Any]) -> str:
+        for var_name, val in variables.items():
+            placeholder = f"${var_name}"
+            if placeholder in text:
+                text = text.replace(placeholder, str(val))
+        return text
+
+    async def validate_action(self, action: ActionRequest) -> bool:
+        return True
+
+
 @runtime_checkable
 class TerminalSuspendContext(Protocol):
     """Protocol for safely suspending a terminal UI during privileged operations."""
@@ -215,6 +243,35 @@ class ExecutionSession:
         self.closed_job_ids: set[str] = set()
         self._job_spoolers: Dict[UUID, LogSpooler] = {}
 
+    @classmethod
+    def create(
+        cls,
+        store: GraphStore,
+        gateway: Optional[ActionValidator] = None,
+        registry: Optional[ToolRegistry] = None,
+        command_runner: Optional[CommandRunner] = None,
+        user_env: Optional[Dict[str, str]] = None,
+        user_shell: Optional[str] = None,
+    ) -> "ExecutionSession":
+        """Create an ExecutionSession with standard defaults.
+
+        Automatically instantiates default ToolRegistry, Executor, and SubprocessCommandRunner
+        if not explicitly provided, eliminating caller assembly boilerplate.
+        """
+        reg = registry if registry is not None else ToolRegistry()
+        runner = (
+            command_runner if command_runner is not None else SubprocessCommandRunner(Executor())
+        )
+        gw = gateway if gateway is not None else PassthroughActionValidator()
+        return cls(
+            store=store,
+            gateway=gw,
+            registry=reg,
+            command_runner=runner,
+            user_env=user_env,
+            user_shell=user_shell,
+        )
+
     def add_status_listener(self, listener: Callable[[JobStatus], Any]) -> None:
         """Register a callback notified when any job changes status."""
         self._status_listeners.append(listener)
@@ -237,38 +294,6 @@ class ExecutionSession:
         """Get the original ActionRequest for a job."""
         return self._job_actions.get(action_id)
 
-    def register_job(self, job: JobStatus) -> None:
-        """Register or update a JobStatus in active job tracking."""
-        self._active_jobs[job.job_id] = job
-        self._notify_status(job)
-
-    def register_action(self, action: ActionRequest) -> None:
-        """Register the ActionRequest for a job."""
-        self._job_actions[action.action_id] = action
-
-    def append_job_buffer(self, action_id: UUID, chunk: str) -> None:
-        """Append an output chunk to in-memory job buffer."""
-        if action_id not in self._job_buffers:
-            self._job_buffers[action_id] = []
-        self._job_buffers[action_id].append(chunk)
-
-    def remove_job(self, action_id: UUID) -> Optional[JobStatus]:
-        """Remove a job from active in-memory tracking and record in closed_job_ids."""
-        job = self._active_jobs.pop(action_id, None)
-        self._job_actions.pop(action_id, None)
-        self._job_buffers.pop(action_id, None)
-        self._running_tasks.pop(action_id, None)
-        self.closed_job_ids.add(str(action_id))
-        return job
-
-    def mark_job_closed(self, action_id: Any) -> None:
-        """Record an action ID as closed."""
-        self.closed_job_ids.add(str(action_id))
-
-    def is_job_closed(self, action_id: Any) -> bool:
-        """Check if an action has been marked closed."""
-        return str(action_id) in self.closed_job_ids
-
     def get_active_jobs(self) -> List[JobStatus]:
         return list(self._active_jobs.values())
 
@@ -288,10 +313,6 @@ class ExecutionSession:
     def get_output_history(self, action_id: UUID) -> List[str]:
         """Return buffered output chunks for replay when switching or restoring tabs."""
         return list(self._job_buffers.get(action_id, []))
-
-    def get_job_buffer(self, action_id: UUID) -> List[str]:
-        """Return buffered output chunks for an action."""
-        return self.get_output_history(action_id)
 
     def get_active_jobs_count(self, session_id: Optional[str] = None) -> int:
         """Get count of active (running/queued) jobs, optionally filtered by session_id."""

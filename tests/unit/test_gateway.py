@@ -405,4 +405,10 @@ async def test_gateway_cidr_scope_enforcement(tmp_path):
     )
     assert await gateway_unrestricted.validate_action(action_metadata) is True
 
+    # 5. verify_action returns structured report rather than throwing
+    gateway_safe = ActionGateway(mock_registry, store, policy=GatePolicy.SAFE)
+    report = await gateway_safe.verify_action(action_metadata)
+    assert not report.is_valid
+    assert any("strictly prohibited" in str(i.description) for i in report.issues)
+
     await store.close()

@@ -157,6 +157,58 @@ class ActionGateway:
         verifier = PreflightVerifier(registry=self.registry, policy=self.policy)
         return verifier.verify(tool_name=tool_name, target=target, flags=flags)
 
+    async def verify_action(self, action: ActionRequest):
+        """Validate an action request returning a structured PreflightReport rather than raising exceptions."""
+        from ether.gateway.preflight import PreflightIssue
+
+        raw_flags = action.params.get("raw_flags", "") if action.params else ""
+        target_str = str(action.target_entity_id or "")
+        report = self.preflight_verify(
+            tool_name=action.tool_name,
+            target=target_str,
+            flags=raw_flags,
+        )
+
+        try:
+            await self.validate_action(action)
+        except ActionValidationError as e:
+            report.issues.append(
+                PreflightIssue(
+                    category="security",
+                    severity="error",
+                    title="Action validation error",
+                    description=str(e),
+                    remediation_hint="Ensure target and parameters comply with policy and CIDR scope.",
+                )
+            )
+
+        return report
+
+    def create_session(
+        self,
+        command_runner: Optional[Any] = None,
+        user_env: Optional[Dict[str, str]] = None,
+        user_shell: Optional[str] = None,
+    ):
+        """Factory creating an ExecutionSession governed by this ActionGateway and its configured policies."""
+        from ether.core.executor import Executor
+        from ether.core.session import ExecutionSession, SubprocessCommandRunner
+
+        if not self.store:
+            raise ValueError(
+                "ActionGateway requires a configured GraphStore to spawn an ExecutionSession."
+            )
+
+        runner = command_runner or SubprocessCommandRunner(Executor())
+        return ExecutionSession(
+            store=self.store,
+            gateway=self,
+            registry=self.registry,
+            command_runner=runner,
+            user_env=user_env,
+            user_shell=user_shell,
+        )
+
     def set_allowed_cidrs(self, allowed_cidrs: Optional[List[str]]) -> None:
         """Configure declarative CIDR scope boundaries for engagements."""
         if not allowed_cidrs:
