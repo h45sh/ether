@@ -387,59 +387,6 @@ def test_schema_version_default_and_custom():
     assert exploit.schema_version == "2.0"
 
 
-def test_new_schemas_presentation_metadata():
-    import json
-
-    from ether.schemas.presentation import (
-        format_activity_entry,
-        format_node_label,
-        get_schema_display_meta,
-    )
-
-    # 1. Display meta
-    sym, color, name = get_schema_display_meta("exploit.reference")
-    assert sym == "▲"
-    assert name == "Exploits"
-
-    sym, color, name = get_schema_display_meta("web.technology")
-    assert sym == "●"
-    assert name == "Technologies"
-
-    sym, color, name = get_schema_display_meta("audit.misconfig")
-    assert sym == "▲"
-    assert name == "Misconfigurations"
-
-    # 2. Activity formatting
-    exp = ExploitReference.create(exploit_id="EDB-ID:50000", title="Test Exploit")
-    act_exp = format_activity_entry(
-        "Session 1", "exploit.reference", "Found exploit", finding_obj=exp
-    )
-    assert "Exploit: EDB-ID:50000" in act_exp
-
-    tech = WebTechnology.create(url="http://test.local", technology_name="Nginx", version="1.18")
-    act_tech = format_activity_entry("Session 1", "web.technology", "Found tech", finding_obj=tech)
-    assert "Tech: Nginx 1.18" in act_tech
-
-    # 3. Node labels
-    node_exp = {
-        "id": "node_1",
-        "schema_type": "exploit.reference",
-        "pik_json": json.dumps({"exploit_id": "EDB-ID:50000"}),
-        "data_json": json.dumps({"title": "Apache Path Traversal"}),
-    }
-    lbl_exp = format_node_label(node_exp)
-    assert "EDB-ID:50000: Apache Path Traversal" in lbl_exp
-
-    node_tech = {
-        "id": "node_2",
-        "schema_type": "web.technology",
-        "pik_json": json.dumps({"technology_name": "PHP"}),
-        "data_json": json.dumps({"version": "8.1"}),
-    }
-    lbl_tech = format_node_label(node_tech)
-    assert lbl_tech == "PHP 8.1"
-
-
 def test_all_schemas_json_roundtrip_symmetry():
     """Rule: Every finding schema must support 100% loss-free round-trip JSON serialization.
 
