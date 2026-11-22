@@ -11,7 +11,8 @@ class ToolMeta(BaseModel):
     one_line_summary: str = ""
     category: str = "Misc"
     categories: List[str]
-    binary: str
+    binary: str = ""
+    execution_tier: str = "subprocess"  # "coroutine" | "subprocess"
     theory: str = ""
 
 

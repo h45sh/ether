@@ -17,32 +17,54 @@ def handle_tool_list(args: Any, context: CliContext) -> int:
         for name in sorted(tools):
             data = registry.get_tool(name)
             manifest = data.get("manifest") if data else None
-            binary = getattr(manifest, "binary", name) if manifest else name
-            is_installed = shutil.which(binary) is not None
+            adapter = data.get("adapter") if data else None
+            meta = getattr(manifest, "meta", None)
+            tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+            binary = getattr(meta, "binary", name) if meta else name
+
+            if tier == "coroutine":
+                is_installed = adapter.validate_install() if adapter else True
+                display_bin = binary or "native"
+            else:
+                is_installed = shutil.which(binary) is not None if binary else False
+                display_bin = binary or name
+
             result.append(
                 {
                     "name": name,
-                    "binary": binary,
+                    "binary": display_bin,
+                    "tier": tier,
+                    "execution_tier": tier,
                     "installed": is_installed,
-                    "category": getattr(manifest, "category", "general") if manifest else "general",
-                    "description": getattr(manifest, "description", "") if manifest else "",
+                    "category": getattr(meta, "category", "general") if meta else "general",
+                    "description": getattr(meta, "description", "") if meta else "",
                 }
             )
         print_json(result)
         return EXIT_SUCCESS
 
-    headers = ["TOOL", "BINARY", "INSTALLED", "CATEGORY", "DESCRIPTION"]
+    headers = ["TOOL", "TIER", "BINARY", "INSTALLED", "CATEGORY", "DESCRIPTION"]
     rows = []
     for name in sorted(tools):
         data = registry.get_tool(name)
         manifest = data.get("manifest") if data else None
-        binary = getattr(manifest, "binary", name) if manifest else name
-        is_installed = "yes" if shutil.which(binary) else "no"
-        cat = getattr(manifest, "category", "general") if manifest else "general"
-        desc = getattr(manifest, "description", "") if manifest else ""
+        adapter = data.get("adapter") if data else None
+        meta = getattr(manifest, "meta", None)
+        tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+        binary = getattr(meta, "binary", name) if meta else name
+
+        if tier == "coroutine":
+            is_installed = "yes" if (adapter and adapter.validate_install()) else "yes"
+            display_bin = binary or "native"
+        else:
+            is_installed = "yes" if (binary and shutil.which(binary)) else "no"
+            display_bin = binary or name
+
+        cat = getattr(meta, "category", "general") if meta else "general"
+        desc = getattr(meta, "description", "") if meta else ""
         if len(desc) > 50:
             desc = desc[:47] + "..."
-        rows.append([name, binary, is_installed, cat, desc])
+        rows.append([name, tier, display_bin, is_installed, cat, desc])
 
     print_table(headers, rows)
     return EXIT_SUCCESS
@@ -62,16 +84,22 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         return EXIT_RUNTIME_ERROR
 
     manifest = data["manifest"]
-    binary = getattr(manifest, "binary", tool_name)
-    bin_path = shutil.which(binary)
+    meta = getattr(manifest, "meta", None)
+    tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+    binary = getattr(meta, "binary", tool_name) if meta else tool_name
+    bin_path = shutil.which(binary) if binary else None
+    adapter = data.get("adapter")
+    is_installed = adapter.validate_install() if (tier == "coroutine" and adapter) else (bin_path is not None)
 
     info = {
         "name": tool_name,
-        "binary": binary,
+        "tier": tier,
+        "execution_tier": tier,
+        "binary": binary or "native",
         "binary_path": bin_path,
-        "installed": bin_path is not None,
-        "category": getattr(manifest, "category", "general"),
-        "description": getattr(manifest, "description", ""),
+        "installed": is_installed,
+        "category": getattr(meta, "category", "general") if meta else "general",
+        "description": getattr(meta, "description", "") if meta else "",
         "input_accepts": getattr(manifest.input, "accepts", [])
         if hasattr(manifest, "input")
         else [],
@@ -84,9 +112,13 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         print_json(info)
     else:
         print(f"Tool:        {info['name']}")
-        print(
-            f"Binary:      {info['binary']} ({'Installed: ' + str(bin_path) if bin_path else 'NOT FOUND'})"
-        )
+        print(f"Tier:        {info['tier']}")
+        if tier == "coroutine":
+            print(f"Execution:   Native Async Coroutine ({'Ready' if is_installed else 'Dependencies missing'})")
+        else:
+            print(
+                f"Binary:      {info['binary']} ({'Installed: ' + str(bin_path) if bin_path else 'NOT FOUND'})"
+            )
         print(f"Category:    {info['category']}")
         print(f"Description: {info['description']}")
         print(f"Input:       {', '.join(info['input_accepts']) or 'None'}")

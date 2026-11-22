@@ -68,3 +68,51 @@ def test_tool_registry_discovery(tmp_path):
     assert "mock_tool" in health
     assert health["mock_tool"]["status"] == "ok"
     assert health["mock_tool"]["healthy"] is True
+
+
+def test_tool_registry_coroutine_discovery(tmp_path):
+    """Verify tool discovery handles execution_tier='coroutine' without requiring binary."""
+    tool_dir = tmp_path / "mock_coro"
+    tool_dir.mkdir()
+
+    manifest_content = textwrap.dedent("""
+        [meta]
+        name = "mock_coro"
+        description = "A native coroutine tool"
+        categories = ["Recon"]
+        execution_tier = "coroutine"
+
+        [modes]
+        learning = false
+        power = true
+
+        [input]
+        accepts = ["network.host"]
+
+        [output]
+        produces = ["web.endpoint"]
+    """)
+    (tool_dir / "manifest.toml").write_text(manifest_content)
+
+    adapter_content = textwrap.dedent("""
+        from typing import Dict, Any, AsyncIterator, List
+        from ether.registry.adapter import ToolAdapter
+        from ether.schemas.base import BaseFinding
+
+        class MockCoroAdapter(ToolAdapter):
+            execution_tier = "coroutine"
+            def validate_install(self) -> bool: return True
+            def build_command(self, t, p) -> List[str]: return []
+            async def parse_output(self, o, t) -> AsyncIterator[BaseFinding]:
+                if False: yield BaseFinding(pik={}, data={})
+    """)
+    (tool_dir / "adapter.py").write_text(adapter_content)
+
+    registry = ToolRegistry(tools_dir=str(tmp_path))
+    registry.load_tools()
+
+    assert "mock_coro" in registry.list_tools()
+    tool = registry.get_tool("mock_coro")
+    assert tool["manifest"].meta.execution_tier == "coroutine"
+    assert tool["adapter"].execution_tier == "coroutine"
+

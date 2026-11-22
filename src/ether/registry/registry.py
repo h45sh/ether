@@ -59,6 +59,8 @@ class ToolRegistry:
                         adapter_instance = self._load_adapter(adapter_path)
 
                         if adapter_instance:
+                            if hasattr(manifest.meta, "execution_tier"):
+                                adapter_instance.execution_tier = manifest.meta.execution_tier
                             self.tools[manifest.meta.name] = {
                                 "manifest": manifest,
                                 "adapter": adapter_instance,

@@ -68,7 +68,7 @@ def test_cli_tool_list_and_info(capsys):
     captured = capsys.readouterr()
     tools = json.loads(captured.out)
     assert isinstance(tools, list)
-    assert any(t["name"] == "nmap" for t in tools)
+    assert any(t["name"] == "nmap" and t.get("tier") == "subprocess" for t in tools)
 
     # Info
     code = main(["tool", "info", "nmap", "--json"])
@@ -77,6 +77,7 @@ def test_cli_tool_list_and_info(capsys):
     info = json.loads(captured.out)
     assert info["name"] == "nmap"
     assert info["binary"] == "nmap"
+    assert info["tier"] == "subprocess"
 
 
 @pytest.mark.asyncio

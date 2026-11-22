@@ -5,9 +5,9 @@ Update the tool manifest schema and registry discovery to support execution tier
 
 **Blocked by:** 01: ExecutionContext and ToolAdapter Dual-Execution Protocol Base
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Add `execution_tier: str = "subprocess"` to `ToolManifest` in `src/ether/registry/manifest.py`
-- [ ] Update `ToolRegistry.load_tools()` in `src/ether/registry/registry.py` to support coroutine discovery without binary path lookups
-- [ ] Update `src/ether/cli/commands/tool.py` to display execution tier in terminal and JSON outputs
-- [ ] Add unit tests in `tests/unit/test_engine_registry.py` and `tests/unit/test_cli.py`
+- [x] Add `execution_tier: str = "subprocess"` to `ToolManifest` in `src/ether/registry/manifest.py`
+- [x] Update `ToolRegistry.load_tools()` in `src/ether/registry/registry.py` to support coroutine discovery without binary path lookups
+- [x] Update `src/ether/cli/commands/tool.py` to display execution tier in terminal and JSON outputs
+- [x] Add unit tests in `tests/unit/test_engine_registry.py` and `tests/unit/test_cli.py`
