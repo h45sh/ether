@@ -68,7 +68,7 @@ Ether strictly adheres to John Ousterhout’s philosophy of software design (**D
 
 ---
 
-## 5. Security & Policy Seams: Safe vs. Unrestricted (Beast Mode)
+## 5. Security & Policy Seams: Safe vs. Unrestricted
 
 Ether features a first-class `GatePolicy` seam:
 
@@ -76,7 +76,7 @@ Ether features a first-class `GatePolicy` seam:
 class GatePolicy(str, Enum):
     SAFE = "safe"  # Enforces SSRF defense, CIDR scope boundary, blocks metadata
     UNRESTRICTED = (
-        "unrestricted"  # Beast mode: allows raw execution, any target, unrestricted shell
+        "unrestricted"  # Unrestricted: allows raw execution, any target, unrestricted shell
     )
 ```
 

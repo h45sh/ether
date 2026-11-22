@@ -13,7 +13,7 @@ Every modern computing environment has an operating system kernel that multiplex
 Instead of human operators and AI agents clumsily spawning raw bash subshells and drowning in thousands of unstructured stdout lines, Ether provides:
 1. **Universal Execution Virtualization:** Sandboxed process supervision, secret scrubbing, and backpressure-regulated streaming.
 2. **Deterministic World State:** A reactive graph database where hosts, ports, web applications, credentials, and CVEs are deduplicated and merged on-the-fly via mathematical Primary Identity Keys (PIK).
-3. **Pluggable Policy Isolation:** Running seamlessly in **Safe Mode** (for labs/universities like CyGuide) or **Unrestricted Beast Mode** (for sovereign red-teams and autonomous offensive loops).
+3. **Pluggable Policy Isolation:** Running seamlessly in **Safe Mode** (for labs/universities like CyGuide) or **Unrestricted Mode** (for sovereign red-teams and autonomous offensive loops).
 4. **Agent Telemetry Protocol:** Zero-token diff streaming via the Model Context Protocol (MCP), turning raw scanner noise into structured episodic memory for AI reasoning models.
 5. **Decoupled Architecture:** 100% headless core. Zero presentation or terminal emulator code. Consumed upstream by CyGuide (pedagogical TUI), headless DAEMONS (`etherd`), and autonomous AI swarms.
 
@@ -24,7 +24,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 ```text
  Epoch 1 ───────► Epoch 2 ───────► Epoch 3 ───────► Epoch 4 ───────► Epoch 5
  Decoupled        Autonomous       High-Throughput  Unrestricted     Distributed
- Foundation       Agent Gateway    Chained Mesh     Beast Engine     Sovereign Fleet
+ Foundation       Agent Gateway    Chained Mesh     Offensive Engine Sovereign Fleet
  (Current)        (MCP & Diffs)    (DAG Pipelines)  (PTY & Attack)   (Global Graph)
 ```
 
@@ -93,13 +93,23 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Standardized `<untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`</untrusted_scan_output>` converted to `<\/untrusted_scan_output>`).
   - Automatic redaction of private keys, authorization tokens, passwords, and API keys.
   - Active neutralization of adversarial prompt injection embedded inside HTTP headers, SSL certificates, and DNS TXT records.
+- [ ] **Dynamic Target Dynamics & State Decay (TTL & Flapping Defense):**
+  - Graph node state confidence decay windows and status flags (`confirmed`, `flapping`, `stale`).
+  - Graceful handling of container churn, ephemeral microservices, and fast-flux DNS rotation without polluting the graph with orphan nodes.
+- [ ] **Invariant Identity Anchoring:**
+  - Decoupling logical service identity from volatile IP addresses.
+  - Anchoring Primary Identity Keys (PIK) to persistent cryptographic fingerprints: TLS certificate SHA-256 digests, SSH host key fingerprints, HTTP favicon/ETag hashes, and service UUIDs.
 
 ---
 
 ### Epoch 3: High-Throughput Chained Execution & Pipeline DAG
 *Target: v0.4.0*
-*Focus: Multi-stage, high-concurrency reconnaissance pipelines.*
+*Focus: Multi-stage, high-concurrency reconnaissance pipelines and in-process async coroutine scaling.*
 
+- [ ] **Three-Tier Arsenal Architecture (Async Coroutines vs. Compiled Binaries vs. PTY):**
+  - **Tier A (Native In-Process Async Coroutines):** Zero-fork, high-concurrency protocol adapters (`httpx`, `sslyze`, `scapy`, `arjun`) capable of interrogating 10,000+ endpoints concurrently with <150 MB RAM footprint.
+  - **Tier B (Internet-Scale Compiled Binaries):** High-throughput adapters for kernel-bypass tools (`masscan`, `zmap`, `katana`) streaming raw JSON directly into bounded memory ring buffers.
+  - **Tier C (Supervised POSIX PTYs):** Terminal emulation for interactive sessions (`msfconsole`, `gdb`, live shells).
 - [ ] **Chained Pipeline Engine (Unix Pipe Metaphor for Security):**
   - Allow declarative piping of security tools where findings from tool A automatically parameterize tool B:
     ```bash
@@ -107,8 +117,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
     ```
   - Graph-aware routing: output `network.host` findings automatically fan out into parallel port scans; discovered `network.service(http)` nodes automatically route to web fuzzers.
 - [ ] **Native Packet Crafting & Stealth Network Engine (`scapy`):**
-  - *Transferred from CyGuide Engine Core*
   - Pure-Python stealth TCP SYN scanning, custom port-knocking sequences, and local ARP network sniffing emitting typed `network.host` and `network.service` findings with zero external binary dependencies.
+- [ ] **Probabilistic State Estimation & Deception Defense:**
+  - Bayesian belief networks over graph edges to handle partial observability.
+  - Response-timing anomaly heuristics and banner analysis to detect dynamic tarpits, honeypots, and active moving-target defenses (MTD).
 - [ ] **Worker Task Pool & Backpressure Concurrency:**
   - Scalable worker pool allowing 50+ concurrent background scans without event-loop starvation.
   - Dynamic disk spooling and chunk recycling keeping engine memory usage below **25 MB** under massive telemetry loads.
@@ -121,7 +133,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### Epoch 4: The Unrestricted "Beast" Engine (Offensive Workstation Core)
+### Epoch 4: The Unrestricted Offensive Engine (Offensive Workstation Core)
 *Target: v0.5.0*
 *Focus: Sovereign offensive operations, full PTY emulation, and exploit choreography.*
 
@@ -131,13 +143,13 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - In-memory VT102/xterm screen emulation via `pyte` to track ANSI escape codes, cursor positions, color buffers, and screen diffs.
   - Forwarding terminal window resize signals (`SIGWINCH` via `fcntl.ioctl` with `termios.TIOCSWINSZ`).
   - Background loot & credential extraction from live interactive streams without interrupting the operator shell.
-- [ ] **Enterprise Active Directory Protocol Engine (`impacket`):**
-  - *Transferred from CyGuide Engine Core*
-  - Python-native Active Directory assessment engine providing Kerberoasting, AS-REP roasting, and SMB/RPC interaction.
-  - Emits typed findings (`ad.user`, `ad.spn`, `ad.ticket`, `ad.share`) directly into the target graph.
-- [ ] **Metasploit Interactive PTY & RPC Bridge (`msfconsole`):**
-  - *Transferred from CyGuide Engine Core*
-  - Supervised PTY adapter for managing active Metasploit shells, meterpreter sessions, and payload handlers, normalizing output into the graph.
+- [ ] **Enterprise Active Directory Protocol Engine (`impacket` & `bloodhound-python`):**
+  - Python-native Active Directory assessment engine providing Kerberoasting, AS-REP roasting, and SMB/RPC/LDAP interaction as in-process async coroutines.
+  - Integration with `bloodhound-python` to ingest Active Directory domain ACLs, object permissions, and trust relationships directly into the target graph.
+  - Emits typed findings (`ad.user`, `ad.spn`, `ad.ticket`, `ad.share`, `ad.acl`) directly into the target graph.
+- [ ] **Binary Exploitation & Exploit Choreography Bridge (`pwntools` + `msfconsole`):**
+  - Supervised PTY adapter for managing active Metasploit shells, meterpreter sessions, and payload handlers.
+  - In-process `pwntools` integration for remote socket interaction, ROP gadget analysis, and exploit staging.
 - [x] **Attack Graph Traversal & Path Discovery (`ether.graph.analytics`):**
   - In-memory directed graph intelligence engine (`GraphAnalyticsEngine`):
     - BFS shortest attack path discovery across multi-hop findings.
@@ -165,9 +177,9 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Correlate discoveries across multiple engagements to detect shared infrastructure, identical SSL certificates, and enterprise-wide vulnerabilities.
 - [ ] **Pluggable WebAssembly (Wasm) Parser Sandboxing:**
   - Execute third-party community adapters in lightweight Wasm sandboxes, ensuring community tool parsers can never compromise the host machine.
-- [ ] **The "CyGuide" & "Beast" Ecosystem:**
+- [ ] **Ecosystem Integration:**
   - CyGuide permanently re-based on top of `pip install ether`.
-  - Independent release of the Beast Power Workstation utilizing Ether's full PTY and offensive capabilities.
+  - Independent release of the offensive workstation utilizing Ether's full PTY and offensive capabilities.
 
 ---
 
@@ -184,6 +196,9 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 | **UI Coupling** | High (terminal emulator) | High (Textual TUI) | **Zero (100% Headless Engine/Kernel)** |
 | **Encrypted Archives** | GPG manual tar | None | **Argon2id + AES-256-GCM Authenticated SQLite** |
 | **Vector Intelligence**| None | None | **In-Process `sqlite-vec` Semantic Embeddings** |
+| **Concurrency Scaling**| OS fork/exec cap (~500 procs)| UI process block | **10,000+ Native Async Coroutines (<150MB RAM)** |
+| **Dynamic Target Tracking**| Blind / Stale static IPs | Transient UI state | **Temporal Node TTL Decay & Cryptographic Invariance** |
+| **Deception Defense**   | Vulnerable to tarpits | None | **Bayesian Honeypot & Timing Anomaly Detection** |
 
 ---
 

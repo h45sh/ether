@@ -112,7 +112,9 @@ class GatePolicy(str, Enum):
     """Policy mode governing gateway enforcement."""
 
     SAFE = "safe"  # Strict: blocks metadata, enforces CIDR, user shell only
-    UNRESTRICTED = "unrestricted"  # Beast: allows any destination, autonomous shell, raw execution
+    UNRESTRICTED = (
+        "unrestricted"  # Unrestricted: allows any destination, autonomous shell, raw execution
+    )
 
 
 class ActionValidationError(Exception):
@@ -224,7 +226,7 @@ class ActionGateway:
         Raises:
             ActionValidationError: If validation fails.
         """
-        # 1. If UNRESTRICTED policy (Beast mode), bypass destination and scope restrictions
+        # 1. If UNRESTRICTED policy, bypass destination and scope restrictions
         raw_flags = action.params.get("raw_flags", "")
         if self.policy != GatePolicy.UNRESTRICTED:
             if is_blocked_destination(raw_flags) or is_blocked_destination(action.tool_name):
