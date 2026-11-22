@@ -59,6 +59,11 @@ docs/benchmarks/.history/
 .t3*
 .t3-architecture-cache.md
 
+# Local scratchpads and tool configurations
+.scratch/
+mise.toml
+mise.local.toml
+
 # Agent thread retrospectives (raw retrospectives aggregated into .agents/knowledge/)
 .agents/threads/*.md
 !.agents/threads/TEMPLATE.md
