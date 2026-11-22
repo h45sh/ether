@@ -1,0 +1,39 @@
+"""Headless terminal text styling and JSON formatting for Ether CLI."""
+
+import json
+import sys
+from typing import Any, List
+
+
+def print_json(data: Any) -> None:
+    """Output machine-readable formatted JSON to stdout."""
+    print(json.dumps(data, indent=2, default=str), file=sys.stdout)
+
+
+def print_error(msg: str) -> None:
+    """Output an error message to stderr."""
+    print(f"[!] Error: {msg}", file=sys.stderr)
+
+
+def print_table(headers: List[str], rows: List[List[str]]) -> None:
+    """Format and print a simple ASCII table to stdout."""
+    if not headers:
+        return
+
+    # Calculate column widths
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for idx, val in enumerate(row):
+            if idx < len(col_widths):
+                col_widths[idx] = max(col_widths[idx], len(str(val)))
+
+    # Format header
+    header_str = "  ".join(f"{h:<{col_widths[i]}}" for i, h in enumerate(headers))
+    sep_str = "  ".join("-" * col_widths[i] for i in range(len(headers)))
+    print(header_str)
+    print(sep_str)
+
+    # Format rows
+    for row in rows:
+        row_str = "  ".join(f"{str(val):<{col_widths[i]}}" for i, val in enumerate(row))
+        print(row_str)

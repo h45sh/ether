@@ -35,6 +35,9 @@ dev = [
     "ruff>=0.4.0",
 ]
 
+[project.scripts]
+ether = "ether.cli.router:main"
+
 [project.urls]
 Homepage = "https://github.com/h45sh/ether"
 Repository = "https://github.com/h45sh/ether"

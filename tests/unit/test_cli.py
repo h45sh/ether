@@ -1,0 +1,143 @@
+"""Unit tests for Ether headless CLI router and subcommands."""
+
+import json
+
+import pytest
+
+from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS
+from ether.cli.router import main
+from ether.graph.store import GraphStore
+from ether.schemas.network import NetworkHost
+
+
+def test_cli_help(capsys):
+    """Verify that --help exits with 0 and prints usage."""
+    with pytest.raises(SystemExit) as exc:
+        main(["--help"])
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "Ether: Headless reactive process supervisor" in captured.out
+    assert "doctor" in captured.out
+    assert "tool" in captured.out
+    assert "run" in captured.out
+
+
+def test_cli_version(capsys):
+    """Verify that --version exits with 0 and prints version."""
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "Ether v" in captured.out
+
+
+def test_cli_doctor(tmp_path, capsys):
+    """Verify 'ether doctor' runs and outputs terminal report."""
+    db_file = str(tmp_path / "doctor_cli.db")
+    exit_code = main(["doctor", "--db", db_file])
+    assert exit_code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "Ether System & Environmental Diagnostic Report" in captured.out
+    assert "Python Runtime:" in captured.out
+
+
+def test_cli_doctor_json(tmp_path, capsys):
+    """Verify 'ether doctor --json' produces machine-readable JSON."""
+    db_file = str(tmp_path / "doctor_cli_json.db")
+    exit_code = main(["doctor", "--db", db_file, "--json"])
+    assert exit_code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["healthy"] is True
+    assert "system_info" in data
+    assert "checks" in data
+
+
+def test_cli_tool_list_and_info(capsys):
+    """Verify 'ether tool list' and 'ether tool info'."""
+    # Table list
+    code = main(["tool", "list"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "TOOL" in captured.out
+    assert "nmap" in captured.out
+
+    # JSON list
+    code = main(["tool", "list", "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    tools = json.loads(captured.out)
+    assert isinstance(tools, list)
+    assert any(t["name"] == "nmap" for t in tools)
+
+    # Info
+    code = main(["tool", "info", "nmap", "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    info = json.loads(captured.out)
+    assert info["name"] == "nmap"
+    assert info["binary"] == "nmap"
+
+
+@pytest.mark.asyncio
+async def test_cli_session_and_graph_commands(tmp_path, capsys):
+    """Verify session create, list, graph list-nodes, and export commands."""
+    db_file = str(tmp_path / "session_cli.db")
+
+    # 1. Create Session
+    code = main(["session", "create", "CliInvestigation", "--db", db_file, "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    sess_data = json.loads(captured.out)
+    sess_id = sess_data["session_id"]
+    assert sess_id is not None
+
+    # 2. List Sessions
+    code = main(["session", "list", "--db", db_file, "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    sessions = json.loads(captured.out)
+    assert any(s["id"] == sess_id for s in sessions)
+
+    # 3. Insert a finding node directly to verify graph query & export
+    store = GraphStore(db_file)
+    await store.initialize()
+    host = NetworkHost.create(ip="10.10.10.10", hostname="cli-target.lab")
+    await store.upsert_finding(sess_id, host)
+    await store.close()
+
+    # 4. List Nodes
+    code = main(["graph", "list-nodes", sess_id, "--db", db_file, "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    nodes = json.loads(captured.out)
+    assert len(nodes) >= 1
+    assert any(n["pik"].get("ip") == "10.10.10.10" for n in nodes)
+
+    # 5. Export Graph
+    export_json = str(tmp_path / "export.json")
+    code = main(["graph", "export", sess_id, "-o", export_json, "--db", db_file])
+    assert code == EXIT_SUCCESS
+    capsys.readouterr()  # clear buffer
+    with open(export_json, "r") as f:
+        exported = json.load(f)
+    assert exported["session_id"] == sess_id
+    assert len(exported["nodes"]) >= 1
+
+    # 6. Telemetry Snapshot
+    code = main(["telemetry", "snapshot", sess_id, "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    snap = json.loads(captured.out)
+    assert snap["session_id"] == sess_id
+    assert snap["graph_summary"]["total_nodes"] >= 1
+
+
+def test_cli_run_blocks_cloud_metadata(tmp_path, capsys):
+    """Verify 'ether run' preflight gate blocks cloud metadata under safe policy."""
+    db_file = str(tmp_path / "metadata_block.db")
+    # 169.254.169.254 is AWS/cloud link-local metadata IP
+    code = main(["run", "nmap", "169.254.169.254", "--db", db_file])
+    assert code == EXIT_RUNTIME_ERROR
+    captured = capsys.readouterr()
+    assert "Preflight validation failed" in captured.err or "SSRF_CLOUD_METADATA_PROHIBITED" in captured.err
