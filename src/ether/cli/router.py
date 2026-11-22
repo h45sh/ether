@@ -7,7 +7,11 @@ from typing import List, Optional
 
 from ether import __version__
 from ether.cli.commands.doctor import handle_doctor
-from ether.cli.commands.graph import handle_graph_export, handle_graph_list_nodes
+from ether.cli.commands.graph import (
+    handle_graph_export,
+    handle_graph_import,
+    handle_graph_list_nodes,
+)
 from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.run import handle_run
 from ether.cli.commands.session import handle_session_create, handle_session_list
@@ -132,9 +136,19 @@ def build_parser() -> argparse.ArgumentParser:
     nodes_p = graph_subs.add_parser("list-nodes", parents=[common_options], help="List finding nodes")
     nodes_p.add_argument("session_id", help="Session ID to inspect")
     nodes_p.add_argument("-t", "--type", dest="type", help="Filter by schema_type (e.g. network.host)")
+
     export_p = graph_subs.add_parser("export", parents=[common_options], help="Export session graph")
     export_p.add_argument("session_id", help="Session ID to export")
-    export_p.add_argument("-o", "--output", dest="output", help="Output JSON file path")
+    export_p.add_argument("-o", "--output", dest="output", help="Output JSON or archive file path")
+    export_p.add_argument("--encrypt", action="store_true", help="Encrypt export using AES-256-GCM + Argon2id")
+    export_p.add_argument("--passphrase", dest="passphrase", help="Passphrase for encryption")
+
+    import_p = graph_subs.add_parser(
+        "import", parents=[common_options], help="Import findings from JSON or encrypted archive"
+    )
+    import_p.add_argument("input", help="Path to input JSON or encrypted archive (.enc)")
+    import_p.add_argument("-s", "--session-id", dest="session_id", help="Target session ID")
+    import_p.add_argument("--passphrase", dest="passphrase", help="Decryption passphrase")
 
     # 6. telemetry
     telemetry_parser = subparsers.add_parser(
@@ -210,6 +224,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.subcommand == "graph":
             if args.graph_action == "export":
                 return _run_coroutine(handle_graph_export(args, context))
+            elif args.graph_action == "import":
+                return _run_coroutine(handle_graph_import(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":

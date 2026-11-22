@@ -40,7 +40,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 - [x] **Dual Policy Seam:** `GatePolicy.SAFE` (blocks metadata, enforces CIDR) vs. `GatePolicy.UNRESTRICTED`.
 - [x] **Deterministic State Machine:** SQLite WAL GraphStore with SHA-256 PIK hashing.
 - [x] **Universal Fuzzing Matrix:** 11 built-in adapters passing 4-stream adversarial fuzzing.
-- [x] **Comprehensive Regression Suite:** 217 unit and integration tests passing in <12s.
+- [x] **Comprehensive Regression Suite:** 230 unit and integration tests passing in <13s.
 - [x] **Headless Performance Benchmarking & Regression Gate (`tests/benchmarks/test_perf_benchmarks.py`):**
   - Continuous regression benchmarks verifying SQLite WAL ingestion (>250 findings/sec), composite query latency (<500ms for 5,000 nodes), Pydantic model throughput (>15,000 models/sec), and `LogSpooler` memory bounds (<15MB resident RAM for 100k lines).
 - [x] **Hardened Logging & In-Memory Flight Recorder (`ether.common.logging`):**
@@ -56,14 +56,12 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - `ether graph list-nodes <session_id>` & `ether graph export <session_id> -o out.json` (deterministic graph querying and export)
   - `ether telemetry snapshot <session_id>` & `ether telemetry diff <session_id> --baseline <ts>` (agent telemetry protocol)
   - `ether logs [--limit 50] [--crashes]` (runtime and post-mortem flight recorder logs)
-- [ ] **Encrypted Session Database Archives (`cryptography`):**
-  - *Transferred from CyGuide Engine Core*
-  - AES-256-GCM authenticated encryption for exported session databases with Argon2id passphrase key derivation (`ether graph export --encrypt`).
+- [x] **Encrypted Session Database Archives (`ether.common.crypto`):**
+  - AES-256-GCM authenticated encryption for exported session databases with Argon2id passphrase key derivation (`ether graph export --encrypt` and `ether graph import`).
   - Cryptographic verification test suite rejecting truncated, bit-flipped, or tampered archives.
-- [ ] **Zero-Leakage In-Memory Credential & Secret Scrubbing:**
-  - *Transferred from CyGuide Engine Core*
-  - Explicit memory sanitization (`wipe_credentials()`, secure memory buffers) upon process and task finalization, preventing residual keys from lingering in Python heap or core dumps.
-- [ ] **Packaging & PyPI Readiness:** Clean wheel builds with `uv build` and zero external C dependencies.
+- [x] **Zero-Leakage In-Memory Credential & Secret Scrubbing (`ether.common.secure_memory`):**
+  - Explicit memory sanitization (`wipe_credentials()`, `SecureBuffer`, `ctypes.memset`) upon process and task finalization, preventing residual keys from lingering in Python heap or core dumps.
+- [x] **Packaging & PyPI Readiness:** Clean wheel builds with `uv build` and zero external C dependencies (`dist/ether-0.1.0-py3-none-any.whl`).
 
 ---
 

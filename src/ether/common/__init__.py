@@ -10,20 +10,44 @@ from ether.common.algorithms import (
     MinHash,
     knapsack_01,
 )
+from ether.common.crypto import (
+    CryptoError,
+    InvalidArchiveFormatError,
+    InvalidPassphraseError,
+    TamperedArchiveError,
+    decrypt_bytes,
+    decrypt_file,
+    derive_key_argon2id,
+    encrypt_bytes,
+    encrypt_file,
+)
+from ether.common.secure_memory import SecureBuffer, wipe_buffer, wipe_credentials
 
 __all__ = [
-    "sanitize_untrusted_output",
     "ANSI_ESCAPE_RE",
     "BloomFilter",
     "CTF_FLAG_RE",
+    "CryptoError",
     "DisjointSet",
     "IPRadixTrie",
+    "InvalidArchiveFormatError",
+    "InvalidPassphraseError",
     "MinHash",
+    "SecureBuffer",
+    "TamperedArchiveError",
+    "decrypt_bytes",
+    "decrypt_file",
+    "derive_key_argon2id",
     "dfa_strip_ansi",
+    "encrypt_bytes",
+    "encrypt_file",
     "extract_ctf_flags",
     "knapsack_01",
+    "sanitize_untrusted_output",
     "strip_ansi",
     "strip_scanner_noise",
+    "wipe_buffer",
+    "wipe_credentials",
 ]
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")

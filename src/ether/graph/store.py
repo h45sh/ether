@@ -284,15 +284,17 @@ class GraphStore:
 
     # --- Session Management ---
 
-    async def create_session(self, workspace_id: str, name: str) -> str:
-        session_id = str(uuid.uuid4())
+    async def create_session(
+        self, workspace_id: str, name: str, session_id: Optional[str] = None
+    ) -> str:
+        actual_session_id = session_id or str(uuid.uuid4())
         async with self._get_conn() as db:
             await db.execute(
                 "INSERT INTO sessions (id, workspace_id, name) VALUES (?, ?, ?)",
-                (session_id, workspace_id, name),
+                (actual_session_id, workspace_id, name),
             )
             await db.commit()
-        return session_id
+        return actual_session_id
 
     async def rename_session(self, session_id: str, new_name: str) -> None:
         async with self._get_conn() as db:

@@ -141,3 +141,58 @@ def test_cli_run_blocks_cloud_metadata(tmp_path, capsys):
     assert code == EXIT_RUNTIME_ERROR
     captured = capsys.readouterr()
     assert "Preflight validation failed" in captured.err or "SSRF_CLOUD_METADATA_PROHIBITED" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_cli_graph_encrypted_export_and_import(tmp_path, capsys):
+    """Verify 'ether graph export --encrypt' and 'ether graph import' roundtrip."""
+    db_source = str(tmp_path / "source.db")
+    db_target = str(tmp_path / "target.db")
+    enc_archive = str(tmp_path / "session_export.enc")
+    passphrase = "Ultra-Secure-Argon2-Passphrase!"
+
+    # 1. Populate source DB
+    store = GraphStore(db_source)
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+    h = NetworkHost.create(ip="172.16.0.5", hostname="encrypted-host.corp")
+    await store.upsert_finding(sess_id, h)
+    await store.close()
+
+    # 2. Encrypted Export
+    code = main([
+        "graph", "export", sess_id,
+        "-o", enc_archive,
+        "--encrypt",
+        "--passphrase", passphrase,
+        "--db", db_source,
+    ])
+    assert code == EXIT_SUCCESS
+    capsys.readouterr()
+
+    # Verify encrypted archive starts with magic header
+    with open(enc_archive, "rb") as f:
+        data = f.read()
+    assert data.startswith(b"ETHER_SECURE_ARC")
+
+    # 3. Import into new target DB
+    code = main([
+        "graph", "import", enc_archive,
+        "--passphrase", passphrase,
+        "--db", db_target,
+        "--json",
+    ])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    import_result = json.loads(captured.out)
+    assert import_result["imported_nodes"] >= 1
+
+    # 4. Verify target DB has the decrypted node
+    target_store = GraphStore(db_target)
+    await target_store.initialize()
+    nodes = await target_store.get_all_nodes(import_result["session_id"])
+    assert len(nodes) >= 1
+    piks = [json.loads(n["pik_json"]).get("ip") for n in nodes if "pik_json" in n]
+    assert "172.16.0.5" in piks
+    await target_store.close()
+
