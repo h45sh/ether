@@ -1,0 +1,67 @@
+name: Tool Adapter Proposal
+description: Propose a new cybersecurity tool adapter for Ether.
+title: "[TOOL]: "
+labels: ["tool", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ether integrates security tools using the **Smart Adapter / Simple Core** architecture.
+        Refer to the [Adapter Authoring Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/author-adapters.md) for details on writing Tier A coroutine and Tier B subprocess adapters.
+  - type: input
+    id: tool_name
+    attributes:
+      label: Tool Name & Binary
+      description: Name of the tool and executable binary on PATH.
+      placeholder: "e.g., feroxbuster (binary: feroxbuster)"
+    validations:
+      required: true
+  - type: dropdown
+    id: execution_tier
+    attributes:
+      label: Execution Tier
+      options:
+        - "Tier B: Binary Subprocess (build_command + parse_line)"
+        - "Tier A: In-Process Async Coroutine (execute_coroutine)"
+    validations:
+      required: true
+  - type: input
+    id: upstream_url
+    attributes:
+      label: Upstream Repository / Homepage
+      placeholder: https://github.com/...
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Tool Description & Purpose
+      description: What reconnaissance, scanning, or analysis task does this tool perform?
+      placeholder: Fast, simple, recursive content discovery tool written in Rust...
+    validations:
+      required: true
+  - type: textarea
+    id: standard_flags
+    attributes:
+      label: Common Commands & Arguments
+      description: Provide 2-3 standard commands and arguments used with this tool.
+      placeholder: |
+        feroxbuster -u http://$TARGET -w /usr/share/wordlists/dirb/common.txt --json
+    validations:
+      required: true
+  - type: textarea
+    id: finding_schemas
+    attributes:
+      label: Findings Produced
+      description: What normalized schemas should findings map to (e.g., `web.endpoint`, `network.service`, `vulnerability.found`)?
+      placeholder: Emits `web.endpoint` findings with URL, status code, response time, and content length.
+    validations:
+      required: true
+  - type: textarea
+    id: sample_output
+    attributes:
+      label: Sample CLI Output
+      description: Provide a snippet of stdout/stderr or JSON that the adapter parser will process.
+      render: text
+    validations:
+      required: false

@@ -1,0 +1,51 @@
+# Version control and GitHub metadata
+.git
+.github
+
+# Virtual environments
+.venv
+venv
+env
+
+# Python bytecode and caches
+__pycache__
+*.py[cod]
+
+# Testing, coverage, and linting caches
+.pytest_cache
+tests/.pytest_cache
+.coverage
+htmlcov
+.ruff_cache
+tests/.ruff_cache
+.mypy_cache
+tests/.mypy_cache
+.hypothesis
+tests/.hypothesis
+
+# Agent and temporary scratchpads
+.scratch
+.agents
+.t3*
+
+# Build and distribution artifacts
+dist
+build
+*.egg-info
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local data and runtime directories
+data
+logs
+exports
+reports
+
+# Documentation, tests, and maintenance scripts
+tests
+docs
+scripts
+.pre-commit-config.yaml

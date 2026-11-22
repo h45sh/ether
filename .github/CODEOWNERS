@@ -1,0 +1,28 @@
+# GitHub CODEOWNERS for Ether
+# Authoritative governance and review boundaries adhering to Ether's Tiered File Protection Policy (AGENTS.md Section 8).
+
+# Default repository maintainer
+*                                   @h45sh
+
+# Tier 1: Frozen Core Infrastructure
+# Foundational engine substrate. Zero breaking contract changes without architectural review.
+/src/ether/schemas/base.py          @h45sh
+/src/ether/graph/store.py           @h45sh
+/src/ether/registry/registry.py     @h45sh
+/src/ether/common/canonicalize.py   @h45sh
+/src/ether/paths.py                 @h45sh
+
+# Tier 2: Review Required (Gateways, Runtime, Adapters & Schemas)
+# Core execution and normalization layer. Any modifications require full regression testing.
+/src/ether/gateway/gate.py          @h45sh
+/src/ether/core/executor.py         @h45sh
+/src/ether/core/session.py          @h45sh
+/src/ether/schemas/                 @h45sh
+/tools/                             @h45sh
+
+# Infrastructure, CI/CD, Containerization & Secrets
+/.github/                           @h45sh
+/Dockerfile                         @h45sh
+/.dockerignore                      @h45sh
+/pyproject.toml                     @h45sh
+/scripts/                           @h45sh

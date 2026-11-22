@@ -1,0 +1,84 @@
+name: Bug Report
+description: Report a reproducible bug, crash, or unexpected behavior in Ether.
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please provide as much technical detail as possible.
+        If this is a security vulnerability, please refer to [SECURITY.md](https://github.com/h45sh/ether/blob/main/.github/SECURITY.md) instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened when running the command or invoking the MCP tool...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Execution Interface
+      options:
+        - CLI (ether run / ether graph)
+        - MCP Server (stdio / sse)
+        - Python SDK (ExecutionSession / ActionGateway)
+        - Tool Adapter (tools/<name>)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps or code snippet to reproduce the issue.
+      placeholder: |
+        1. Run 'ether run <session_id> <tool> --target <target>'
+        2. See error / unexpected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System / Distribution
+      options:
+        - Ubuntu / Debian
+        - Kali Linux / Parrot OS
+        - Arch Linux / Manjaro
+        - Fedora / RHEL
+        - openSUSE
+        - Alpine Linux
+        - macOS
+        - Docker Container
+        - Other (specify below)
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python Version
+      placeholder: e.g., Python 3.12.3
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Error Traceback / Logs
+      description: Paste any error traceback from terminal output or session log.
+      render: shell
+    validations:
+      required: false

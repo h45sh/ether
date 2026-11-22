@@ -1,0 +1,33 @@
+changelog:
+  categories:
+    - title: "Features & Telemetry Engine"
+      labels:
+        - "enhancement"
+        - "feature"
+    - title: "Smart Tool Adapters"
+      labels:
+        - "tool"
+        - "adapter"
+    - title: "Agent Telemetry Protocol & MCP"
+      labels:
+        - "mcp"
+        - "rag"
+        - "telemetry"
+    - title: "Security & Invariants"
+      labels:
+        - "security"
+        - "invariants"
+    - title: "Bug Fixes"
+      labels:
+        - "bug"
+        - "fix"
+    - title: "CI/CD & Maintenance"
+      labels:
+        - "ci"
+        - "maintenance"
+        - "dependencies"
+  exclude:
+    labels:
+      - "skip-changelog"
+      - "documentation"
+      - "docs"

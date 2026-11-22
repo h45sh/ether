@@ -2,19 +2,66 @@ name: CI
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ "main" ]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".gitignore"
+      - "LICENSE"
   pull_request:
-    branches: [ main, dev ]
+    branches: [ "main", "dev" ]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".gitignore"
+      - "LICENSE"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  lint:
+    name: Code Quality & Schema Verification
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Ruff Lint & Format Check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Verify Schema Registry Documentation Sync
+        run: uv run python3 scripts/generate_schema_registry.py --check
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: [lint]
+    if: ${{ !startsWith(github.head_ref, 'release-please') }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -27,13 +74,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Run Ruff Lint & Format Check
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
+      - name: Run Tier 0 AST Architectural & Mathematical Invariants
+        run: uv run pytest -m tier0 -q
 
-      - name: Verify Schema Registry Synchronization
-        run: uv run python3 scripts/generate_schema_registry.py --check
-
-      - name: Run Full Test Suite
+      - name: Run Full Regression Test Suite
         run: uv run pytest tests/
+
+      - name: Build Distribution Packages (sdist & wheel)
+        run: uv build

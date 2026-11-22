@@ -1,0 +1,39 @@
+name: Feature Request
+description: Suggest an idea or enhancement for Ether's substrate, engine, or telemetry protocol.
+title: "[FEAT]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to improve Ether? Let us know what capability or protocol extension you would like to see!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a specific limitation, telemetry gap, or friction point?
+      placeholder: When integrating Ether with AI agent orchestrators, I encountered...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / Architecture
+      description: Describe the design or capability you would like to see implemented.
+      placeholder: A clear and concise description of how this should work...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or workarounds you have considered.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any architecture diagrams, telemetry examples, or extra context.
+    validations:
+      required: false
