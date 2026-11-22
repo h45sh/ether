@@ -189,7 +189,7 @@ def test_default_tool_targets_coverage_and_preflight():
     registry.load_tools()
     verifier = PreflightVerifier()
 
-    assert len(registry.tools) == 11
+    assert len(registry.tools) == len(DEFAULT_TOOL_TARGETS)
     for tool_name in registry.tools:
         assert tool_name in DEFAULT_TOOL_TARGETS
         target = DEFAULT_TOOL_TARGETS[tool_name]

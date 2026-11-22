@@ -184,3 +184,39 @@ def test_complete_unidirectional_layer_dag():
         f"Unidirectional Layer DAG violation: dependencies must flow strictly downwards:\n"
         + "\n".join(violations)
     )
+
+
+@pytest.mark.tier0
+def test_tools_layer_purity():
+    """Verify that pluggable tool adapters in tools/ never import from forbidden higher layers."""
+    tools_dir = Path(__file__).resolve().parent.parent.parent / "tools"
+    violations = []
+    banned_in_tools = {"ether.core", "ether.gateway", "ether.cli", "ether.mcp"}
+
+    for py_file in _get_python_files(tools_dir):
+        with open(py_file, "r", encoding="utf-8") as f:
+            try:
+                tree = ast.parse(f.read(), filename=str(py_file))
+            except SyntaxError:
+                continue
+
+        for node in ast.walk(tree):
+            mod = ""
+            if isinstance(node, ast.ImportFrom) and node.module:
+                mod = node.module
+            elif isinstance(node, ast.Import):
+                for name in node.names:
+                    mod = name.name
+
+            if mod:
+                for b in banned_in_tools:
+                    if mod == b or mod.startswith(b + "."):
+                        violations.append(
+                            f"[tools] {py_file.name}:{node.lineno} imports forbidden higher layer '{mod}'"
+                        )
+
+    assert not violations, (
+        f"Layer DAG violation: Tools in tools/ must never import from higher layers:\n"
+        + "\n".join(violations)
+    )
+

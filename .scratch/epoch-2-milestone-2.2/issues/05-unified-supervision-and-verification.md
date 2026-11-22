@@ -5,10 +5,10 @@ Unify lifecycle supervision and cancellation across both execution tiers in `Exe
 
 **Blocked by:** 03: Native dnspython Coroutine Conversion, 04: Native http_probe Adapter with SSRF Pre-Connect Defense
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] In `ExecutionSession`, wrap execution in `asyncio.Task` and implement unified cancellation in `abort_action()`
-- [ ] Add unit tests in `tests/unit/test_execution_session.py` verifying cancellation of both coroutine and subprocess actions
-- [ ] Verify `ether.mcp` tool execution and cancellation with native tools in `tests/unit/test_mcp.py`
-- [ ] Update AST layer DAG tests in `tests/unit/test_architecture.py` to cover `tools/http_probe`
-- [ ] Verify full test suite (`.venv/bin/pytest`) and linter (`.venv/bin/ruff check .`) pass with zero regressions
+- [x] In `ExecutionSession`, wrap execution in `asyncio.Task` and implement unified cancellation in `abort_action()`
+- [x] Add unit tests in `tests/unit/test_execution_session.py` verifying cancellation of both coroutine and subprocess actions
+- [x] Verify `ether.mcp` tool execution and cancellation with native tools in `tests/unit/test_mcp.py`
+- [x] Update AST layer DAG tests in `tests/unit/test_architecture.py` to cover `tools/http_probe`
+- [x] Verify full test suite (`.venv/bin/pytest`) and linter (`.venv/bin/ruff check .`) pass with zero regressions

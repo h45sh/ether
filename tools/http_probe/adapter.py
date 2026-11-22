@@ -70,8 +70,13 @@ class HTTPProbeAdapter(ToolAdapter):
         elif target.schema_type == "network.host":
             host_ip = target.pik.get("ip") or target.data.get("ip")
             url = f"http://{host_ip}/"
-        elif target.schema_type == "dns.record":
-            domain = target.pik.get("domain") or target.data.get("domain")
+        elif target.schema_type in ("dns.record", "domain.info"):
+            domain = (
+                target.pik.get("domain")
+                or target.data.get("domain")
+                or target.pik.get("name")
+                or target.data.get("name")
+            )
             url = f"http://{domain}/"
 
         if not url:

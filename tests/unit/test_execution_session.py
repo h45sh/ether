@@ -229,6 +229,81 @@ async def test_execution_session_kill_job():
 
 
 @pytest.mark.asyncio
+async def test_execution_session_cancel_coroutine():
+    """Verify that abort_action / kill_job cancels an in-process native coroutine task."""
+    import asyncio
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id = await store.create_workspace("TestWS")
+    sess_id = await store.create_session(ws_id, "TestSess")
+
+    class SlowCoroutineAdapter(ToolAdapter):
+        execution_tier = "coroutine"
+
+        def validate_install(self) -> bool:
+            return True
+
+        def build_command(self, target, params):
+            return ["slow_tool"]
+
+        async def parse_output(self, raw_stdout, target, context=None):
+            return
+            yield
+
+        async def execute_action(self, target, params, context):
+            await context.spool_line("Slow task started")
+            await asyncio.sleep(60.0)
+            yield target
+
+    adapter = SlowCoroutineAdapter()
+    registry = ToolRegistry()
+    registry.tools["slow_tool"] = {
+        "manifest": None,
+        "adapter": adapter,
+        "execution_tier": "coroutine",
+    }
+
+    gateway = ActionGateway(registry, store)
+    session = ExecutionSession(
+        store=store,
+        gateway=gateway,
+        registry=registry,
+        command_runner=FakeInMemoryRunner(),
+    )
+
+    action = ActionRequest(
+        action_id=uuid4(),
+        session_id=UUID(sess_id),
+        tool_name="slow_tool",
+        params={},
+        triggered_by=ActionSource.USER,
+        is_explicit_shell=False,
+    )
+
+    job_id = await session.dispatch(action)
+    await asyncio.sleep(0.02)  # Give coroutine a moment to start
+
+    # Check task is running
+    task = session.get_running_task(job_id)
+    assert task is not None
+    assert not task.done()
+
+    # Abort action
+    aborted = await session.abort_action(job_id)
+    assert aborted is True
+
+    # Allow cancellation to propagate
+    await asyncio.sleep(0.02)
+    assert task.done()
+    job = session.get_job(job_id)
+    assert job.status == JobStatusEnum.FAILED
+
+    await store.close()
+
+
+
+@pytest.mark.asyncio
 async def test_privileged_action_cached_credentials_no_suspend():
     """When sudo credentials are authenticated (sudo -n true succeeds), TUI is not suspended."""
     store = GraphStore(":memory:")

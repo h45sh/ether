@@ -214,4 +214,60 @@ async def test_mcp_execute_tool_timeout_fallback():
     await store.close()
 
 
+@pytest.mark.asyncio
+async def test_mcp_execute_coroutine_tool_success():
+    """Verify execute_tool executes a native coroutine tool end-to-end through MCP."""
+    from unittest.mock import AsyncMock, patch
+
+    import httpx
+
+    from ether.core.session import ExecutionSession
+    from ether.gateway.gate import ActionGateway, GatePolicy
+    from ether.registry.registry import ToolRegistry
+    from tests.unit.test_execution_session import FakeInMemoryRunner
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    registry = ToolRegistry()
+    registry.load_tools()
+    runner = FakeInMemoryRunner()
+    gateway = ActionGateway(registry=registry, store=store, policy=GatePolicy.SAFE)
+    exec_sess = ExecutionSession(
+        store=store, registry=registry, gateway=gateway, command_runner=runner
+    )
+
+    server = create_mcp_server(
+        store=store,
+        default_session_id=sess_id,
+        gateway=gateway,
+        registry=registry,
+        execution_session=exec_sess,
+    )
+
+    mock_resp = httpx.Response(
+        status_code=200,
+        headers={"Server": "nginx/1.24"},
+        text="<html><head><title>Test Page</title></head><body>Hello</body></html>",
+        request=httpx.Request("GET", "http://example.com/"),
+    )
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
+        res = await server.call_tool(
+            "execute_tool",
+            {"tool_name": "http_probe", "target": "example.com", "include_raw": True},
+        )
+
+    assert res.is_error is False
+    data = json.loads(res.content[0].text)
+    assert data["status"] == "completed"
+    assert data["diff"]["total_delta_count"] >= 1
+    assert "untrusted_output" in data
+    assert "Test Page" in data["untrusted_output"]
+
+    await store.close()
+
+
+
 

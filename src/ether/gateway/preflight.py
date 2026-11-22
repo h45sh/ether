@@ -53,6 +53,7 @@ DEFAULT_TOOL_TARGETS: dict[str, str] = {
     "whois": "example.com",
     "dnspython": "example.com",
     "searchsploit": "Apache 2.4.49",
+    "http_probe": "http://scanme.nmap.org",
 }
 
 TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {
@@ -273,6 +274,25 @@ TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {
         ],
         "general_knowledge": "searchsploit is a command-line search tool for Exploit-DB that operates entirely offline. It matches search terms against an offline index (files_exploits.csv) to discover proof-of-concept exploits, shellcodes, and security papers.",
     },
+    "http_probe": {
+        "expected_format": "Complete HTTP or HTTPS URL (http://scanme.nmap.org, https://example.com)",
+        "safe_sandbox": "http://scanme.nmap.org or https://example.com",
+        "permissible": [
+            "Local or remote authorized web endpoints for service and title discovery.",
+            "scanme.nmap.org or example.com for syntax and response verification.",
+            "Authorized client web assets during penetration testing.",
+        ],
+        "prohibited": [
+            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/).",
+            "Loopback interfaces under GatePolicy.SAFE without explicit authorization.",
+            "Unauthorized external systems.",
+        ],
+        "precautions": [
+            "High concurrency can trigger rate limits or WAF blocks.",
+            "SSRF pre-connect checks strictly abort attempts against link-local or metadata addresses.",
+        ],
+        "general_knowledge": "http_probe is a high-performance in-process HTTP discovery adapter extracting response codes, server banners, page titles, and web technologies.",
+    },
 }
 
 
@@ -484,11 +504,7 @@ class PreflightVerifier:
     # --- Internal Verification Rules ---
 
     def _check_binary(self, tool_name: str, report: PreflightReport) -> None:
-        """Verify that the tool's binary is installed and discoverable."""
-        if tool_name == "dnspython":
-            # Pure-Python probe; always installed
-            return
-
+        """Verify that the tool's binary or coroutine dependency is installed and discoverable."""
         adapter = None
         manifest = None
         if self.registry:
@@ -496,6 +512,28 @@ class PreflightVerifier:
             if tool_data:
                 adapter = tool_data.get("adapter")
                 manifest = tool_data.get("manifest")
+
+        # Check for native coroutine tier
+        is_coroutine = (
+            manifest and getattr(getattr(manifest, "meta", None), "execution_tier", None) == "coroutine"
+        ) or (adapter and getattr(adapter, "execution_tier", None) == "coroutine")
+
+        if is_coroutine or tool_name in ("dnspython", "http_probe"):
+            if adapter and hasattr(adapter, "validate_install"):
+                try:
+                    if not adapter.validate_install():
+                        report.issues.append(
+                            PreflightIssue(
+                                category="binary",
+                                severity="error",
+                                title=f"Tool dependency for '{tool_name}' is not installed",
+                                description=f"Required Python libraries for '{tool_name}' are not importable.",
+                                remediation_hint=INSTALLATION_HINTS.get(tool_name, f"pip install {tool_name}"),
+                            )
+                        )
+                except Exception:
+                    pass
+            return
 
         is_installed = False
         binary_name = tool_name

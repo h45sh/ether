@@ -19,7 +19,7 @@ learning = true
 power = true
 
 [input]
-accepts = ["web.endpoint", "network.service", "network.host", "dns.record"]
+accepts = ["web.endpoint", "network.service", "network.host", "dns.record", "domain.info"]
 
 [output]
 produces = ["web.endpoint", "network.service", "web.technology"]

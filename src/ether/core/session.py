@@ -926,6 +926,8 @@ class ExecutionSession:
         self._notify_status(job)
         return True
 
+    abort_action = kill_job
+
     async def evict_session(self, session_id: str) -> None:
         """Clean up and purge all tracked execution jobs, buffers, and state for a session."""
         target_jobs = [j for j in self.get_active_jobs() if str(j.session_id) == str(session_id)]
