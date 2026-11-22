@@ -3,6 +3,7 @@
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
 from ether.core.session import ExecutionSession
 from ether.gateway.gate import ActionGateway, ActionValidationError, GatePolicy
+from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
 from ether.graph.timeline import ActionTimelineRepository
 from ether.registry.adapter import ToolAdapter
@@ -19,6 +20,7 @@ __all__ = [
     "ExecutionSession",
     "Executor",
     "GatePolicy",
+    "GraphAnalyticsEngine",
     "GraphStore",
     "LogSpooler",
     "ToolAdapter",

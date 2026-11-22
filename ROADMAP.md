@@ -15,12 +15,13 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 2. **Deterministic World State:** A reactive graph database where hosts, ports, web applications, credentials, and CVEs are deduplicated and merged on-the-fly via mathematical Primary Identity Keys (PIK).
 3. **Pluggable Policy Isolation:** Running seamlessly in **Safe Mode** (for labs/universities like CyGuide) or **Unrestricted Beast Mode** (for sovereign red-teams and autonomous offensive loops).
 4. **Agent Telemetry Protocol:** Zero-token diff streaming via the Model Context Protocol (MCP), turning raw scanner noise into structured episodic memory for AI reasoning models.
+5. **Decoupled Architecture:** 100% headless core. Zero presentation or terminal emulator code. Consumed upstream by CyGuide (pedagogical TUI), headless DAEMONS (`etherd`), and autonomous AI swarms.
 
 ---
 
 ## The Five Evolutionary Epochs
 
-```
+```text
  Epoch 1 ───────► Epoch 2 ───────► Epoch 3 ───────► Epoch 4 ───────► Epoch 5
  Decoupled        Autonomous       High-Throughput  Unrestricted     Distributed
  Foundation       Agent Gateway    Chained Mesh     Beast Engine     Sovereign Fleet
@@ -39,11 +40,19 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 - [x] **Dual Policy Seam:** `GatePolicy.SAFE` (blocks metadata, enforces CIDR) vs. `GatePolicy.UNRESTRICTED`.
 - [x] **Deterministic State Machine:** SQLite WAL GraphStore with SHA-256 PIK hashing.
 - [x] **Universal Fuzzing Matrix:** 11 built-in adapters passing 4-stream adversarial fuzzing.
-- [x] **Comprehensive Regression Suite:** 166 unit and integration tests passing in <10s.
+- [x] **Comprehensive Regression Suite:** 183 unit and integration tests passing in <10s.
+- [x] **Category 2 Security Standards:** Atomic `0o600` file permissions (`atomic_create_file`), prompt boundary neutralization (`sanitize_untrusted_output`), and tiered file protection.
 - [ ] **Lightweight Headless CLI (`ether`):**
   - `ether run <tool> <target> [--json]`
   - `ether graph list-nodes <session_id>`
   - `ether graph export <session_id> -o out.db`
+- [ ] **Encrypted Session Database Archives (`cryptography`):**
+  - *Transferred from CyGuide Engine Core*
+  - AES-256-GCM authenticated encryption for exported session databases with Argon2id passphrase key derivation (`ether graph export --encrypt`).
+  - Cryptographic verification test suite rejecting truncated, bit-flipped, or tampered archives.
+- [ ] **Zero-Leakage In-Memory Credential & Secret Scrubbing:**
+  - *Transferred from CyGuide Engine Core*
+  - Explicit memory sanitization (`wipe_credentials()`, secure memory buffers) upon process and task finalization, preventing residual keys from lingering in Python heap or core dumps.
 - [ ] **Packaging & PyPI Readiness:** Clean wheel builds with `uv build` and zero external C dependencies.
 
 ---
@@ -67,6 +76,11 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
     }
     ```
   - **Result:** Reduces agent LLM context window consumption by **98%** compared to reading raw stdout.
+- [ ] **Embedded Offline Vector Memory & Finding RAG (`sqlite-vec`):**
+  - *Transferred from CyGuide Engine Core*
+  - Direct integration of `sqlite-vec` vector embeddings within SQLite.
+  - Generates fast local vector embeddings for discovered services, banners, MITRE ATT&CK techniques, and CVE summaries.
+  - Instant local semantic search and finding correlation with zero external API calls or network egress.
 - [ ] **Prompt Injection Defense Sandbox:**
   - Standardized `<untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`</untrusted_scan_output>` converted to `<\/untrusted_scan_output>`).
   - Active detection of adversarial prompt injection embedded inside HTTP headers, SSL certificates, and DNS TXT records.
@@ -78,11 +92,14 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 *Focus: Multi-stage, high-concurrency reconnaissance pipelines.*
 
 - [ ] **Chained Pipeline Engine (Unix Pipe Metaphor for Security):**
-  - Allow declarative piping of security tools where findings from tool $A$ automatically parameterize tool $B$:
+  - Allow declarative piping of security tools where findings from tool A automatically parameterize tool B:
     ```bash
     ether pipeline "subfinder(target=$DOMAIN) | dnspython | httpx | nuclei"
     ```
   - Graph-aware routing: output `network.host` findings automatically fan out into parallel port scans; discovered `network.service(http)` nodes automatically route to web fuzzers.
+- [ ] **Native Packet Crafting & Stealth Network Engine (`scapy`):**
+  - *Transferred from CyGuide Engine Core*
+  - Pure-Python stealth TCP SYN scanning, custom port-knocking sequences, and local ARP network sniffing emitting typed `network.host` and `network.service` findings with zero external binary dependencies.
 - [ ] **Worker Task Pool & Backpressure Concurrency:**
   - Scalable worker pool allowing 50+ concurrent background scans without event-loop starvation.
   - Dynamic disk spooling and chunk recycling keeping engine memory usage below **25 MB** under massive telemetry loads.
@@ -95,15 +112,28 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 *Target: v0.5.0*
 *Focus: Sovereign offensive operations, full PTY emulation, and exploit choreography.*
 
-- [ ] **True POSIX PTY Supervisor (`ether.core.pty`):**
-  - Supervised pseudo-terminal allocation for interactive offensive tools (`msfconsole`, `gdb`, reverse shell listeners).
-  - Clean VT100 / ANSI escape sequence sanitization that preserves raw operator interactivity while continuously extracting credentials and tokens in the background.
-- [ ] **Attack Graph Traversal & Path Discovery:**
-  - In-memory graph analytics algorithms:
-    - Shortest path from unauthenticated Internet asset to Domain Admin / Root.
-    - Lateral movement candidate identification based on shared credentials or open internal ports.
+- [ ] **Dual-Path Interactive POSIX PTY Supervisor (`pyte` + `ptyprocess` / `os.openpty`):**
+  - *Transferred from CyGuide Engine Core*
+  - Dedicated OS pseudo-terminal pair (`master_fd`/`slave_fd`) allocation replacing `stdin=DEVNULL` for interactive tools (`msfconsole`, `gdb`, reverse shell listeners, `ssh`, `sudo`).
+  - In-memory VT102/xterm screen emulation via `pyte` to track ANSI escape codes, cursor positions, color buffers, and screen diffs.
+  - Forwarding terminal window resize signals (`SIGWINCH` via `fcntl.ioctl` with `termios.TIOCSWINSZ`).
+  - Background loot & credential extraction from live interactive streams without interrupting the operator shell.
+- [ ] **Enterprise Active Directory Protocol Engine (`impacket`):**
+  - *Transferred from CyGuide Engine Core*
+  - Python-native Active Directory assessment engine providing Kerberoasting, AS-REP roasting, and SMB/RPC interaction.
+  - Emits typed findings (`ad.user`, `ad.spn`, `ad.ticket`, `ad.share`) directly into the target graph.
+- [ ] **Metasploit Interactive PTY & RPC Bridge (`msfconsole`):**
+  - *Transferred from CyGuide Engine Core*
+  - Supervised PTY adapter for managing active Metasploit shells, meterpreter sessions, and payload handlers, normalizing output into the graph.
+- [x] **Attack Graph Traversal & Path Discovery (`ether.graph.analytics`):**
+  - In-memory directed graph intelligence engine (`GraphAnalyticsEngine`):
+    - BFS shortest attack path discovery across multi-hop findings.
+    - Transitive blast radius computation from compromised entities.
+    - Crown-jewel critical asset identification (credentials, RCE CVEs, Active Directory, DBs).
+    - Tarjan's strongly connected components (SCC) for cyclic attack loops and Brandes' betweenness centrality for choke-point discovery.
 - [ ] **Autonomous Operation Daemon (`etherd`):**
-  - Long-running headless daemon managing continuous surface monitoring, cron-scheduled re-scans, and alerting on state changes.
+  - *Transferred from CyGuide Engine Core*
+  - Long-running headless daemon managing continuous surface monitoring, background scans across client disconnects, and Unix domain socket IPC (`~/.ether/run/ether.sock`).
 
 ---
 
@@ -114,6 +144,12 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 - [ ] **Zero-Copy Distributed Graph Federation:**
   - Synchronization of multiple Ether nodes across VPSs, local networks, and cloud instances using SQLite session replication (CRDT / SQLite Session Extension).
   - Red-team operators share a live, unified target graph without a centralized server.
+- [ ] **Multi-Agent Swarm Telemetry Protocol:**
+  - *Transferred from CyGuide Engine Core*
+  - Headless coordination primitives for specialized subagents (Recon, Web, Critic, Reporter) publishing findings to a shared target graph with conflict-free resolution.
+- [ ] **Cross-Session Knowledge Sharing & Workspace Graph Rollups:**
+  - *Transferred from CyGuide Engine Core*
+  - Correlate discoveries across multiple engagements to detect shared infrastructure, identical SSL certificates, and enterprise-wide vulnerabilities.
 - [ ] **Pluggable WebAssembly (Wasm) Parser Sandboxing:**
   - Execute third-party community adapters in lightweight Wasm sandboxes, ensuring community tool parsers can never compromise the host machine.
 - [ ] **The "CyGuide" & "Beast" Ecosystem:**
@@ -124,7 +160,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ## Concrete Capability Comparison
 
-| Dimension | Raw Bash / Scripts | Current CyGuide | **Ether Engine (Ideal State)** |
+| Dimension | Raw Bash / Scripts | Legacy CyGuide Monolith | **Ether Engine (Ideal State)** |
 | :--- | :--- | :--- | :--- |
 | **Execution Safety** | Unrestricted / Fragile | Safe Lab Policy Only | **Pluggable (`SAFE` vs `UNRESTRICTED`)** |
 | **Output Handling** | Ephemeral stdout | UI Ring Buffers | **64KB Spooled Disk + Bounded Memory Rings** |
@@ -133,6 +169,8 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 | **Tool Orchestration** | Fragile bash pipes | Manual single-shot | **Automated Reactive DAG Pipelines** |
 | **Interactive Shell** | Raw OS terminal | Non-PTY stream | **Supervised PTY with Background Extraction** |
 | **UI Coupling** | High (terminal emulator) | High (Textual TUI) | **Zero (100% Headless Engine/Kernel)** |
+| **Encrypted Archives** | GPG manual tar | None | **Argon2id + AES-256-GCM Authenticated SQLite** |
+| **Vector Intelligence**| None | None | **In-Process `sqlite-vec` Semantic Embeddings** |
 
 ---
 

@@ -1,6 +1,7 @@
 """Deterministic graph and event-sourcing storage engine."""
 
+from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
 from ether.graph.timeline import ActionTimelineRepository
 
-__all__ = ["ActionTimelineRepository", "GraphStore"]
+__all__ = ["ActionTimelineRepository", "GraphAnalyticsEngine", "GraphStore"]
