@@ -16,10 +16,10 @@
 
 **Blocked by:** 04: Agent Telemetry RAG Integration & MCP Semantic Search Tool
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Add `search` parser to `src/ether/cli/router.py`
-- [ ] Implement `handle_graph_search` in `src/ether/cli/commands/graph.py`
-- [ ] Add CLI tests in `tests/unit/test_cli.py` verifying `ether graph search`
-- [ ] Pass all mechanical gates (`tier0`, `fast`, `fuzz`, full `pytest`, `ruff check .`)
-- [ ] Update `ROADMAP.md`
+- [x] Add `search` parser to `src/ether/cli/router.py`
+- [x] Implement `handle_graph_search` in `src/ether/cli/commands/graph.py`
+- [x] Add CLI tests in `tests/unit/test_cli.py` verifying `ether graph search`
+- [x] Pass all mechanical gates (`tier0`, `fast`, `fuzz`, full `pytest`, `ruff check .`)
+- [x] Update `ROADMAP.md`

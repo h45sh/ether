@@ -278,3 +278,41 @@ async def test_cli_graph_list_nodes_include_stale_and_prune(tmp_path, capsys):
     assert nodes_remaining[0]["pik"]["ip"] == "10.0.0.2"
 
 
+@pytest.mark.asyncio
+async def test_cli_graph_search(tmp_path, capsys):
+    """Verify 'ether graph search' tabular and JSON output."""
+    db_file = str(tmp_path / "search_cli.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    h = NetworkHost.create(ip="10.10.10.5", hostname="db-primary.internal", os="Debian Linux")
+    await store.upsert_finding(sess_id, h)
+    await store.close()
+
+    # 1. Search Table output
+    code = main(["graph", "search", sess_id, "Debian Linux database host", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "SCORE" in captured.out
+    assert "NODE ID" in captured.out
+    assert "10.10.10.5" in captured.out
+
+    # 2. Search JSON output
+    code = main(["graph", "search", sess_id, "Debian Linux database host", "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    results = json.loads(captured.out)
+    assert len(results) >= 1
+    assert results[0]["schema_type"] == "network.host"
+    assert "similarity" in results[0]
+    assert results[0]["similarity"] > 0.0
+
+    # 3. Search with no matches / min_score 0.99
+    code = main(["graph", "search", sess_id, "unrelated query", "-m", "0.99", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "No semantic matches found" in captured.out
+
+
+

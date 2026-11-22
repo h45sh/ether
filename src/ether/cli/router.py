@@ -12,6 +12,7 @@ from ether.cli.commands.graph import (
     handle_graph_import,
     handle_graph_list_nodes,
     handle_graph_prune,
+    handle_graph_search,
 )
 from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.mcp import handle_mcp
@@ -189,6 +190,26 @@ def build_parser() -> argparse.ArgumentParser:
     import_p.add_argument("-s", "--session-id", dest="session_id", help="Target session ID")
     import_p.add_argument("--passphrase", dest="passphrase", help="Decryption passphrase")
 
+    search_p = graph_subs.add_parser(
+        "search", parents=[common_options], help="Semantic similarity search over finding entities"
+    )
+    search_p.add_argument("session_id", help="Session ID to search")
+    search_p.add_argument("query", help="Natural language query string")
+    search_p.add_argument(
+        "-l", "--limit", dest="limit", type=int, default=10, help="Maximum findings to return (default: 10)"
+    )
+    search_p.add_argument(
+        "-m",
+        "--min-score",
+        dest="min_score",
+        type=float,
+        default=0.0,
+        help="Minimum cosine similarity score (default: 0.0)",
+    )
+    search_p.add_argument(
+        "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.service)"
+    )
+
     # 6. telemetry
     telemetry_parser = subparsers.add_parser(
         "telemetry",
@@ -306,6 +327,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_graph_import(args, context))
             elif args.graph_action == "prune":
                 return _run_coroutine(handle_graph_prune(args, context))
+            elif args.graph_action == "search":
+                return _run_coroutine(handle_graph_search(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":

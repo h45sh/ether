@@ -240,3 +240,68 @@ async def handle_graph_prune(args: Any, context: CliContext) -> int:
         print(f"[+] Successfully pruned {pruned_count} stale node(s) from session '{session_id}'.")
 
     return EXIT_SUCCESS
+
+
+async def handle_graph_search(args: Any, context: CliContext) -> int:
+    """Perform offline semantic search against finding entities in an investigation session."""
+    session_id = getattr(args, "session_id", None)
+    query = getattr(args, "query", None)
+    if not session_id or not query:
+        print_error("session_id and query are required. Usage: ether graph search <session_id> '<query>'")
+        return EXIT_RUNTIME_ERROR
+
+    limit = int(getattr(args, "limit", 10) or 10)
+    min_score = float(getattr(args, "min_score", 0.0) or 0.0)
+    schema_type = getattr(args, "type", None)
+
+    async with context.open_store() as store:
+        results = await store.semantic_search(
+            session_id=session_id,
+            query=query,
+            limit=limit,
+            min_score=min_score,
+            schema_type=schema_type,
+        )
+
+    if context.is_json:
+        print_json(results)
+        return EXIT_SUCCESS
+
+    if not results:
+        print(f"No semantic matches found for query '{query}' in session {session_id}.")
+        return EXIT_SUCCESS
+
+    headers = ["SCORE", "NODE ID", "SCHEMA TYPE", "TARGET / SUMMARY"]
+    rows = []
+    for r in results:
+        score = f"{r.get('similarity', 0.0):.3f}"
+        nid = r.get("id", "")[:12]
+        st = r.get("schema_type", "")
+        summary = ""
+        pik = r.get("pik") or {}
+        data = r.get("data") or {}
+        if st == "network.host":
+            summary = pik.get("ip") or data.get("ip", "")
+        elif st == "network.service":
+            summary = f"{data.get('service_name', 'svc')} on {pik.get('host_ip')}:{pik.get('port')}"
+            if data.get("banner"):
+                summary += f" ({data['banner']})"
+        elif st == "web.endpoint":
+            summary = pik.get("url") or data.get("url", "")
+            if data.get("title"):
+                summary += f" [{data['title']}]"
+        elif st == "web.technology":
+            summary = f"{data.get('technology_name')} on {pik.get('url')}"
+        elif st == "vulnerability.found":
+            summary = f"{pik.get('vuln_id')} ({data.get('severity', 'UNKNOWN')}): {data.get('title', '')}"
+        elif st == "credential.found":
+            summary = f"User '{pik.get('username')}' in context '{pik.get('context')}'"
+        else:
+            summary = ", ".join(f"{k}={v}" for k, v in pik.items())
+
+        if len(summary) > 60:
+            summary = summary[:57] + "..."
+        rows.append([score, nid, st, summary])
+
+    print_table(headers, rows)
+    return EXIT_SUCCESS
