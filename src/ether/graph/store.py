@@ -195,9 +195,50 @@ class GraphStore:
                         pass
             yield self._conn
 
+    async def _migrate_schema(self, db: aiosqlite.Connection) -> None:
+        """Apply non-destructive schema migrations for existing databases."""
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        existing_tables = {row[0] for row in await cursor.fetchall()}
+
+        table_columns = {
+            "nodes": [
+                ("action_id", "TEXT"),
+                ("created_action_id", "TEXT"),
+                ("observation_count", "INTEGER DEFAULT 1"),
+                ("ttl_seconds", "INTEGER DEFAULT 3600"),
+                ("anchor_hash", "TEXT"),
+                ("last_seen_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ],
+            "edges": [
+                ("action_id", "TEXT"),
+                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ],
+            "event_log": [
+                ("closed", "INTEGER DEFAULT 0"),
+            ],
+            "sessions": [
+                ("closed_at", "TIMESTAMP"),
+            ],
+            "workspaces": [
+                ("closed_at", "TIMESTAMP"),
+            ],
+        }
+
+        for table, cols in table_columns.items():
+            if table in existing_tables:
+                col_cursor = await db.execute(f"PRAGMA table_info({table})")
+                existing_cols = {col_row[1] for col_row in await col_cursor.fetchall()}
+                for col_name, col_def in cols:
+                    if col_name not in existing_cols:
+                        await db.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+
     async def initialize(self):
-        """Create tables and indices if they don't exist."""
+        """Create tables and indices if they don't exist, applying migrations if needed."""
         async with self._get_conn() as db:
+            await self._migrate_schema(db)
             await db.executescript(SCHEMA_DDL)
             await db.commit()
 

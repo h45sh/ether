@@ -48,7 +48,7 @@ Repository = "https://github.com/h45sh/ether"
 Issues = "https://github.com/h45sh/ether/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ether"]
+packages = ["src/ether", "tools"]
 
 [tool.pytest.ini_options]
 cache_dir = "tests/.pytest_cache"

@@ -63,21 +63,26 @@ with zipfile.ZipFile(wheel, 'r') as z:
     names = set(z.namelist())
 
 prefix = 'ether/assets/wordlists/'
-wordlists = [
+required_assets = [
     prefix + 'common_dirs.txt.gz',
     prefix + 'subdomains_500.txt.gz',
     prefix + 'common_params.txt.gz',
     prefix + 'common_passwords.txt.gz',
     prefix + 'common_usernames.txt.gz',
+    'tools/nmap/manifest.toml',
+    'tools/nuclei/manifest.toml',
+    'tools/ffuf/manifest.toml',
+    'tools/http_probe/manifest.toml',
+    'tools/dnspython/manifest.toml',
 ]
 
-missing = [w for w in wordlists if w not in names]
+missing = [w for w in required_assets if w not in names]
 if missing:
-    print(f'[-] Error: Built wheel is missing required wordlists: {missing}')
+    print(f'[-] Error: Built wheel is missing required bundled assets: {missing}')
     sys.exit(1)
 
 print(f'[+] Wheel verification passed: {wheel}')
-print(f'[+] All bundled assets verified in wheel.')
+print(f'[+] All {len(required_assets)} required bundled assets & tool manifests verified in wheel.')
 "
 
 echo -e "\n========================================================"
