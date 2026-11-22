@@ -21,8 +21,8 @@
 
 **Blocked by:** 03: `GraphStore` Vector Indexing & Semantic Search Engine
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Add `objective` parameter and RAG finding injection to `compile_telemetry_snapshot()`
-- [ ] Add `search_findings_semantic` tool to MCP server in `src/ether/mcp/server.py`
-- [ ] Write unit tests in `tests/unit/test_vector_rag.py` verifying RAG snapshotting and MCP tool execution
+- [x] Add `objective` parameter and RAG finding injection to `compile_telemetry_snapshot()`
+- [x] Add `search_findings_semantic` tool to MCP server in `src/ether/mcp/server.py`
+- [x] Write unit tests in `tests/unit/test_vector_rag.py` verifying RAG snapshotting and MCP tool execution

@@ -117,6 +117,7 @@ class GraphTelemetryCompiler:
         selected_entity_id: Optional[str] = None,
         max_tokens: int = 4000,
         variable_resolver: Optional[Callable[[Optional[Dict[str, Any]]], Dict[str, Any]]] = None,
+        objective: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Compile a point-in-time state snapshot of the active investigation session."""
         session_data = await self.store.get_session(self.session_id)
@@ -160,6 +161,18 @@ class GraphTelemetryCompiler:
         budgeted = self.budget_findings(findings, max_tokens=max_tokens)
         stats = await self.store.get_stats(self.session_id)
 
+        # 2.5 Offline Vector RAG Retrieval for Objective
+        rag_findings = []
+        if objective and hasattr(self.store, "semantic_search"):
+            try:
+                rag_findings = await self.store.semantic_search(
+                    session_id=self.session_id,
+                    query=objective,
+                    limit=5,
+                )
+            except Exception:
+                rag_findings = []
+
         # 3. Graph analytics summary
         critical_count = 0
         if raw_nodes:
@@ -182,6 +195,7 @@ class GraphTelemetryCompiler:
             "resolved_vars": resolved_vars,
             "entity_counts": stats,
             "budgeted_findings": [f.model_dump(mode="json") for f in budgeted],
+            "rag_findings": rag_findings,
             "active_jobs": active_jobs,
             "graph_summary": {
                 "total_nodes": len(raw_nodes),

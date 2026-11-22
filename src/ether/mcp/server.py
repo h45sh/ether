@@ -174,6 +174,72 @@ def create_mcp_server(
         return json.dumps(diff, indent=2)
 
     @server.tool()
+    async def search_findings_semantic(
+        query: str,
+        session_id: Optional[str] = None,
+        limit: int = 10,
+        schema_type: Optional[str] = None,
+        min_score: float = 0.0,
+    ) -> str:
+        """Search finding entities in the graph using natural language offline vector similarity.
+
+        Args:
+            query: Natural language search query (e.g. 'Apache HTTP Server path traversal').
+            session_id: Target session ID (optional, defaults to active session).
+            limit: Maximum findings to return (default: 10).
+            schema_type: Optional filter by schema type (e.g. 'vulnerability.found').
+            min_score: Minimum cosine similarity score between 0.0 and 1.0 (default: 0.0).
+        """
+        sess_id = await _resolve_session(session_id)
+        results = await store.semantic_search(
+            session_id=sess_id,
+            query=query,
+            limit=limit,
+            schema_type=schema_type,
+            min_score=min_score,
+        )
+
+        formatted_results = []
+        for r in results:
+            pik_data = r.get("pik")
+            if not pik_data and r.get("pik_json"):
+                try:
+                    pik_data = json.loads(r["pik_json"])
+                except Exception:
+                    pik_data = {}
+
+            finding_data = r.get("data")
+            if not finding_data and r.get("data_json"):
+                try:
+                    finding_data = json.loads(r["data_json"])
+                except Exception:
+                    finding_data = {}
+
+            formatted_results.append(
+                {
+                    "id": r["id"],
+                    "schema_type": r["schema_type"],
+                    "similarity": r.get("similarity", 0.0),
+                    "distance": r.get("distance", 1.0),
+                    "status": r.get("status", "confirmed"),
+                    "pik": pik_data,
+                    "data": finding_data,
+                    "created_at": r.get("created_at"),
+                    "updated_at": r.get("updated_at"),
+                }
+            )
+
+        return json.dumps(
+            {
+                "session_id": sess_id,
+                "query": query,
+                "total_matched": len(formatted_results),
+                "findings": formatted_results,
+            },
+            indent=2,
+        )
+
+    @server.tool()
     async def execute_tool(
         tool_name: str,
         target: str,
