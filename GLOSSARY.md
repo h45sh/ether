@@ -77,3 +77,22 @@ _Avoid_: External tool, heavy runner, OS binary
 **Execution Context**:
 The contextual execution environment passed to adapters providing action attribution, disk logging sinks, secret scrubbing, and process runner hooks.
 _Avoid_: Run context, env bag, worker state
+
+## Temporal Graph & Cryptographic Identity
+
+**Temporal State Decay**:
+The deterministic confidence degradation of graph entities over time (`proposed` → `confirmed` → `flapping` → `stale`) based on observation timestamps and time-to-live thresholds.
+_Avoid_: Aging out, cache expiration, eviction, stale data
+
+**Invariant Identity Anchoring**:
+The technique of coupling volatile network findings (IP/port) to persistent cryptographic or structural fingerprints (TLS certificates, SSH host keys, HTTP favicons) to track entity migration without creating duplicate orphan nodes.
+_Avoid_: Host tracking, IP mapping, alias table, entity merging
+
+**Flapping Node**:
+An entity whose observation status or bound network address oscillates rapidly across successive actions within its active time-to-live window.
+_Avoid_: Bouncing host, unstable port, dynamic target
+
+**Anchor Hash**:
+A standardized, deterministic `<type>:<hash>` fingerprint indexing an entity to its persistent cryptographic or behavioral identity.
+_Avoid_: Fingerprint key, identity token, cert hash
+
