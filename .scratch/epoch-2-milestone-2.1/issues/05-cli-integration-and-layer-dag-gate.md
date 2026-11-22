@@ -5,10 +5,10 @@ Integrate the MCP server into Ether's command-line interface and enforce layer i
 
 **Blocked by:** 04: Supervised Tool Execution and Prompt Sandboxing
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Create `src/ether/cli/commands/mcp.py` implementing `handle_mcp`
-- [ ] Register `ether mcp` in `src/ether/cli/router.py` with help and arguments
-- [ ] Add AST layer DAG check in `tests/unit/test_architecture.py` enforcing `ether.mcp` isolation
-- [ ] Add CLI invocation test in `tests/unit/test_cli.py`
-- [ ] Run full test suite (`.venv/bin/pytest`) and linting (`.venv/bin/ruff check .`)
+- [x] Create `src/ether/cli/commands/mcp.py` implementing `handle_mcp`
+- [x] Register `ether mcp` in `src/ether/cli/router.py` with help and arguments
+- [x] Add AST layer DAG check in `tests/unit/test_architecture.py` enforcing `ether.mcp` isolation
+- [x] Add CLI invocation test in `tests/unit/test_cli.py`
+- [x] Run full test suite (`.venv/bin/pytest`) and linting (`.venv/bin/ruff check .`)

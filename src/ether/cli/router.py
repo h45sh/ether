@@ -13,6 +13,7 @@ from ether.cli.commands.graph import (
     handle_graph_list_nodes,
 )
 from ether.cli.commands.logs import handle_logs
+from ether.cli.commands.mcp import handle_mcp
 from ether.cli.commands.run import handle_run
 from ether.cli.commands.session import handle_session_create, handle_session_list
 from ether.cli.commands.telemetry import handle_telemetry_diff, handle_telemetry_snapshot
@@ -206,6 +207,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--crashes", action="store_true", help="Show recent unhandled crash summary"
     )
 
+    # 8. mcp
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        parents=[common_options],
+        help="Launch Native Model Context Protocol (MCP) server for AI agents",
+    )
+    mcp_parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="MCP protocol transport (default: stdio)",
+    )
+    mcp_parser.add_argument(
+        "-s",
+        "--session-id",
+        dest="session_id",
+        help="Bind MCP server to specific investigation session ID",
+    )
+    mcp_parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for SSE transport (default: 8000)",
+    )
+    mcp_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host for SSE transport (default: 127.0.0.1)",
+    )
+
     return parser
 
 
@@ -266,6 +297,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         elif args.subcommand == "logs":
             return handle_logs(args, context)
+
+        elif args.subcommand == "mcp":
+            return _run_coroutine(handle_mcp(args, context))
 
         else:
             parser.print_help()
