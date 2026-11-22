@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     pik_json TEXT NOT NULL,
     data_json TEXT NOT NULL,
     status TEXT DEFAULT 'confirmed',
+    action_id TEXT,
+    created_action_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (session_id, id),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -54,6 +57,9 @@ CREATE TABLE IF NOT EXISTS edges (
     source_id TEXT NOT NULL,
     target_id TEXT NOT NULL,
     relation_type TEXT NOT NULL,
+    action_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (session_id, source_id, target_id, relation_type),
     FOREIGN KEY (session_id, source_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE,
     FOREIGN KEY (session_id, target_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE
@@ -163,9 +169,44 @@ class GraphStore:
             yield self._conn
 
     async def initialize(self):
-        """Create tables if they don't exist."""
+        """Create tables if they don't exist and run non-destructive schema migrations."""
         async with self._get_conn() as db:
             await db.executescript(SCHEMA_DDL)
+
+            # Non-destructive schema migration for nodes
+            cursor = await db.execute("PRAGMA table_info(nodes)")
+            node_cols = {row[1] for row in await cursor.fetchall()}
+            if "action_id" not in node_cols:
+                await db.execute("ALTER TABLE nodes ADD COLUMN action_id TEXT")
+            if "created_action_id" not in node_cols:
+                await db.execute("ALTER TABLE nodes ADD COLUMN created_action_id TEXT")
+            if "created_at" not in node_cols:
+                await db.execute(
+                    "ALTER TABLE nodes ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                )
+
+            # Non-destructive schema migration for edges
+            cursor = await db.execute("PRAGMA table_info(edges)")
+            edge_cols = {row[1] for row in await cursor.fetchall()}
+            if "action_id" not in edge_cols:
+                await db.execute("ALTER TABLE edges ADD COLUMN action_id TEXT")
+            if "created_at" not in edge_cols:
+                await db.execute(
+                    "ALTER TABLE edges ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                )
+            if "updated_at" not in edge_cols:
+                await db.execute(
+                    "ALTER TABLE edges ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                )
+
+            # Ensure action_id indices exist after columns are guaranteed
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id)"
+            )
+
             await db.commit()
 
     async def check_integrity(self) -> tuple[str, list[str]]:
@@ -438,7 +479,7 @@ class GraphStore:
             return hashlib.sha256(f"{schema_type}:{pik_str}".encode()).hexdigest()
 
     async def upsert_findings_batch(
-        self, session_id: str, findings: List[BaseFinding]
+        self, session_id: str, findings: List[BaseFinding], action_id: Optional[str] = None
     ) -> List[str]:
         """Atomically upsert a batch of findings in a single SQLite transaction."""
         if not findings:
@@ -555,15 +596,18 @@ class GraphStore:
                     json.dumps(meta["pik"]),
                     json.dumps(meta["data"]),
                     meta["status"],
+                    action_id,
+                    action_id,
                 )
                 for nid, meta in node_metadata.items()
             ]
             await db.executemany(
-                """INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status, action_id, created_action_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(session_id, id) DO UPDATE SET
                        data_json = excluded.data_json,
                        status = excluded.status,
+                       action_id = COALESCE(excluded.action_id, nodes.action_id),
                        updated_at = CURRENT_TIMESTAMP""",
                 nodes_params,
             )
@@ -574,15 +618,19 @@ class GraphStore:
                 rel_nodes.extend(assoc_nodes.values())
             if rel_nodes:
                 await db.executemany(
-                    "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json) VALUES (?, ?, ?, ?, ?)",
-                    rel_nodes,
+                    "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json, action_id, created_action_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
                 )
 
             rel_edges = list(parent_edges | assoc_edges)
             if rel_edges:
                 await db.executemany(
-                    "INSERT OR IGNORE INTO edges (session_id, source_id, target_id, relation_type) VALUES (?, ?, ?, ?)",
-                    rel_edges,
+                    """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
+                           action_id = COALESCE(excluded.action_id, edges.action_id),
+                           updated_at = CURRENT_TIMESTAMP""",
+                    [(r[0], r[1], r[2], r[3], action_id) for r in rel_edges],
                 )
 
             await db.commit()
@@ -617,9 +665,11 @@ class GraphStore:
 
         return node_ids
 
-    async def upsert_finding(self, session_id: str, finding: BaseFinding) -> str:
+    async def upsert_finding(
+        self, session_id: str, finding: BaseFinding, action_id: Optional[str] = None
+    ) -> str:
         """Upsert a single finding (delegates to upsert_findings_batch)."""
-        node_ids = await self.upsert_findings_batch(session_id, [finding])
+        node_ids = await self.upsert_findings_batch(session_id, [finding], action_id=action_id)
         return node_ids[0] if node_ids else ""
 
     async def query(self, schema_type: str, session_id: Optional[str] = None) -> List[Dict]:
@@ -796,8 +846,8 @@ class GraphStore:
                 # 3. Copy nodes
                 await db.execute(
                     """
-                    INSERT OR IGNORE INTO dest.nodes (session_id, id, schema_type, pik_json, data_json, status, updated_at)
-                    SELECT session_id, id, schema_type, pik_json, data_json, status, updated_at
+                    INSERT OR IGNORE INTO dest.nodes (session_id, id, schema_type, pik_json, data_json, status, action_id, created_at, updated_at)
+                    SELECT session_id, id, schema_type, pik_json, data_json, status, action_id, created_at, updated_at
                     FROM nodes
                     WHERE session_id = ?
                 """,
@@ -807,8 +857,8 @@ class GraphStore:
                 # 4. Copy edges
                 await db.execute(
                     """
-                    INSERT OR IGNORE INTO dest.edges (session_id, source_id, target_id, relation_type)
-                    SELECT session_id, source_id, target_id, relation_type
+                    INSERT OR IGNORE INTO dest.edges (session_id, source_id, target_id, relation_type, action_id, created_at, updated_at)
+                    SELECT session_id, source_id, target_id, relation_type, action_id, created_at, updated_at
                     FROM edges
                     WHERE session_id = ?
                 """,
@@ -983,13 +1033,16 @@ class GraphStore:
                             json.dumps(pik_val),
                             json.dumps(data_val),
                             n["status"],
+                            n["action_id"] if "action_id" in n.keys() else None,
+                            n["created_at"] if "created_at" in n.keys() else n["updated_at"],
                             n["updated_at"],
                         )
                     )
 
                 if nodes_to_insert:
                     await db.executemany(
-                        "INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        """INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status, action_id, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         nodes_to_insert,
                     )
 
@@ -999,11 +1052,20 @@ class GraphStore:
                 edges = await cursor_edges.fetchall()
                 if edges:
                     edges_to_insert = [
-                        (src_session_id, e["source_id"], e["target_id"], e["relation_type"])
+                        (
+                            src_session_id,
+                            e["source_id"],
+                            e["target_id"],
+                            e["relation_type"],
+                            e["action_id"] if "action_id" in e.keys() else None,
+                            e["created_at"] if "created_at" in e.keys() else None,
+                            e["updated_at"] if "updated_at" in e.keys() else None,
+                        )
                         for e in edges
                     ]
                     await db.executemany(
-                        "INSERT INTO edges (session_id, source_id, target_id, relation_type) VALUES (?, ?, ?, ?)",
+                        """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))""",
                         edges_to_insert,
                     )
 

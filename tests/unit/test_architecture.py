@@ -133,6 +133,7 @@ def test_complete_unidirectional_layer_dag():
             "ether.core",
             "ether.gateway",
             "ether.cli",
+            "ether.mcp",
         ],
         "schemas": [
             "ether.registry",
@@ -140,11 +141,18 @@ def test_complete_unidirectional_layer_dag():
             "ether.core",
             "ether.gateway",
             "ether.cli",
+            "ether.mcp",
         ],
-        "registry": ["ether.graph", "ether.core", "ether.gateway", "ether.cli"],
-        "graph": ["ether.core", "ether.gateway", "ether.cli"],
-        "core": ["ether.gateway", "ether.cli"],
-        "gateway": ["ether.cli"],
+        "registry": [
+            "ether.graph",
+            "ether.core",
+            "ether.gateway",
+            "ether.cli",
+            "ether.mcp",
+        ],
+        "graph": ["ether.core", "ether.gateway", "ether.cli", "ether.mcp"],
+        "core": ["ether.gateway", "ether.cli", "ether.mcp"],
+        "gateway": ["ether.cli", "ether.mcp"],
     }
 
     violations = []

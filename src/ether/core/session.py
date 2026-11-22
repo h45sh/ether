@@ -808,7 +808,9 @@ class ExecutionSession:
             last_flush = asyncio.get_event_loop().time()
             if not getattr(self.store, "_closed", False):
                 try:
-                    await self.store.upsert_findings_batch(str(action.session_id), to_flush)
+                    await self.store.upsert_findings_batch(
+                        str(action.session_id), to_flush, action_id=str(action.action_id)
+                    )
                 except Exception:
                     pass
 

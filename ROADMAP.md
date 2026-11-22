@@ -74,10 +74,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Expose a single execution entry point at the seam: `execute_action(target, params) -> AsyncIterator[BaseFinding]`.
   - **Tier A In-Process Async Coroutines**: Zero-fork high-concurrency adapters (`httpx` HTTP discovery, `sslyze` TLS evaluation, DNS fast-resolvers) running directly within the asyncio loop (10,000+ targets, <150MB RAM).
   - Automatically falls back to binary subprocess execution for compiled tools (`nmap`, `nuclei`, `ffuf`).
-- [ ] **Native Model Context Protocol (MCP) Server (`ether.mcp`):**
+- [x] **Native Model Context Protocol (MCP) Server (`ether.mcp`):**
   - Stdio and Server-Sent Events (SSE) server allowing Cursor, Claude Desktop, and autonomous agent swarms to drive Ether directly.
   - Minimal high-leverage interface (5 core tools): `execute_tool`, `query_graph`, `get_diff`, `inspect_entity`, `abort_action`.
-- [ ] **Deterministic Zero-Token Graph Diffing Engine:**
+- [x] **Deterministic Zero-Token Graph Diffing Engine:**
   - After any action completes, compute the exact set-theoretic delta:
     $$\Delta = S_{t+1} \setminus S_t$$
   - Return compact semantic diffs to agents:

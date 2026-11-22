@@ -1,6 +1,7 @@
 import json
 import os
 
+import aiosqlite
 import pytest
 
 from ether.graph.store import GraphStore
@@ -243,3 +244,96 @@ async def test_learning_sandbox_preserves_user_sessions():
     assert "Guided Session (Imported 1)" in session_names
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_schema_auto_migration_action_id_and_created_at(tmp_path):
+    """Verify that initialize() safely adds action_id and created_at to legacy databases."""
+    db_file = str(tmp_path / "legacy.db")
+
+    # Manually create legacy schema without action_id or created_at
+    import aiosqlite
+
+    async with aiosqlite.connect(db_file) as conn:
+        await conn.execute(
+            """
+            CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT DEFAULT 'ACTIVE');
+        """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT DEFAULT 'ACTIVE');
+        """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE nodes (session_id TEXT NOT NULL, id TEXT NOT NULL, schema_type TEXT NOT NULL, pik_json TEXT NOT NULL, data_json TEXT NOT NULL, status TEXT DEFAULT 'confirmed', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (session_id, id));
+        """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE edges (session_id TEXT NOT NULL, source_id TEXT NOT NULL, target_id TEXT NOT NULL, relation_type TEXT NOT NULL, PRIMARY KEY (session_id, source_id, target_id, relation_type));
+        """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE event_log (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, action_payload TEXT, result_payload TEXT, human_readable TEXT, schema_type TEXT, finding_json TEXT, closed INTEGER DEFAULT 0);
+        """
+        )
+        await conn.commit()
+
+    store = GraphStore(db_file)
+    await store.initialize()
+
+    async with store.connection() as conn:
+        cursor = await conn.execute("PRAGMA table_info(nodes)")
+        node_cols = {row[1] for row in await cursor.fetchall()}
+        assert "action_id" in node_cols
+        assert "created_at" in node_cols
+
+        cursor = await conn.execute("PRAGMA table_info(edges)")
+        edge_cols = {row[1] for row in await cursor.fetchall()}
+        assert "action_id" in edge_cols
+        assert "created_at" in edge_cols
+        assert "updated_at" in edge_cols
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_upsert_findings_with_action_id():
+    """Verify that findings and relationships correctly record action_id."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_learning_sandbox()
+
+    service = NetworkService.create(
+        host_ip="10.0.0.1",
+        port=80,
+        protocol="tcp",
+        service="http",
+    )
+    # NetworkService automatically links parent host
+    node_ids = await store.upsert_findings_batch(sess_id, [service], action_id="act-test-42")
+    assert len(node_ids) == 1
+
+    async with store.connection() as conn:
+        conn.row_factory = aiosqlite.Row
+        # Check node action_id
+        cursor = await conn.execute("SELECT * FROM nodes WHERE session_id = ?", (sess_id,))
+        nodes = await cursor.fetchall()
+        assert len(nodes) >= 1
+        for n in nodes:
+            assert n["action_id"] == "act-test-42"
+            assert n["created_at"] is not None
+
+        # Check edge action_id
+        cursor = await conn.execute("SELECT * FROM edges WHERE session_id = ?", (sess_id,))
+        edges = await cursor.fetchall()
+        assert len(edges) >= 1
+        for e in edges:
+            assert e["action_id"] == "act-test-42"
+            assert e["created_at"] is not None
+
+    await store.close()
+

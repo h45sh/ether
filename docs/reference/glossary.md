@@ -1,54 +1,91 @@
 # Ether Architecture & Domain Glossary
 
-This glossary defines the authoritative terminology, domain concepts, and architectural patterns used across the Ether codebase and documentation.
+This document defines the authoritative ubiquitous language, domain concepts, and architectural patterns used across the Ether codebase and documentation. The canonical root definition lives in [GLOSSARY.md](../../GLOSSARY.md).
 
 ---
 
-## Core System Concepts
+## Core Domain Concepts
 
-### Smart Adapter / Dumb Framework
-An architectural design pattern where all tool-specific logic (command flag assembly, binary path discovery, and stdout/stderr parsing) is strictly encapsulated inside pluggable adapters (`tools/<name>/adapter.py`). The core platform (the "dumb framework") remains completely agnostic of individual security tools; it only processes standardized `BaseFinding` schemas, manages asynchronous process lifecycles, and maintains the relational entity graph.
+**Finding**:
+A normalized, structured domain entity (host, service, vulnerability, credential) discovered by a security tool during execution.
+_Avoid_: Scan result, raw output, log entry, match
 
-### Primary Identity Key (PIK)
-A deterministic SHA-256 hash uniquely identifying a security finding based on its normalized semantic attributes (e.g., `ip_address`, `port_number`, `normalized_url`). PIKs ensure idempotent upserts into `GraphStore`: repeated scans update existing nodes rather than cluttering the database with duplicate entities.
+**Primary Identity Key (PIK)**:
+A deterministic composite identity key derived from an entity's immutable semantic attributes, enabling idempotent upserts and non-destructive graph merges.
+_Avoid_: Entity ID, primary key, hash key, GUID
 
-### Entity Graph
-A persistent SQLite-backed directed graph that models an engagement's attack surface. Nodes represent normalized cybersecurity entities (`network.host`, `network.service`, `web.endpoint`, `vulnerability.found`, `credential.found`), while directional edges model relationships (e.g., `host -> service`, `service -> vulnerability`).
+**Entity Graph**:
+A persistent directed graph representing the discovered attack surface, where nodes represent findings and edges represent structural relationships.
+_Avoid_: Target database, topology map, inventory list
 
-### Contextual Variable Injection
-The dynamic resolution and substitution of runtime environment tokens (`$TARGET`, `$PORT`, `$SERVICE`, `$URL`) into command inputs. When an operator selects any node in the workbench entity tree, these variables automatically bind to the active node's attributes, eliminating repetitive manual argument entry.
-
----
-
-## Execution & Security Engine
-
-### Action Gateway (`ActionGateway`)
-The central policy enforcer and security gate for all system invocations. The gateway validates target scope (CIDR boundaries), enforces non-shell binary whitelisting, prevents Link-Local and cloud metadata SSRF attacks (`169.254.0.0/16`, IMDSv2), and prevents unprivileged automated agents from executing raw shell commands.
-
-### Execution Session (`ExecutionSession`)
-An asynchronous process orchestrator managing subprocess lifecycles. It connects subprocess `stdout` and `stderr` streams, spools output to disk in 64KB chunks (`LogSpooler`), micro-batches terminal UI renders at 20–30 FPS, and handles two-phase privileged execution (targeted `sudo -v` terminal suspension for credentials, followed by foreground live output streaming into tabs).
-
-### Pre-flight Verification (`PreflightVerifier`)
-A zero-side-effect validation subsystem that inspects execution prerequisites prior to process launch: discovers binaries on system `$PATH`, verifies wordlist files and macro expansions, resolves context variables, and enforces sandbox security boundaries (prohibiting unauthorized `sudo` and cloud metadata SSRF targets). Paired with `PreflightModal` to surface instant, one-click remediation guidance.
-
-### Subprocess Environment Scrubbing (`sanitize_subprocess_env`)
-A security control that strips all sensitive host environment variables (including `ETHER_*`, `OPENAI_*`, `ANTHROPIC_*`, `AWS_*`, `GITHUB_*`, and `SSH_PRIVATE_KEY`) before spawning child security tools, ensuring external binaries cannot inspect `/proc/<PID>/environ` to harvest operator credentials.
-
-### Untrusted Output Sandboxing
-A prompt-injection defense mechanism in `ExplanationTutor` where raw, unverified target scanner outputs are encapsulated inside `<untrusted_scan_output tool="...">` XML boundaries, with closing-tag sanitization and automated redaction of sensitive credentials (PEM keys, bearer tokens, passwords) before dispatch to language models.
+**Smart Adapter / Simple Core**:
+An architectural pattern where tool-specific binary discovery, argument assembly, and stream parsing live entirely in pluggable adapters, keeping the execution engine tool-agnostic.
+_Avoid_: Dumb framework, wrapper script, plugin system
 
 ---
 
-## Storage & Lab Workflows
+## Execution & Policy Engine
 
-### Forensic Session Archiving
-A state-governed lifecycle model (`ACTIVE` vs `CLOSED`). When an operator closes a session, the workspace facade activates read-only guards (`PermissionError`), freezing findings and command history to preserve evidentiary integrity while remaining fully navigable and exportable.
+**Execution Session**:
+An isolated, headless asynchronous runtime context supervising child process lifecycles, streaming raw logs, and emitting validated findings.
+_Avoid_: Terminal session, workspace run, shell job, task
 
-### Standalone Session Archive (`cyg session export` / `cyg session import`)
-An atomic SQLite database export mechanism (`ATTACH DATABASE`) that bundles the entire entity graph, edge relationships, and execution logs into a self-contained `.db` file. Instructors and evaluators can import this archive into any local Ether instance to inspect a student's exact chronological methodology and scan findings.
+**Action Gateway**:
+The authoritative perimeter security boundary that validates targets, enforces CIDR scope containment, and blocks metadata/SSRF destinations prior to process launch.
+_Avoid_: Firewall, router, proxy, permission checker
 
-### Universal Lab Checkpoint (`.cyglab`)
-A self-contained SQLite archive created in Learning Mode (`Ctrl+S` / ` SAVE`) that serializes full multi-tool laboratory progression. It records all discovered entity graph nodes/edges across all tools, per-tool configuration caches (`tool_configs`), cumulative terminal stdout lines, AI tutor dialogues, and student notes, secured with atomic `0o600` private file permissions.
+**Gate Policy**:
+The operational security mode (`SAFE` vs `UNRESTRICTED`) dictating destination filtering, scope enforcement, and command execution boundaries.
+_Avoid_: Security level, access mode, permission tier
 
-### Wordlist Subsystem
-A centralized asset repository located at `~/.ether/wordlists/` (or `$ETHER_DATA_DIR/wordlists`). It bundles high-signal starter wordlists and dynamically expands named macros (`{wordlist:common_dirs}`) inside tool recipes.
+**Action Validator**:
+A decoupled verification interface that validates intended tool invocations against operational policies before execution begins.
+_Avoid_: Pre-flight hook, check runner, sanitizer
+
+**Tool Adapter**:
+A self-contained module encapsulating CLI argument formulation, binary discovery, and stream parsing into normalized finding schemas.
+_Avoid_: Tool wrapper, parser plugin, driver
+
+---
+
+## Security & Forensics
+
+**Untrusted Scan Output**:
+Raw, unverified data emitted by child tools, encapsulated in structural XML boundaries to isolate language models from prompt injection.
+_Avoid_: Unsafe output, raw terminal log, dirty string
+
+**Subprocess Environment Scrubbing**:
+The mechanical stripping of host secrets, API tokens, and provider credentials from the environment before spawning child processes.
+_Avoid_: Env sanitization, secret masking, variable clearing
+
+**Forensic Sealing**:
+The permanent transition of a closed session into an immutable state that forbids all further mutation to preserve evidentiary integrity.
+_Avoid_: Archive locking, session freeze, close session
+
+**Event Log**:
+An append-only, chronologically ordered sequence of every action executed and finding recorded within a session.
+_Avoid_: Audit trail, transaction log, history table
+
+---
+
+## Agent Telemetry & Protocol (Epoch 2)
+
+**Action-Scoped Diff**:
+The set-theoretic delta ($\Delta_{action} = S_{action\_end} \setminus S_{action\_start}$) representing nodes and edges created or updated specifically by a distinct execution `action_id`, eliminating clock drift and concurrency races.
+_Avoid_: Timestamp delta, poll diff, interval scan
+
+**Agent Telemetry Protocol**:
+The structured communication layer (over MCP) that presents token-budgeted graph snapshots, zero-token deltas, and supervised tool execution to autonomous AI agents.
+_Avoid_: Agent API, bot bridge, AI driver
+
+**Session Binding**:
+The runtime attachment of an MCP server or client context to a persistent session, isolating graph findings and telemetry across parallel agent investigations.
+_Avoid_: Context pin, workspace lock, active session flag
+
+**Delta Envelope**:
+The canonical structured JSON response containing categorized `added_nodes`, `updated_nodes`, and `added_edges` resulting from an action or state interval.
+_Avoid_: Diff blob, patch payload, change list
+
+**Sync-with-Fallback Execution**:
+An execution pattern where tool invocations are awaited synchronously up to a configured deadline, automatically falling back to detached background supervision if the operation exceeds the threshold.
+_Avoid_: Hybrid polling, timeout detach, deferred execution

@@ -157,7 +157,7 @@ Our documentation follows the **[Diátaxis Framework](https://diataxis.fr/)**:
 | **How-To** | [Contributing Standards](docs/how-to/contributing.md) | Pull request guidelines, AST checks, and code hygiene. |
 | **Reference** | [Schema Registry](docs/reference/schema-registry.md) | Complete catalog of 18 normalized `BaseFinding` schemas. |
 | **Reference** | [Engineering Standards](docs/reference/engineering-standards.md) | Concrete mechanical invariants, memory limits, and policies. |
-| **Reference** | [Domain Glossary](docs/reference/glossary.md) | Ubiquitous language: Workspace, Session, Finding, Action, PIK. |
+| **Reference** | [Domain Glossary](GLOSSARY.md) | Ubiquitous language: Finding, PIK, Entity Graph, Session, Gateway. |
 | **Explanation** | [Architecture Overview](docs/explanation/architecture.md) | Deep module design, unidirectional layer DAG, and streaming backpressure. |
 | **Explanation** | [Database & Graph State](docs/explanation/database.md) | SQLite WAL mode, PIK hashing, and append-only event sourcing. |
 | **Vision** | [Master Roadmap](ROADMAP.md) | The 5 Evolutionary Epochs to the ideal autonomous security engine. |

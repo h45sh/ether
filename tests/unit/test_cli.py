@@ -211,3 +211,15 @@ async def test_cli_graph_encrypted_export_and_import(tmp_path, capsys):
     piks = [json.loads(n["pik_json"]).get("ip") for n in nodes if "pik_json" in n]
     assert "172.16.0.5" in piks
     await target_store.close()
+
+
+def test_cli_mcp_parser_and_help(capsys):
+    """Verify 'ether mcp --help' surfaces MCP CLI options."""
+    with pytest.raises(SystemExit) as exc:
+        main(["mcp", "--help"])
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "--transport" in captured.out
+    assert "--session-id" in captured.out
+    assert "--port" in captured.out
+

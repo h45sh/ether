@@ -91,7 +91,8 @@ async def test_compute_graph_diff_zero_tokens(tmp_path):
     h1_id = await store.upsert_finding(sess_id, h1)
     async with store.connection() as db:
         await db.execute(
-            "UPDATE nodes SET updated_at = '2020-01-01 00:00:00' WHERE id = ?", (h1_id,)
+            "UPDATE nodes SET created_at = '2020-01-01 00:00:00', updated_at = '2020-01-01 00:00:00' WHERE id = ?",
+            (h1_id,),
         )
         await db.commit()
 
@@ -119,3 +120,52 @@ async def test_compute_graph_diff_zero_tokens(tmp_path):
     assert "10.0.0.1" not in affected_piks
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_compute_graph_diff_by_action_id(tmp_path):
+    """Verify deterministic set-theoretic graph delta computation by action_id."""
+    db_file = str(tmp_path / "action_diff_test.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+
+    ws_id = await store.create_workspace("ActDiffWS")
+    sess_id = await store.create_session(ws_id, "ActDiffSess")
+
+    # Action 1: Discovers Host 10.0.0.1 and Service 80
+    h1 = NetworkHost.create(ip="10.0.0.1", hostname="initial.local")
+    s1 = NetworkService.create(host_ip="10.0.0.1", port=80, service_name="http")
+    await store.upsert_findings_batch(sess_id, [h1, s1], action_id="action-001")
+
+    # Action 2: Adds Service 443 and updates Host 10.0.0.1 hostname
+    h1_update = NetworkHost.create(ip="10.0.0.1", hostname="updated.local")
+    s2 = NetworkService.create(host_ip="10.0.0.1", port=443, service_name="https")
+    await store.upsert_findings_batch(sess_id, [h1_update, s2], action_id="action-002")
+
+    compiler = GraphTelemetryCompiler(store, sess_id)
+    diff = await compiler.compute_graph_diff(action_id="action-002")
+
+    assert diff["action_id"] == "action-002"
+    assert diff["tokens_consumed"] == 0
+    assert diff["total_delta_count"] >= 2
+
+    # s2 (port 443) must be in added_nodes
+    added_ports = [
+        n["pik"]["port"] for n in diff["added_nodes"] if "port" in n["pik"]
+    ]
+    assert 443 in added_ports
+    assert 80 not in added_ports
+
+    # h1 was updated in action-002, so it should be in updated_nodes
+    updated_ips = [
+        n["pik"]["ip"] for n in diff["updated_nodes"] if "ip" in n["pik"]
+    ]
+    assert "10.0.0.1" in updated_ips
+
+    # Edges added by action-002
+    assert len(diff["added_edges"]) >= 1
+    edge_types = [e["relation_type"] for e in diff["added_edges"]]
+    assert "has_service" in edge_types
+
+    await store.close()
+
