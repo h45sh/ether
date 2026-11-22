@@ -5,11 +5,11 @@ Enable non-destructive database evolution and action attribution across Ether's 
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Add `mcp>=1.0.0` to `dependencies` in `pyproject.toml`
-- [ ] Implement non-destructive `PRAGMA table_info` column inspection in `GraphStore.initialize()`
-- [ ] Add `action_id TEXT` and `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` to `nodes` and `edges` in `SCHEMA_DDL` and runtime migration
-- [ ] Update `upsert_node` and `add_edge` in `GraphStore` to accept and persist `action_id`
-- [ ] Wire `action_id` propagation in `ActionGateway` when storing findings
-- [ ] Add unit tests in `tests/unit/test_storage.py` verifying backward compatibility and action attribution
+- [x] Add `mcp>=1.0.0` to `dependencies` in `pyproject.toml`
+- [x] Implement non-destructive `PRAGMA table_info` column inspection in `GraphStore.initialize()`
+- [x] Add `action_id TEXT` and `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` to `nodes` and `edges` in `SCHEMA_DDL` and runtime migration
+- [x] Update `upsert_node` and `add_edge` in `GraphStore` to accept and persist `action_id`
+- [x] Wire `action_id` propagation in `ActionGateway` when storing findings
+- [x] Add unit tests in `tests/unit/test_storage.py` verifying backward compatibility and action attribution
