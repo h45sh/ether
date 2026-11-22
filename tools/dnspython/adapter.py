@@ -5,18 +5,20 @@ import shlex
 import sys
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from ether.common.context import ExecutionContext
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.dns import DnsRecord
+from ether.schemas.network import NetworkHost
 
 
 class DnsPythonAdapter(ToolAdapter):
     """Adapter for the dnspython query and zone transfer engine."""
 
+    execution_tier = "coroutine"
+
     def validate_install(self) -> bool:
         """Dnspython is a bundled Python dependency, always valid if importable."""
-        import sys
-
         if "dns.resolver" in sys.modules:
             return True
         try:
@@ -25,6 +27,176 @@ class DnsPythonAdapter(ToolAdapter):
             return True
         except ImportError:
             return False
+
+    async def execute_action(
+        self,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> AsyncIterator[BaseFinding]:
+        """Execute DNS resolution natively in-process using dns.asyncresolver."""
+        import dns.asyncquery
+        import dns.asyncresolver
+        import dns.rdatatype
+        import dns.resolver
+        import dns.reversename
+        import dns.zone
+
+        query: Optional[str] = None
+        if target.schema_type == "dns.record":
+            query = target.pik.get("domain") or target.data.get("domain")
+        elif target.schema_type == "network.host":
+            query = target.pik.get("ip") or target.data.get("ip")
+
+        if not query:
+            query = params.get("target") or params.get("domain") or params.get("ip")
+
+        if not query:
+            await context.spool_line(
+                f"[-] Target {target.schema_type} missing query field (domain/ip)",
+                is_error=True,
+            )
+            return
+
+        raw_flags = params.get("raw_flags", "").strip()
+        flag_args = shlex.split(raw_flags) if raw_flags else []
+
+        record_types: List[str] = []
+        nameserver: Optional[str] = params.get("nameserver")
+        timeout: float = float(params.get("timeout", 5.0))
+
+        # Parse flags
+        i = 0
+        while i < len(flag_args):
+            arg = flag_args[i]
+            if arg in ("-t", "--type") and i + 1 < len(flag_args):
+                record_types.extend([t.strip().upper() for t in flag_args[i + 1].split(",")])
+                i += 2
+            elif arg in ("-s", "--server") and i + 1 < len(flag_args):
+                nameserver = flag_args[i + 1]
+                i += 2
+            elif arg.startswith("@"):
+                nameserver = arg[1:]
+                i += 1
+            elif arg in ("--timeout",) and i + 1 < len(flag_args):
+                try:
+                    timeout = float(flag_args[i + 1])
+                except ValueError:
+                    pass
+                i += 2
+            else:
+                i += 1
+
+        if not record_types:
+            if params.get("record_type"):
+                record_types = [params["record_type"].upper()]
+            elif target.schema_type == "network.host":
+                record_types = ["PTR"]
+            else:
+                record_types = ["A", "AAAA", "MX", "NS", "TXT", "SOA"]
+
+        resolver = dns.asyncresolver.Resolver()
+        resolver.lifetime = timeout
+        resolver.timeout = timeout
+        if nameserver:
+            resolver.nameservers = [nameserver]
+
+        await context.spool_line(
+            f"[*] Native DNS resolution initiated for '{query}' (types: {', '.join(record_types)})"
+        )
+
+        for rtype in record_types:
+            if rtype == "PTR":
+                try:
+                    rev_name = dns.reversename.from_address(query)
+                    await context.spool_line(f"[*] Querying PTR for {rev_name}...")
+                    answers = await resolver.resolve(rev_name, "PTR")
+                    for rdata in answers:
+                        val = str(rdata.target).rstrip(".")
+                        await context.spool_line(f"[+] {query} PTR {val} (TTL={answers.ttl})")
+                        yield DnsRecord.create(
+                            domain=val,
+                            record_type="PTR",
+                            value=val,
+                            resolved_ip=query,
+                        )
+                except Exception as e:
+                    await context.spool_line(
+                        f"[-] PTR query failed for {query}: {type(e).__name__} ({e})"
+                    )
+            elif rtype == "AXFR":
+                ns_servers = [nameserver] if nameserver else []
+                if not ns_servers:
+                    try:
+                        ns_answers = await resolver.resolve(query, "NS")
+                        ns_servers = [str(r.target).rstrip(".") for r in ns_answers]
+                    except Exception as e:
+                        await context.spool_line(
+                            f"[-] Failed to discover NS for AXFR: {e}", is_error=True
+                        )
+                for ns in ns_servers:
+                    await context.spool_line(
+                        f"[*] Attempting AXFR for {query} against nameserver {ns}..."
+                    )
+                    try:
+                        zone = dns.zone.Zone(query)
+                        await dns.asyncquery.inbound_xfr(
+                            where=ns, txn_manager=zone, timeout=timeout
+                        )
+                        await context.spool_line(
+                            f"[+] AXFR SUCCESS: Zone transfer allowed on {ns} for {query}!"
+                        )
+                        for name, node in zone.nodes.items():
+                            rname = str(name)
+                            full_name = f"{rname}.{query}" if rname != "@" else query
+                            for rdataset in node.rdatasets:
+                                r_type_str = dns.rdatatype.to_text(rdataset.rdtype)
+                                for rdata in rdataset:
+                                    val = str(rdata).rstrip(".")
+                                    await context.spool_line(
+                                        f"    {full_name} {rdataset.ttl} IN {r_type_str} {val}"
+                                    )
+                                    resolved_ip = val if r_type_str in ("A", "AAAA") else None
+                                    yield DnsRecord.create(
+                                        domain=full_name,
+                                        record_type=r_type_str,
+                                        value=val,
+                                        resolved_ip=resolved_ip,
+                                    )
+                                    if resolved_ip:
+                                        yield NetworkHost.create(ip=resolved_ip)
+                        break
+                    except Exception as e:
+                        await context.spool_line(
+                            f"[-] AXFR failed on {ns}: {type(e).__name__} ({e})"
+                        )
+            else:
+                await context.spool_line(f"[*] Querying {rtype} for {query}...")
+                try:
+                    answers = await resolver.resolve(query, rtype)
+                    for rdata in answers:
+                        val = str(rdata).rstrip(".")
+                        await context.spool_line(f"[+] {query} {answers.ttl} IN {rtype} {val}")
+                        resolved_ip = val if rtype in ("A", "AAAA") else None
+                        yield DnsRecord.create(
+                            domain=query,
+                            record_type=rtype,
+                            value=val,
+                            resolved_ip=resolved_ip,
+                        )
+                        if resolved_ip:
+                            yield NetworkHost.create(ip=resolved_ip)
+                except dns.resolver.NXDOMAIN:
+                    await context.spool_line(f"[-] {query} does not exist (NXDOMAIN)")
+                    break
+                except (dns.resolver.NoAnswer, dns.resolver.NoNameservers):
+                    await context.spool_line(f"[*] No {rtype} record found for {query}")
+                except Exception as e:
+                    await context.spool_line(
+                        f"[-] Query {rtype} failed for {query}: {type(e).__name__} ({e})"
+                    )
+
+        await context.spool_line(f"[*] Native DNS resolution completed for '{query}'")
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct the CLI command using Python's module invocation."""

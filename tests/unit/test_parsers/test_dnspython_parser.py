@@ -69,3 +69,155 @@ async def test_dnspython_parse_output(adapter):
 
     mx_rec = next(f for f in findings if f.pik["type"] == "MX")
     assert mx_rec.data["value"] == "10 mail.example.com"
+
+
+def test_dnspython_execution_tier(adapter):
+    assert adapter.execution_tier == "coroutine"
+
+
+@pytest.mark.asyncio
+async def test_dnspython_execute_action_native(adapter):
+    from unittest.mock import patch
+
+    import dns.resolver
+
+    from ether.common.context import ExecutionContext
+
+    spooled_lines = []
+
+    async def fake_spool(line: str, is_error: bool = False):
+        spooled_lines.append((line, is_error))
+
+    ctx = ExecutionContext(
+        action_id="act-test-dns-1",
+        session_id="sess-test",
+        spool_fn=fake_spool,
+    )
+
+    class DummyAnswer:
+        def __init__(self, items, ttl=300):
+            self.items = items
+            self.ttl = ttl
+
+        def __iter__(self):
+            return iter(self.items)
+
+    class DummyRdata:
+        def __init__(self, text):
+            self.text = text
+
+        def __str__(self):
+            return self.text
+
+    async def mock_resolve(qname, rtype, *args, **kwargs):
+        if rtype == "A":
+            return DummyAnswer([DummyRdata("93.184.216.34")])
+        elif rtype == "MX":
+            return DummyAnswer([DummyRdata("10 mail.example.com")])
+        raise dns.resolver.NoAnswer()
+
+    target = DnsRecord.create(domain="example.com", record_type="A", value="")
+    with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
+        findings = [
+            f
+            async for f in adapter.execute_action(
+                target, {"raw_flags": "-t A,MX"}, ctx
+            )
+        ]
+
+    # Verify findings
+    assert len(findings) == 3  # DnsRecord(A), NetworkHost(93.184.216.34), DnsRecord(MX)
+    dns_records = [f for f in findings if f.schema_type == "dns.record"]
+    host_records = [f for f in findings if f.schema_type == "network.host"]
+
+    assert len(dns_records) == 2
+    assert len(host_records) == 1
+    assert host_records[0].pik["ip"] == "93.184.216.34"
+
+    # Verify spooling
+    text_spooled = [line for line, _ in spooled_lines]
+    assert any("Native DNS resolution initiated" in l for l in text_spooled)
+    assert any("Querying A for example.com" in l for l in text_spooled)
+    assert any("93.184.216.34" in l for l in text_spooled)
+
+
+@pytest.mark.asyncio
+async def test_dnspython_execute_action_ptr(adapter):
+    from unittest.mock import patch
+
+    from ether.common.context import ExecutionContext
+
+    spooled_lines = []
+
+    async def fake_spool(line: str, is_error: bool = False):
+        spooled_lines.append((line, is_error))
+
+    ctx = ExecutionContext(
+        action_id="act-test-dns-ptr",
+        session_id="sess-test",
+        spool_fn=fake_spool,
+    )
+
+    class DummyAnswer:
+        def __init__(self, items, ttl=300):
+            self.items = items
+            self.ttl = ttl
+
+        def __iter__(self):
+            return iter(self.items)
+
+    class DummyPtrRdata:
+        def __init__(self, target_str):
+            self.target = target_str
+
+    async def mock_resolve(qname, rtype, *args, **kwargs):
+        if rtype == "PTR":
+            return DummyAnswer([DummyPtrRdata("dns.google.")])
+        raise Exception("Unexpected query")
+
+    host_target = NetworkHost.create(ip="8.8.8.8")
+    with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
+        findings = [
+            f async for f in adapter.execute_action(host_target, {}, ctx)
+        ]
+
+    assert len(findings) == 1
+    rec = findings[0]
+    assert rec.schema_type == "dns.record"
+    assert rec.pik["type"] == "PTR"
+    assert rec.data["value"] == "dns.google"
+    assert rec.data["resolved_ip"] == "8.8.8.8"
+
+
+@pytest.mark.asyncio
+async def test_dnspython_execute_action_nxdomain(adapter):
+    from unittest.mock import patch
+
+    import dns.resolver
+
+    from ether.common.context import ExecutionContext
+
+    spooled_lines = []
+
+    async def fake_spool(line: str, is_error: bool = False):
+        spooled_lines.append((line, is_error))
+
+    ctx = ExecutionContext(
+        action_id="act-test-dns-nx",
+        session_id="sess-test",
+        spool_fn=fake_spool,
+    )
+
+    async def mock_resolve(qname, rtype, *args, **kwargs):
+        raise dns.resolver.NXDOMAIN()
+
+    target = DnsRecord.create(domain="nonexistent.invalid", record_type="A", value="")
+    with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
+        findings = [
+            f async for f in adapter.execute_action(target, {}, ctx)
+        ]
+
+    assert len(findings) == 0
+    text_spooled = [line for line, _ in spooled_lines]
+    assert any("does not exist (NXDOMAIN)" in l for l in text_spooled)
+

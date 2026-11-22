@@ -5,10 +5,10 @@ Convert the `dnspython` tool adapter from spawning an external Python CLI proces
 
 **Blocked by:** 02: Manifest Execution Tiers & Discovery (manifest.toml)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Update `tools/dnspython/manifest.toml` to set `execution_tier = "coroutine"`
-- [ ] Implement `DNSPythonAdapter.execute_action()` in `tools/dnspython/adapter.py` using `dns.asyncresolver`
-- [ ] Stream query and response lines to `context.spool_line()`
-- [ ] Emit normalized `DnsRecord` and `NetworkHost` findings
-- [ ] Add unit tests verifying in-process execution, wire spooling, and finding emission in `tests/unit/test_parsers/test_dnspython_parser.py`
+- [x] Update `tools/dnspython/manifest.toml` to set `execution_tier = "coroutine"`
+- [x] Implement `DNSPythonAdapter.execute_action()` in `tools/dnspython/adapter.py` using `dns.asyncresolver`
+- [x] Stream query and response lines to `context.spool_line()`
+- [x] Emit normalized `DnsRecord` and `NetworkHost` findings
+- [x] Add unit tests verifying in-process execution, wire spooling, and finding emission in `tests/unit/test_parsers/test_dnspython_parser.py`
