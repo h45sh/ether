@@ -5,10 +5,10 @@ Upgrade native in-process coroutine adapters to extract cryptographic and struct
 
 **Blocked by:** 04: Telemetry Action Diff Updates & MCP Integration
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Update `tools/http_probe/adapter.py` to extract TLS peer certificate SHA-256 fingerprints and favicon hashes
-- [ ] Update `tools/dnspython/adapter.py` to extract SOA serial numbers and propagate DNS TTLs
-- [ ] Add unit tests verifying anchor extraction in `tests/unit/test_parsers/test_http_probe_adapter.py` and `tests/unit/test_parsers/test_dnspython_parser.py`
-- [ ] Verify full test suite (`pytest -m tier0`, `pytest -m fast`, `pytest -m fuzz`, full `pytest`) passes green
-- [ ] Verify Ruff linter (`ruff check .`) passes with zero warnings
+- [x] Update `tools/http_probe/adapter.py` to extract TLS peer certificate SHA-256 fingerprints and favicon hashes
+- [x] Update `tools/dnspython/adapter.py` to extract SOA serial numbers and propagate DNS TTLs
+- [x] Add unit tests verifying anchor extraction in `tests/unit/test_parsers/test_http_probe_adapter.py` and `tests/unit/test_parsers/test_dnspython_parser.py`
+- [x] Verify full test suite (`pytest -m tier0`, `pytest -m fast`, `pytest -m fuzz`, full `pytest`) passes green
+- [x] Verify Ruff linter (`ruff check .`) passes with zero warnings

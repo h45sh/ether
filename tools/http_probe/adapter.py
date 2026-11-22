@@ -9,7 +9,7 @@ from ether.common.exceptions import PolicyViolationError
 from ether.common.ssrf import check_ssrf_safety
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
-from ether.schemas.network import NetworkHost, NetworkService
+from ether.schemas.network import NetworkHost, NetworkService, TLSCertificate
 from ether.schemas.web import WebEndpoint, WebTechnology
 
 
@@ -124,6 +124,34 @@ class HTTPProbeAdapter(ToolAdapter):
             except Exception:
                 pass
 
+        # 4. Extract TLS certificate fingerprint if HTTPS
+        tls_fingerprint: Optional[str] = params.get("tls_cert_sha256") or params.get(
+            "tls_fingerprint"
+        )
+        if not tls_fingerprint and scheme == "https":
+            import hashlib
+            import socket
+            import ssl
+
+            try:
+                ssl_ctx = ssl.create_default_context()
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = ssl.CERT_NONE
+                with socket.create_connection(
+                    (hostname, port), timeout=min(timeout_sec, 5.0)
+                ) as sock:
+                    with ssl_ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
+                        cert_der = ssock.getpeercert(binary_form=True)
+                        if cert_der:
+                            tls_fingerprint = hashlib.sha256(cert_der).hexdigest()
+                            await context.spool_line(
+                                f"[+] TLS Certificate SHA-256: {tls_fingerprint}"
+                            )
+            except Exception as ssl_err:
+                await context.spool_line(
+                    f"[-] Could not retrieve TLS certificate directly: {ssl_err}"
+                )
+
         async with httpx.AsyncClient(
             transport=transport,
             verify=False,
@@ -158,19 +186,51 @@ class HTTPProbeAdapter(ToolAdapter):
                 title = title_match.group(1).strip()
                 await context.spool_line(f"[+] Page Title: {title}")
 
-            # 4. Emit findings
+            # 5. Extract Favicon hash
+            favicon_hash: Optional[str] = params.get("favicon_hash")
+            if not favicon_hash:
+                import hashlib
+
+                favicon_url = urllib.parse.urljoin(url, "/favicon.ico")
+                try:
+                    fav_resp = await client.get(favicon_url)
+                    if fav_resp.status_code == 200 and fav_resp.content:
+                        favicon_hash = hashlib.sha256(fav_resp.content).hexdigest()
+                        await context.spool_line(
+                            f"[+] Favicon Hash (SHA-256): {favicon_hash}"
+                        )
+                except Exception:
+                    pass
+
+            # 6. Emit findings
             if host_ip:
                 yield NetworkHost.create(ip=host_ip)
 
+            tls_anchor = f"tls:{tls_fingerprint}" if tls_fingerprint else None
             svc = NetworkService.create(
                 host_ip=host_ip or hostname,
                 port=port,
                 protocol="tcp",
                 service_name=scheme,
                 banner=server or None,
+                tls_cert_sha256=tls_fingerprint,
+                anchor_hash=tls_anchor,
             )
             yield svc
 
+            if tls_fingerprint:
+                yield TLSCertificate.create(
+                    fingerprint=tls_fingerprint,
+                    host_ip=host_ip or hostname,
+                    port=port,
+                    anchor_hash=tls_anchor,
+                )
+
+            endpoint_anchor = (
+                tls_anchor
+                if tls_anchor
+                else (f"favicon:{favicon_hash}" if favicon_hash else None)
+            )
             endpoint = WebEndpoint.create(
                 url=url,
                 host_ip=host_ip,
@@ -178,6 +238,8 @@ class HTTPProbeAdapter(ToolAdapter):
                 status_code=status,
                 title=title,
                 server=server,
+                favicon_hash=favicon_hash,
+                anchor_hash=endpoint_anchor,
             )
             yield endpoint
 

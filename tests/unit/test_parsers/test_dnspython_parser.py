@@ -1,6 +1,7 @@
 """Unit tests for the dnspython adapter and parser."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -220,4 +221,57 @@ async def test_dnspython_execute_action_nxdomain(adapter):
     assert len(findings) == 0
     text_spooled = [line for line, _ in spooled_lines]
     assert any("does not exist (NXDOMAIN)" in l for l in text_spooled)
+
+
+@pytest.mark.asyncio
+async def test_dnspython_ttl_and_soa_anchor_extraction(adapter):
+    """Verify that dnspython propagates record TTL and extracts SOA serial anchor."""
+    import dns.resolver
+
+    from ether.common.context import ExecutionContext
+
+    spooled_lines = []
+
+    async def fake_spool(line: str, is_error: bool = False):
+        spooled_lines.append((line, is_error))
+
+    ctx = ExecutionContext(
+        action_id="act-test-dns-soa",
+        session_id="sess-test",
+        spool_fn=fake_spool,
+    )
+
+    class DummyAnswer:
+        def __init__(self, items, ttl=7200):
+            self.items = items
+            self.ttl = ttl
+
+        def __iter__(self):
+            return iter(self.items)
+
+    class DummySOARdata:
+        def __init__(self):
+            self.serial = 2026112201
+
+        def __str__(self):
+            return "ns1.example.com admin.example.com 2026112201 7200 3600 1209600 3600"
+
+    async def mock_resolve(qname, rtype, *args, **kwargs):
+        if rtype == "SOA":
+            return DummyAnswer([DummySOARdata()], ttl=7200)
+        raise dns.resolver.NoAnswer()
+
+    target = DnsRecord.create(domain="example.com", record_type="SOA", value="")
+    with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
+        findings = [
+            f
+            async for f in adapter.execute_action(
+                target, {"raw_flags": "-t SOA"}, ctx
+            )
+        ]
+
+    assert len(findings) == 1
+    soa_rec = findings[0]
+    assert soa_rec.ttl_seconds == 7200
+    assert soa_rec.anchor_hash == "soa:2026112201"
 

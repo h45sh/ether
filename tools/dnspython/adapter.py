@@ -113,12 +113,14 @@ class DnsPythonAdapter(ToolAdapter):
                     answers = await resolver.resolve(rev_name, "PTR")
                     for rdata in answers:
                         val = str(rdata.target).rstrip(".")
-                        await context.spool_line(f"[+] {query} PTR {val} (TTL={answers.ttl})")
+                        ttl_sec = int(answers.ttl) if hasattr(answers, "ttl") else 3600
+                        await context.spool_line(f"[+] {query} PTR {val} (TTL={ttl_sec})")
                         yield DnsRecord.create(
                             domain=val,
                             record_type="PTR",
                             value=val,
                             resolved_ip=query,
+                            ttl_seconds=ttl_sec,
                         )
                 except Exception as e:
                     await context.spool_line(
@@ -153,15 +155,23 @@ class DnsPythonAdapter(ToolAdapter):
                                 r_type_str = dns.rdatatype.to_text(rdataset.rdtype)
                                 for rdata in rdataset:
                                     val = str(rdata).rstrip(".")
+                                    ttl_sec = int(rdataset.ttl) if hasattr(rdataset, "ttl") else 3600
                                     await context.spool_line(
-                                        f"    {full_name} {rdataset.ttl} IN {r_type_str} {val}"
+                                        f"    {full_name} {ttl_sec} IN {r_type_str} {val}"
                                     )
                                     resolved_ip = val if r_type_str in ("A", "AAAA") else None
+                                    soa_serial = None
+                                    if r_type_str == "SOA":
+                                        parts = val.split()
+                                        if len(parts) >= 3:
+                                            soa_serial = parts[2]
                                     yield DnsRecord.create(
                                         domain=full_name,
                                         record_type=r_type_str,
                                         value=val,
                                         resolved_ip=resolved_ip,
+                                        soa_serial=soa_serial,
+                                        ttl_seconds=ttl_sec,
                                     )
                                     if resolved_ip:
                                         yield NetworkHost.create(ip=resolved_ip)
@@ -174,15 +184,26 @@ class DnsPythonAdapter(ToolAdapter):
                 await context.spool_line(f"[*] Querying {rtype} for {query}...")
                 try:
                     answers = await resolver.resolve(query, rtype)
+                    ttl_sec = int(answers.ttl) if hasattr(answers, "ttl") else 3600
                     for rdata in answers:
                         val = str(rdata).rstrip(".")
-                        await context.spool_line(f"[+] {query} {answers.ttl} IN {rtype} {val}")
+                        soa_serial = None
+                        if rtype == "SOA":
+                            try:
+                                soa_serial = str(rdata.serial)
+                            except AttributeError:
+                                parts = val.split()
+                                if len(parts) >= 3:
+                                    soa_serial = parts[2]
+                        await context.spool_line(f"[+] {query} {ttl_sec} IN {rtype} {val}")
                         resolved_ip = val if rtype in ("A", "AAAA") else None
                         yield DnsRecord.create(
                             domain=query,
                             record_type=rtype,
                             value=val,
                             resolved_ip=resolved_ip,
+                            soa_serial=soa_serial,
+                            ttl_seconds=ttl_sec,
                         )
                         if resolved_ip:
                             yield NetworkHost.create(ip=resolved_ip)
@@ -262,6 +283,11 @@ class DnsPythonAdapter(ToolAdapter):
             rtype = item.get("type", "A").upper()
             val = str(item["value"]).rstrip(".")
             ttl = int(item.get("ttl", 300))
+            soa_serial = item.get("serial")
+            if not soa_serial and rtype == "SOA":
+                parts = val.split()
+                if len(parts) >= 3:
+                    soa_serial = parts[2]
 
             resolved_ip = val if rtype == "A" else None
             yield DnsRecord.create(
@@ -269,4 +295,6 @@ class DnsPythonAdapter(ToolAdapter):
                 record_type=rtype,
                 value=val,
                 resolved_ip=resolved_ip,
+                soa_serial=soa_serial,
+                ttl_seconds=ttl,
             )
