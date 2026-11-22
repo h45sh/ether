@@ -15,6 +15,17 @@ class NetworkHost(BaseFinding):
     def create(cls, ip: str, hostname: Optional[str] = None, os: Optional[str] = None, **kwargs):
         return cls.from_data({"ip": ip, "hostname": hostname, "os": os, **kwargs})
 
+    def to_semantic_text(self) -> str:
+        ip = self.pik.get("ip") or self.data.get("ip", "")
+        hostname = self.data.get("hostname")
+        os_val = self.data.get("os")
+        parts = [f"Discovered Host IP: {ip}"]
+        if hostname:
+            parts.append(f"Hostname: {hostname}")
+        if os_val:
+            parts.append(f"Operating System: {os_val}")
+        return ". ".join(parts) + "."
+
 
 class NetworkService(BaseFinding):
     """A listening port on a host. Child of network.host. Produced by nmap -sV."""
@@ -61,6 +72,20 @@ class NetworkService(BaseFinding):
             data=data,
             anchor_hash=anchor_hash,
         )
+
+    def to_semantic_text(self) -> str:
+        host_ip = self.pik.get("host_ip") or self.data.get("host_ip", "")
+        port = self.pik.get("port") or self.data.get("port", "")
+        protocol = self.pik.get("protocol") or self.data.get("protocol", "tcp")
+        svc = self.data.get("service_name") or "unknown"
+        banner = self.data.get("banner")
+        tls = self.data.get("tls_cert_sha256")
+        parts = [f"{svc} service on {host_ip}:{port}/{protocol}"]
+        if banner:
+            parts.append(f"Product banner: {banner}")
+        if tls:
+            parts.append(f"TLS SHA-256: {tls}")
+        return ". ".join(parts) + "."
 
 
 class NetworkNetblock(BaseFinding):
@@ -109,3 +134,9 @@ class TLSCertificate(BaseFinding):
             },
             anchor_hash=anchor_hash,
         )
+
+    def to_semantic_text(self) -> str:
+        fp = self.pik.get("fingerprint") or self.data.get("fingerprint", "")
+        host = self.data.get("host_ip", "")
+        port = self.data.get("port", "")
+        return f"TLS Certificate (SHA-256: {fp}) on {host}:{port}."

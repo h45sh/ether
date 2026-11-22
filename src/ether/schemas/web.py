@@ -44,6 +44,20 @@ class WebEndpoint(BaseFinding):
 
         return cls(pik={"url": url}, parent=parent, data=data, anchor_hash=anchor_hash)
 
+    def to_semantic_text(self) -> str:
+        url = self.pik.get("url") or self.data.get("url", "")
+        status = self.data.get("status_code")
+        title = self.data.get("title")
+        server = self.data.get("server")
+        parts = [f"Web Endpoint at {url}"]
+        if status:
+            parts.append(f"Status HTTP {status}")
+        if title:
+            parts.append(f"Page Title: '{title}'")
+        if server:
+            parts.append(f"Server header: {server}")
+        return ". ".join(parts) + "."
+
 
 class WebResource(BaseFinding):
     """A specific asset (JS, CSS, Image) found on a web endpoint. Child of web.endpoint. Produced by burp, crawler."""
@@ -141,3 +155,19 @@ class WebTechnology(BaseFinding):
             data=data,
             **cls_kwargs,
         )
+
+    def to_semantic_text(self) -> str:
+        url = self.pik.get("url") or self.data.get("url", "")
+        tech = self.pik.get("technology_name") or self.data.get("technology_name", "")
+        version = self.data.get("version")
+        categories = self.data.get("categories", [])
+        cpe = self.data.get("cpe")
+        parts = [f"Web Technology '{tech}' identified on {url}"]
+        if version:
+            parts.append(f"Version: {version}")
+        if categories:
+            parts.append(f"Categories: {', '.join(categories)}")
+        if cpe:
+            parts.append(f"CPE: {cpe}")
+        return ". ".join(parts) + "."
+

@@ -58,6 +58,17 @@ class DnsRecord(BaseFinding):
             anchor_hash=anchor_hash,
         )
 
+    def to_semantic_text(self) -> str:
+        domain = self.pik.get("domain") or self.data.get("domain", "")
+        rec_type = self.pik.get("type") or self.data.get("type", "")
+        val = self.pik.get("value") or self.data.get("value", "")
+        resolved_ip = self.data.get("resolved_ip")
+        parts = [f"DNS Record: {domain} {rec_type} {val}"]
+        if resolved_ip:
+            parts.append(f"Resolved IP: {resolved_ip}")
+        return ". ".join(parts) + "."
+
+
 
 class DomainInfo(BaseFinding):
     """Whois registration data for a domain — owner, registrar, dates. Produced by whois."""

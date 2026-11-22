@@ -39,3 +39,13 @@ class CredentialFound(BaseFinding):
                 **kwargs,
             },
         )
+
+    def to_semantic_text(self) -> str:
+        username = self.pik.get("username") or self.data.get("username", "")
+        context = self.pik.get("context") or self.data.get("context", "")
+        host_ip = self.data.get("host_ip")
+        parts = [f"Credential discovered for user '{username}' in context '{context}'"]
+        if host_ip:
+            parts.append(f"Host: {host_ip}")
+        return ". ".join(parts) + "."
+

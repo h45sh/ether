@@ -9,9 +9,9 @@ Implement `.to_semantic_text()` on `BaseFinding` in `src/ether/schemas/base.py` 
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Implement `VectorEmbeddingEngine` in `src/ether/common/embeddings.py`
-- [ ] Implement `.to_semantic_text()` on `BaseFinding` and core finding schemas
-- [ ] Verify 384-dimensional float vector output and $||v||_2 = 1.0$ unit normalization
-- [ ] Write unit tests in `tests/unit/test_vector_engine.py` verifying vector clustering and semantic text templates
+- [x] Implement `VectorEmbeddingEngine` in `src/ether/common/embeddings.py`
+- [x] Implement `.to_semantic_text()` on `BaseFinding` and core finding schemas
+- [x] Verify 384-dimensional float vector output and $||v||_2 = 1.0$ unit normalization
+- [x] Write unit tests in `tests/unit/test_vector_engine.py` verifying vector clustering and semantic text templates

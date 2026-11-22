@@ -108,3 +108,15 @@ class BaseFinding(BaseModel):
                             )
                             break
         return values
+
+    def to_semantic_text(self) -> str:
+        """Produce a concise, human-readable semantic text description for vector embedding."""
+        pik_desc = ", ".join(f"{k}={v}" for k, v in self.pik.items())
+        data_desc = ", ".join(
+            f"{k}={v}"
+            for k, v in self.data.items()
+            if k not in self.pik and v is not None and str(v).strip()
+        )
+        if data_desc:
+            return f"{self.schema_type}: {pik_desc}. Data: {data_desc}."
+        return f"{self.schema_type}: {pik_desc}."
