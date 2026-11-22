@@ -312,3 +312,67 @@ async def test_upsert_findings_with_action_id():
 
     await store.close()
 
+
+@pytest.mark.asyncio
+async def test_store_temporal_schema_and_indexes():
+    """Verify that temporal and anchor columns and indexes exist in the nodes table."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+
+    async with store.connection() as conn:
+        conn.row_factory = aiosqlite.Row
+        # Check column names
+        cursor = await conn.execute("PRAGMA table_info(nodes)")
+        cols = {r["name"] for r in await cursor.fetchall()}
+        assert "observation_count" in cols
+        assert "ttl_seconds" in cols
+        assert "anchor_hash" in cols
+        assert "last_seen_at" in cols
+        assert "status" in cols
+
+        # Check indexes
+        cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        indices = {r[0] for r in await cursor.fetchall()}
+        assert "idx_nodes_anchor" in indices
+        assert "idx_nodes_status" in indices
+        assert "idx_nodes_last_seen" in indices
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_upsert_temporal_tracking_and_observation_count():
+    """Verify that repeated observations increment observation_count and persist temporal fields."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    host = NetworkHost.create(ip="10.20.30.40", hostname="srv1.local")
+    host.ttl_seconds = 1800
+    host.anchor_hash = "tls:abcd1234ef5678"
+
+    # First observation
+    await store.upsert_finding(sess_id, host, action_id="act-1")
+    node_before = await store.get_node(sess_id, store.generate_node_id(host.schema_type, host.pik))
+    assert node_before is not None
+    assert node_before["observation_count"] == 1
+    assert node_before["ttl_seconds"] == 1800
+    assert node_before["anchor_hash"] == "tls:abcd1234ef5678"
+    assert node_before["last_seen_at"] is not None
+    assert node_before["status"] == "confirmed"
+
+    # Second observation (re-observation of same node)
+    host2 = NetworkHost.create(ip="10.20.30.40", hostname="srv1-renamed.local")
+    host2.ttl_seconds = 7200
+    await store.upsert_finding(sess_id, host2, action_id="act-2")
+
+    node_after = await store.get_node(sess_id, store.generate_node_id(host.schema_type, host.pik))
+    assert node_after is not None
+    assert node_after["observation_count"] == 2
+    assert node_after["ttl_seconds"] == 7200
+    assert node_after["anchor_hash"] == "tls:abcd1234ef5678"
+    assert node_after["action_id"] == "act-2"
+
+    await store.close()
+
+

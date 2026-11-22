@@ -36,7 +36,10 @@ class BaseFinding(BaseModel):
     associations: List[Relation] = Field(default_factory=list)
     data: Dict[str, Any]  # Additional finding data
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    status: Literal["confirmed", "proposed"] = "confirmed"
+    status: Literal["proposed", "confirmed", "flapping", "stale"] = "confirmed"
+    ttl_seconds: int = 3600
+    anchor_hash: Optional[str] = None
+    last_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def from_data(
@@ -44,7 +47,9 @@ class BaseFinding(BaseModel):
         data: Dict[str, Any],
         parent: Optional[Relation] = None,
         associations: Optional[List[Relation]] = None,
-        status: Literal["confirmed", "proposed"] = "confirmed",
+        status: Literal["proposed", "confirmed", "flapping", "stale"] = "confirmed",
+        ttl_seconds: int = 3600,
+        anchor_hash: Optional[str] = None,
     ) -> "BaseFinding":
         """Construct a finding instance deriving its PIK automatically from class pik_fields."""
         pik = {k: data[k] for k in cls.pik_fields if k in data}
@@ -54,6 +59,8 @@ class BaseFinding(BaseModel):
             associations=associations or [],
             data=data,
             status=status,
+            ttl_seconds=ttl_seconds,
+            anchor_hash=anchor_hash,
         )
 
     @field_validator("pik", "data", mode="before")

@@ -5,9 +5,9 @@ Update `SCHEMA_DDL` in `src/ether/graph/store.py` to add `observation_count INTE
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Update `SCHEMA_DDL` in `src/ether/graph/store.py` with temporal and anchor columns and indexes
-- [ ] Update `BaseFinding` in `src/ether/schemas/base.py` with `status`, `ttl_seconds`, `anchor_hash`, `last_seen_at`
-- [ ] Update `GraphStore.upsert_findings_batch()` to insert and update temporal columns (`observation_count++`, `last_seen_at = CURRENT_TIMESTAMP`)
-- [ ] Add unit tests verifying schema creation, column persistence, and observation increments in `tests/unit/test_engine_store.py`
+- [x] Update `SCHEMA_DDL` in `src/ether/graph/store.py` with temporal and anchor columns and indexes
+- [x] Update `BaseFinding` in `src/ether/schemas/base.py` with `status`, `ttl_seconds`, `anchor_hash`, `last_seen_at`
+- [x] Update `GraphStore.upsert_findings_batch()` to insert and update temporal columns (`observation_count++`, `last_seen_at = CURRENT_TIMESTAMP`)
+- [x] Add unit tests verifying schema creation, column persistence, and observation increments in `tests/unit/test_engine_store.py`

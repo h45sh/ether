@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS nodes (
     status TEXT DEFAULT 'confirmed',
     action_id TEXT,
     created_action_id TEXT,
+    observation_count INTEGER DEFAULT 1,
+    ttl_seconds INTEGER DEFAULT 3600,
+    anchor_hash TEXT,
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (session_id, id),
@@ -84,6 +88,9 @@ CREATE TABLE IF NOT EXISTS notes (
     PRIMARY KEY (scope_type, scope_id)
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_session_schema ON nodes(session_id, schema_type);
+CREATE INDEX IF NOT EXISTS idx_nodes_anchor ON nodes(session_id, anchor_hash);
+CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes(session_id, last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_edges_session ON edges(session_id);
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(session_id, source_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(session_id, target_id);
@@ -478,6 +485,39 @@ class GraphStore:
                 )
             )
 
+            anchor_hash = getattr(finding, "anchor_hash", None)
+            if not anchor_hash and isinstance(finding.data, dict):
+                for key in (
+                    "anchor_hash",
+                    "tls_cert_sha256",
+                    "ssh_hostkey_fingerprint",
+                    "favicon_hash",
+                    "soa_serial",
+                ):
+                    val = finding.data.get(key)
+                    if val:
+                        prefix = (
+                            "tls"
+                            if "tls" in key
+                            else (
+                                "ssh"
+                                if "ssh" in key
+                                else (
+                                    "favicon"
+                                    if "favicon" in key
+                                    else ("soa" if "soa" in key else "")
+                                )
+                            )
+                        )
+                        anchor_hash = (
+                            f"{prefix}:{val}"
+                            if prefix and not str(val).startswith(f"{prefix}:")
+                            else str(val)
+                        )
+                        break
+
+            ttl_seconds = getattr(finding, "ttl_seconds", 3600) or 3600
+
             if node_id not in seen:
                 seen.add(node_id)
                 unique_node_ids.append(node_id)
@@ -486,10 +526,15 @@ class GraphStore:
                     "pik": finding.pik,
                     "data": dict(finding.data),
                     "status": finding.status,
+                    "ttl_seconds": ttl_seconds,
+                    "anchor_hash": anchor_hash,
                 }
             else:
                 node_metadata[node_id]["data"].update(finding.data)
                 node_metadata[node_id]["status"] = finding.status
+                node_metadata[node_id]["ttl_seconds"] = ttl_seconds
+                if anchor_hash:
+                    node_metadata[node_id]["anchor_hash"] = anchor_hash
 
             if finding.parent:
                 p = finding.parent
@@ -565,16 +610,26 @@ class GraphStore:
                     meta["status"],
                     action_id,
                     action_id,
+                    meta["ttl_seconds"],
+                    meta["anchor_hash"],
                 )
                 for nid, meta in node_metadata.items()
             ]
             await db.executemany(
-                """INSERT INTO nodes (session_id, id, schema_type, pik_json, data_json, status, action_id, created_action_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO nodes (
+                       session_id, id, schema_type, pik_json, data_json, status,
+                       action_id, created_action_id, ttl_seconds, anchor_hash,
+                       observation_count, last_seen_at
+                   )
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
                    ON CONFLICT(session_id, id) DO UPDATE SET
                        data_json = excluded.data_json,
                        status = excluded.status,
                        action_id = COALESCE(excluded.action_id, nodes.action_id),
+                       observation_count = nodes.observation_count + 1,
+                       ttl_seconds = excluded.ttl_seconds,
+                       anchor_hash = COALESCE(excluded.anchor_hash, nodes.anchor_hash),
+                       last_seen_at = CURRENT_TIMESTAMP,
                        updated_at = CURRENT_TIMESTAMP""",
                 nodes_params,
             )
@@ -585,7 +640,10 @@ class GraphStore:
                 rel_nodes.extend(assoc_nodes.values())
             if rel_nodes:
                 await db.executemany(
-                    "INSERT OR IGNORE INTO nodes (session_id, id, schema_type, pik_json, data_json, action_id, created_action_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    """INSERT OR IGNORE INTO nodes (
+                           session_id, id, schema_type, pik_json, data_json,
+                           action_id, created_action_id, observation_count, ttl_seconds, last_seen_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3600, CURRENT_TIMESTAMP)""",
                     [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
                 )
 
