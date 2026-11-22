@@ -26,6 +26,26 @@ Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but 
 
 **Ether solves this at the substrate level.** It acts as an execution supervisor and telemetry compiler that sits between cybersecurity tools and userland applications (AI agents, CLI operators, and security automation pipelines).
 
+---
+
+## 🧠 The Operating System Kernel for Cybersecurity Operations
+
+To understand Ether, consider the role of a traditional operating system kernel: Linux does not perform word processing or web browsing itself; it schedules processes, manages memory bounds, abstracts hardware via device drivers, enforces security rings, and provides predictable system calls.
+
+**Ether applies this exact kernel architecture to cybersecurity tools and autonomous AI agents:**
+
+| Traditional OS Kernel (e.g., Linux) | Ether Kernel Substrate |
+| :--- | :--- |
+| **Process Scheduler & Lifecycle** (`fork`/`exec`, cgroups) | **Async Process Supervisor**: Pure argument vectors (`create_subprocess_exec`), zero `shell=True`, 64KB log disk spooling (`LogSpooler`), and automatic `SIGTERM` $\to$ `SIGKILL` timeouts. |
+| **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using bounded ring buffers (`deque(maxlen=5000)`). |
+| **Device Drivers** (`/dev/*` hardware modules) | **Pluggable Smart Adapters**: Decoupled drivers in `tools/<name>/` normalizing heterogenous CLI outputs into structured Pydantic finding schemas. |
+| **Filesystem & Inodes** (ext4, deterministic paths) | **Deterministic GraphStore**: SQLite WAL engine indexing findings by deterministic SHA-256 **Primary Identity Keys (PIK)** ($H(\text{schema} + \text{sorted\_pik})$). |
+| **Security Rings / SELinux Capabilities** | **Dual GatePolicy Seam**: Kernel-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` ("Beast Mode"). |
+| **Hardware State Invariance & Migration** | **Cryptographic Identity Anchoring & Temporal Decay**: Decouples volatile IPs via cryptographic fingerprints (`tls:`, `ssh:`, `favicon:`) and decays stale states (`confirmed` $\to$ `flapping` $\to$ `stale`). |
+| **Embedded Hardware Acceleration** | **Zero-Egress Vector Memory (`sqlite-vec`)**: Embedded 384-dimensional unit vector engine for sub-millisecond semantic search without external model downloads or API egress. |
+| **Kernel Audit Subsystem & dmesg** | **Forensic Event Log & Zero-Token Diffs**: Append-only event sourcing and set-theoretic graph deltas ($\Delta = S_{t+1} \setminus S_t$) cutting agent token usage by 98%. |
+| **Userland Syscalls & IPC** (`read`, `write`, `ioctl`) | **Native Model Context Protocol (MCP)**, **Headless CLI**, and **Async Python SDK**. |
+
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   APPLICATIONS & AGENTS (Userland)                     │
@@ -36,23 +56,53 @@ Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but 
              │ (Model Context Protocol)   │ (Terminal CLI)        │ (Python)
              ▼                            ▼                       ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        ETHER UNIFIED RUNTIME API                       │
+│                    ETHER UNIFIED SYSTEM CALL RUNTIME                   │
 ├────────────────────────────────────────────────────────────────────────┤
-│                           ETHER CORE ENGINE                            │
+│                           ETHER KERNEL CORE                            │
 │                                                                        │
-│  ┌──────────────────┐  ┌─────────────────────┐  ┌───────────────────┐  │
-│  │ Process & Ring   │  │ Reactive GraphStore │  │ GatePolicy Seam   │  │
-│  │ - 64KB Spooler   │  │ - SHA-256 PIK Nodes │  │ - SAFE (SSRF/IMDS)│  │
-│  │ - Bounded RAM    │  │ - Idempotent Upsert │  │ - UNRESTRICTED    │  │
-│  │ - Zero shell=True│  │ - Event Sourcing    │  │   (Beast Mode)    │  │
-│  └──────────────────┘  └─────────────────────┘  └───────────────────┘  │
+│  ┌─────────────────────────┐  ┌─────────────────────────────────────┐  │
+│  │ Process & Ring Governor │  │ Deterministic Reactive GraphStore   │  │
+│  │ - Pure Argument Vectors │  │ - SHA-256 Primary Identity Keys     │  │
+│  │ - 64KB Disk Spooler     │  │ - Idempotent Non-Destructive Upsert │  │
+│  │ - <10MB RAM Ring Buffer │  │ - Temporal Decay & Identity Anchors │  │
+│  │ - Secret Scrubbing      │  │ - Embedded Vector Memory (sqlite-vec)│ │
+│  └─────────────────────────┘  └─────────────────────────────────────┘  │
+│  ┌─────────────────────────┐  ┌─────────────────────────────────────┐  │
+│  │ GatePolicy Enforcement  │  │ AI Telemetry & Injection Sandbox    │  │
+│  │ - SAFE (SSRF/IMDS Def)  │  │ - Zero-Token Graph Diffs (98% cut)  │  │
+│  │ - UNRESTRICTED (Beast)  │  │ - Neutralized Prompt Injection Bounds│ │
+│  └─────────────────────────┘  └─────────────────────────────────────┘  │
 │                                │                                       │
 │                                ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ Pluggable Smart Adapters (nmap, nuclei, ffuf, subfinder, etc.)    │  │
+│  │ Universal Device Driver Layer (Smart Adapters: tools/*)          │  │
+│  │ - Tier A: In-Process Coroutines (http_probe, dnspython)          │  │
+│  │ - Tier B: Binary Subprocesses (nmap, nuclei, ffuf, subfinder...) │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+### The 6 Core Kernel Subsystems
+
+1. 🛡️ **Async Process Supervisor & Memory Governor**
+   Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`maxlen=5000`) below **10MB RAM**.
+
+2. 🧬 **Deterministic Entity State Machine**
+   Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter.
+
+3. ⏳ **Cryptographic Identity Anchoring & Temporal State Decay**
+   Decouples volatile IP addresses from logical service identities using invariant cryptographic fingerprints (`tls:<sha256>`, `ssh:<fingerprint>`, `favicon:<hash>`). When a service migrates across cloud IPs, Ether automatically links cross-IP identity migration edges (`anchored_identity`). Unseen nodes undergo automatic confidence state decay (`confirmed` $\to$ `flapping` $\to$ `stale`).
+
+4. 🧠 **Zero-Egress Embedded Vector Memory (`sqlite-vec`)**
+   Discovered findings are automatically converted into 384-dimensional unit vectors stored inside SQLite via `sqlite-vec`'s `vec0` virtual table. Enables sub-millisecond k-NN semantic search and task-directed context retrieval for AI agents with **zero model downloads, zero external API keys, and zero network egress**.
+
+5. ⚖️ **Dual-Mode Security Policy Seam (`GatePolicy`)**
+   Provides first-class kernel policy enforcement:
+   * `GatePolicy.SAFE`: Strictly blocks cloud metadata endpoints (AWS IMDSv2 `169.254.169.254`, GCP, Azure), enforces authorized CIDR scope guardrails, and strips credentials.
+   * `GatePolicy.UNRESTRICTED`: Unlocks raw, unconstrained execution ("Beast Mode") for sovereign red-teams and offensive cyber warfare operations.
+
+6. 🔒 **AI Prompt Injection Boundary Sandbox**
+   Protects AI reasoning loops from malicious target payloads (e.g. prompt injection embedded in target HTTP headers, TLS certs, or HTML comments). Wraps untrusted target stdout inside structural `<untrusted_scan_output>` boundary tags, neutralizing breakout sequences (`</untrusted_scan_output>` escaped to `<\/untrusted_scan_output>`) and redacting private keys and bearer tokens.
 
 ---
 

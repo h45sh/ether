@@ -57,7 +57,26 @@ Ether solves this through a **"Smart Adapter / Simple Core"** architecture:
 
 ---
 
-## 2. Unidirectional Layer DAG
+## 2. The Operating System Kernel Model for Cybersecurity Tooling
+
+Ether treats cybersecurity operations through the lens of operating system design. Traditional security orchestration attempts to solve coordination via brittle shell scripts, monolithic wrappers, or presentation-heavy GUIs/TUIs. Ether rejects this approach in favor of a true **kernel substrate**:
+
+| Operating System Concept | Ether Kernel Implementation | Architectural Function |
+| :--- | :--- | :--- |
+| **Process Scheduler & Lifecycle** | `ExecutionSession` & `Executor` | Spawns binaries via pure argument vectors (`asyncio.create_subprocess_exec`), enforces process tree lifecycle, and manages automated `SIGTERM` $\to$ `SIGKILL` escalations. Zero `shell=True`. |
+| **Memory Management & Limits** | `LogSpooler` & Bounded Ring Buffer | Enforces hard memory ceilings (<10MB RAM per job) using `deque(maxlen=5000)` while streaming raw GBs of output to disk in 64KB chunks. Sanitizes memory with `wipe_credentials()`. |
+| **Device Drivers** | Pluggable Smart Adapters (`tools/*`) | Translates disparate CLI outputs (Nmap XML, FFUF JSON, Nikto text) into uniform, typed Pydantic findings via `ToolAdapter` (Tier A coroutines & Tier B subprocesses). |
+| **Filesystem & Inodes** | Deterministic `GraphStore` (SQLite WAL) | Mathematical Primary Identity Keys (PIK) hash into deterministic SHA-256 Node IDs ($H(\text{schema} + \text{sorted\_pik})$), guaranteeing idempotent upserts and relational integrity. |
+| **Access Control & Security Rings** | `ActionGateway` & `GatePolicy` | Hardware-level policy enforcement: `GatePolicy.SAFE` (SSRF defense, link-local & cloud IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` ("Beast Mode"). |
+| **Hardware Migration & Anchoring** | Invariant Cryptographic Anchoring | Decouples volatile IPs from logical services via TLS (`tls:<sha256>`), SSH (`ssh:<fingerprint>`), and Favicon (`favicon:<hash>`) fingerprints, auto-wiring cross-IP migration edges. |
+| **Temporal Confidence Engine** | State Decay TTL Windows | Automatically transitions finding confidence from `confirmed` $\to$ `flapping` $\to$ `stale` based on observation timestamps. |
+| **Embedded Acceleration** | Zero-Egress Vector Memory (`sqlite-vec`) | 384-dimensional unit vector engine inside SQLite for sub-millisecond semantic search and finding RAG without external model downloads or network egress. |
+| **System Calls & IPC** | Model Context Protocol & SDK | Headless interfaces for userland consumers (AI agents, operators, CLI, custom applications). |
+| **Audit Subsystem & dmesg** | Append-Only Event Log & Zero-Token Diffs | Cryptographic audit trail and set-theoretic delta computation ($\Delta = S_{t+1} \setminus S_t$) eliminating 98% of LLM context window bloat. |
+
+---
+
+## 3. Unidirectional Layer DAG
 
 Dependencies flow strictly downwards in one direction:
 

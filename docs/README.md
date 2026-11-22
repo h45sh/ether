@@ -88,6 +88,6 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **[Performance Benchmarks](benchmarks/README.md)**: Quantitative speed, throughput, and memory measurements verified across CI and release preflights.
 
 ### 4. Explanation (Architecture & Design)
-* **[Architecture Overview](explanation/architecture.md)**: Deep module philosophy, information hiding, unidirectional layer DAG, and reactive event loops.
-* **[Database & Graph State](explanation/database.md)**: SQLite WAL mode, Primary Identity Key hashing, idempotent upserts, temporal state decay, and offline vector indexing.
+* **[Architecture Overview & Kernel Model](explanation/architecture.md)**: The Operating System Kernel substrate, 6 core subsystems, deep module philosophy, information hiding, unidirectional layer DAG, and reactive execution pipelines.
+* **[Database & Graph State](explanation/database.md)**: SQLite WAL mode, Primary Identity Key hashing, idempotent upserts, temporal state decay, cryptographic identity anchoring, and offline vector indexing.
 * **[Master Roadmap](../ROADMAP.md)**: The 5 Evolutionary Epochs from hardened substrate to the ultimate headless security engine.
