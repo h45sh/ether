@@ -89,7 +89,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
     }
     ```
   - **Result:** Reduces agent LLM context window consumption by **98%** compared to reading raw stdout.
-- [ ] **Temporal Graph State Decay & Cryptographic Invariance (`GraphStore`):**
+- [x] **Temporal Graph State Decay & Cryptographic Invariance (`GraphStore`):**
   - **Time-to-Live (TTL) State Decay**: Node state confidence decay windows (`confirmed`, `flapping`, `stale`) handling container churn and fast-flux DNS rotation without orphan node pollution.
   - **Invariant Identity Anchoring**: Decouple logical service identity from volatile IP addresses by anchoring Primary Identity Keys (PIK) to persistent cryptographic fingerprints (TLS cert SHA-256, SSH host keys, HTTP favicon/ETag hashes).
 - [ ] **Embedded Offline Vector Memory & Finding RAG (`sqlite-vec`):**
