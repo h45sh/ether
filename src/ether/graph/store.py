@@ -233,10 +233,6 @@ class GraphStore:
             await db.commit()
             return ws_id, sess_id
 
-    async def get_or_create_learning_sandbox(self) -> tuple[str, str]:
-        """Legacy compatibility alias for get_or_create_default_session."""
-        return await self.get_or_create_default_session()
-
     # --- Workspace Management ---
 
     async def create_workspace(self, name: str) -> str:
