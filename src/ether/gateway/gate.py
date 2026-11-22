@@ -382,8 +382,8 @@ class ActionGateway:
             )
 
         target_schema = node["schema_type"]
-        accepted_inputs = manifest.input.get("accepts", [])
-        if target_schema not in accepted_inputs:
+        accepted_inputs = manifest.input.get("accepts", []) if manifest else []
+        if accepted_inputs and target_schema not in accepted_inputs:
             raise ActionValidationError(
                 f"Tool '{action.tool_name}' does not accept input type '{target_schema}'. "
                 f"Accepted types: {', '.join(accepted_inputs)}"

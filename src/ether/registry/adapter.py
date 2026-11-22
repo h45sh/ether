@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.common import strip_ansi as _strip_ansi
+from ether.common.context import ExecutionContext
 from ether.schemas.base import BaseFinding
 
 
@@ -26,10 +27,50 @@ class ToolAdapter(ABC):
     Every tool in tools/ must implement this in adapter.py.
     """
 
+    name: str = ""
+    execution_tier: str = "subprocess"
+
     @staticmethod
     def is_binary_available(binary: str) -> bool:
         """Cached check for whether a tool binary exists in PATH."""
         return is_binary_available(binary)
+
+    async def execute_action(
+        self,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> AsyncIterator[BaseFinding]:
+        """Unified execution seam across Tier A coroutines and Tier B subprocesses.
+
+        By default, runs Tier B command-line binary via context.runner.
+        Tier A native coroutine adapters override this method.
+        """
+        if context.runner is None:
+            raise RuntimeError(
+                f"Cannot execute subprocess tool '{self.name or self.__class__.__name__}' without a CommandRunner in ExecutionContext."
+            )
+
+        async def _on_stdout(chunk: str) -> None:
+            await context.spool_line(chunk, is_error=False)
+
+        async def _on_stderr(chunk: str) -> None:
+            await context.spool_line(chunk, is_error=True)
+
+        async for finding in context.runner.run(
+            adapter=self,
+            target=target,
+            params=params,
+            task_id=context.action_id,
+            cwd=context.cwd,
+            env=context.env,
+            use_shell=context.use_shell,
+            shell_path=context.shell_path,
+            on_output=_on_stdout,
+            on_error_output=_on_stderr,
+            timeout_seconds=context.timeout_seconds,
+        ):
+            yield finding
 
     @abstractmethod
     def validate_install(self) -> bool:

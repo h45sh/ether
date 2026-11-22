@@ -21,6 +21,7 @@ from typing import (
 )
 from uuid import UUID
 
+from ether.common.context import ExecutionContext
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
 from ether.graph.store import GraphStore
 from ether.paths import get_action_log_path
@@ -778,21 +779,26 @@ class ExecutionSession:
             ),
         )
 
-        async def handle_stdout(text: str) -> None:
-            await self._append_chunk(action.action_id, text, log_file_path, is_error=False)
+        async def handle_spool(text: str, is_error: bool = False) -> None:
+            await self._append_chunk(action.action_id, text, log_file_path, is_error=is_error)
             if on_chunk:
                 try:
                     await on_chunk(text)
                 except Exception:
                     pass
 
-        async def handle_stderr(text: str) -> None:
-            await self._append_chunk(action.action_id, text, log_file_path, is_error=True)
-            if on_chunk:
-                try:
-                    await on_chunk(text)
-                except Exception:
-                    pass
+        exec_context = ExecutionContext(
+            action_id=str(action.action_id),
+            session_id=str(action.session_id),
+            policy=str(self.gateway.policy.value),
+            cwd=cwd,
+            env=clean_env,
+            use_shell=action.is_explicit_shell,
+            shell_path=self.user_shell,
+            timeout_seconds=getattr(action, "timeout_seconds", None),
+            runner=self.runner,
+            spool_fn=handle_spool,
+        )
 
         err_msg = None
         findings_count = 0
@@ -815,18 +821,10 @@ class ExecutionSession:
                     pass
 
         try:
-            async for finding in self.runner.run(
-                adapter=adapter,
+            async for finding in adapter.execute_action(
                 target=target,
-                params=action.params,
-                task_id=str(action.action_id),
-                cwd=cwd,
-                env=clean_env,
-                use_shell=action.is_explicit_shell,
-                shell_path=self.user_shell,
-                on_output=handle_stdout,
-                on_error_output=handle_stderr,
-                timeout_seconds=getattr(action, "timeout_seconds", None),
+                params=action.params or {},
+                context=exec_context,
             ):
                 findings_count += 1
                 finding_buffer.append(finding)

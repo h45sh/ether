@@ -5,9 +5,9 @@ Create `src/ether/core/context.py` defining `ExecutionContext` with `action_id`,
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Create `src/ether/core/context.py` with `ExecutionContext` and `spool_line()`
-- [ ] Add `execution_tier = "subprocess"` and `execute_action()` base implementation to `ToolAdapter` in `src/ether/registry/adapter.py`
-- [ ] Update `ExecutionSession.execute()` in `src/ether/core/session.py` to delegate to `adapter.execute_action()`
-- [ ] Verify existing test suite passes (`.venv/bin/pytest tests/unit/test_execution_session.py tests/integration/test_executor_flow.py`)
+- [x] Create `src/ether/core/context.py` with `ExecutionContext` and `spool_line()`
+- [x] Add `execution_tier = "subprocess"` and `execute_action()` base implementation to `ToolAdapter` in `src/ether/registry/adapter.py`
+- [x] Update `ExecutionSession.execute()` in `src/ether/core/session.py` to delegate to `adapter.execute_action()`
+- [x] Verify existing test suite passes (`.venv/bin/pytest tests/unit/test_execution_session.py tests/integration/test_executor_flow.py`)
