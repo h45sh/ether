@@ -9,7 +9,7 @@ Adherence to these mechanical standards is mandatory to preserve architectural d
 
 **Ether** is a headless, reactive process supervisor, AST validator, and deterministic graph telemetry engine for cybersecurity tooling and autonomous AI agents.
 
-- **Strict Headless Invariant:** Ether contains **zero UI code, zero Textual imports, and zero presentation widgets**. Ether is an engine/kernel, not an application.
+- **Strict Headless Invariant:** Ether contains **zero UI code, zero Textual imports, and zero presentation widgets**. Ether is a headless engine, not an application.
 - **Smart Adapter / Simple Core:** Ether is tool-agnostic. Pluggable tool adapters (`tools/<name>/`) encapsulate CLI argument construction, binary discovery, and stream parsing into normalized Pydantic schemas.
 - **Deterministic State Machine:** All entities discovered (hosts, services, vulnerabilities, credentials) are indexed via deterministic SHA-256 Primary Identity Keys (PIK) into an immutable, event-sourced SQLite graph.
 

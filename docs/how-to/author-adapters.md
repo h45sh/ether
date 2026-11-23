@@ -6,6 +6,52 @@ Adding or modifying a security tool is strictly additive: create a folder in `to
 
 ---
 
+## 0. Fast-Track Authoring with Ether DevKit (`ether-devkit`)
+
+The recommended way to author, scaffold, and validate adapters is using the official **[Ether DevKit (`ether-devkit`)](https://github.com/h45sh/ether-devkit)** CLI and AI coding agent skill:
+
+```bash
+# Install the DevKit CLI via pipx (recommended) or pip
+pipx install git+https://github.com/h45sh/ether-devkit.git
+
+# Or install the agent skill directly into your AI coding assistant (Antigravity, Cursor, Claude Code)
+npx skills add h45sh/ether-devkit -g -y
+```
+
+### Scaffold a New Adapter in Seconds
+Generate complete boilerplate files including `manifest.toml`, `adapter.py`, sample fixture, and hermetic pytest tests:
+
+```bash
+# Subprocess adapter (Tier B):
+ether-devkit new masscan \
+  --category "Network Reconnaissance" \
+  --categories network portscan recon \
+  --accepts network.netblock network.host \
+  --produces network.service \
+  --target-flag "-p"
+
+# Native coroutine adapter (Tier A):
+ether-devkit new custom_probe \
+  --tier coroutine \
+  --category "Web Reconnaissance" \
+  --categories web recon \
+  --accepts web.endpoint \
+  --produces web.technology
+```
+
+### Static AST & Contract Validation
+Validate that your adapter strictly obeys Ether security invariants (zero `shell=True`, pure argument vectors, valid schema types, and sync `sanitize_output`):
+
+```bash
+# Validate your specific tool adapter
+ether-devkit validate tools/masscan
+
+# Batch validate all tools in the repository
+ether-devkit validate tools/
+```
+
+---
+
 ## 1. Directory Structure
 
 ```text

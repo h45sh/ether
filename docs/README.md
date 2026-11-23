@@ -23,6 +23,7 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **Forensic Archiving:** Export and import encrypted session databases using AES-256-GCM in [CLI Operations Guide](how-to/cli-usage.md#7-exporting--importing-investigation-archives).
 
 ### I am a Python Developer or Tool Author (SDK & Adapters)
+* **Start with DevKit:** [Ether DevKit](https://github.com/h45sh/ether-devkit) — Official developer CLI and agent skill for authoring, scaffolding, and validating adapters.
 * **Programmatic Quickstart:** Embed Ether into Python apps via [Quickstart Tutorial](tutorials/quickstart.md#step-8-taking-it-programmatic-python-sdk).
 * **Write Custom Adapters:** [Authoring Pluggable Tool Adapters](how-to/author-adapters.md) — Create Tier A in-process async coroutines or Tier B subprocess parsers.
 * **Inspect Finding Schemas:** [Schema Registry Catalog](reference/schema-registry.md) — Specifications for all 18 normalized Pydantic finding models.
@@ -88,6 +89,6 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **[Performance Benchmarks](benchmarks/README.md)**: Quantitative speed, throughput, and memory measurements verified across CI and release preflights.
 
 ### 4. Explanation (Architecture & Design)
-* **[Architecture Overview & Kernel Model](explanation/architecture.md)**: The Operating System Kernel substrate, 6 core subsystems, deep module philosophy, information hiding, unidirectional layer DAG, and reactive execution pipelines.
+* **[Architecture Overview & Engine Model](explanation/architecture.md)**: The supervisory runtime substrate, 6 core subsystems, deep module philosophy, information hiding, unidirectional layer DAG, and reactive execution pipelines.
 * **[Database & Graph State](explanation/database.md)**: SQLite WAL mode, Primary Identity Key hashing, idempotent upserts, temporal state decay, cryptographic identity anchoring, and offline vector indexing.
 * **[Master Roadmap](../ROADMAP.md)**: The 5 Evolutionary Epochs from hardened substrate to the ultimate headless security engine.

@@ -4,7 +4,7 @@
 
 **The Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents**
 
-[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](docs/how-to/contributing.md) · [Security Policy](.github/SECURITY.md)
+[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security Policy](.github/SECURITY.md)
 
 [![CI](https://github.com/h45sh/ether/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/ci.yml)
 [![CodeQL Security Analysis](https://github.com/h45sh/ether/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/codeql.yml)
@@ -15,7 +15,7 @@
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Architecture: Headless Core](https://img.shields.io/badge/architecture-headless%20core-success)](docs/explanation/architecture.md)
 
-*Ether operates as a deterministic operating system kernel for cybersecurity operations—supervising CLI processes, normalizing streaming stdout/stderr into typed findings, and maintaining a live, event-sourced entity graph without UI bloat.*
+*Ether operates as a deterministic process supervisor and reactive telemetry engine for cybersecurity operations—supervising CLI processes, normalizing streaming stdout/stderr into typed findings, and maintaining a live, event-sourced entity graph without UI bloat.*
 
 </div>
 
@@ -33,22 +33,22 @@ Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but 
 
 ---
 
-## The Operating System Kernel for Cybersecurity Operations
+## The Supervisory Architecture for Cybersecurity Operations
 
-To understand Ether, consider the role of a traditional operating system kernel: Linux does not perform word processing or web browsing itself; it schedules processes, manages memory bounds, abstracts hardware via device drivers, enforces security rings, and provides predictable system calls.
+To understand Ether, consider the role of a traditional supervisory runtime: it schedules processes, manages memory bounds, abstracts tool interfaces via standardized drivers, enforces security boundaries, and provides predictable runtime guarantees.
 
-**Ether applies this exact kernel architecture to cybersecurity tools and autonomous AI agents:**
+**Ether applies this supervisory runtime model to cybersecurity tools and autonomous AI agents:**
 
-| Traditional OS Kernel (e.g., Linux) | Ether Kernel Substrate |
+| Supervisory Architecture Role | Ether Runtime Substrate |
 | :--- | :--- |
 | **Process Scheduler & Lifecycle** (`fork`/`exec`, cgroups) | **Async Process Supervisor**: Pure argument vectors (`create_subprocess_exec`), zero `shell=True`, 64KB log disk spooling (`LogSpooler`), and automatic `SIGTERM` $\to$ `SIGKILL` timeouts. |
 | **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using bounded ring buffers (`deque(maxlen=5000)`). |
 | **Device Drivers** (`/dev/*` hardware modules) | **Pluggable Smart Adapters**: Decoupled drivers in `tools/<name>/` normalizing heterogenous CLI outputs into structured Pydantic finding schemas. |
 | **Filesystem & Inodes** (ext4, deterministic paths) | **Deterministic GraphStore**: SQLite WAL engine indexing findings by deterministic SHA-256 **Primary Identity Keys (PIK)** ($H(\text{schema} + \text{sorted\_pik})$). |
-| **Security Rings / SELinux Capabilities** | **Dual GatePolicy Seam**: Kernel-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for red-teams). |
+| **Security Rings / Access Controls** | **Dual GatePolicy Seam**: Engine-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for red-teams). |
 | **Hardware State Invariance & Migration** | **Cryptographic Identity Anchoring & Temporal Decay**: Decouples volatile IPs via cryptographic fingerprints (`tls:`, `ssh:`, `favicon:`) and decays stale states (`confirmed` $\to$ `flapping` $\to$ `stale`). |
 | **Embedded Hardware Acceleration** | **Zero-Egress Vector Memory (`sqlite-vec`)**: Embedded 384-dimensional unit vector engine for sub-millisecond semantic search without external model downloads or API egress. |
-| **Kernel Audit Subsystem & dmesg** | **Forensic Event Log & Zero-Token Diffs**: Append-only event sourcing and set-theoretic graph deltas ($\Delta = S_{t+1} \setminus S_t$) cutting agent token usage by 98%. |
+| **System Audit & Event Log** | **Forensic Event Log & Zero-Token Diffs**: Append-only event sourcing and set-theoretic graph deltas ($\Delta = S_{t+1} \setminus S_t$) cutting agent token usage by 98%. |
 | **Userland Syscalls & IPC** (`read`, `write`, `ioctl`) | **Native Model Context Protocol (MCP)**, **Headless CLI**, and **Async Python SDK**. |
 
 ```
@@ -63,7 +63,7 @@ To understand Ether, consider the role of a traditional operating system kernel:
 ┌────────────────────────────────────────────────────────────────────────┐
 │                    ETHER UNIFIED SYSTEM CALL RUNTIME                   │
 ├────────────────────────────────────────────────────────────────────────┤
-│                           ETHER KERNEL CORE                            │
+│                           ETHER RUNTIME CORE                           │
 │                                                                        │
 │  ┌─────────────────────────┐  ┌─────────────────────────────────────┐  │
 │  │ Process & Ring Governor │  │ Deterministic Reactive GraphStore   │  │
@@ -87,7 +87,7 @@ To understand Ether, consider the role of a traditional operating system kernel:
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### The 6 Core Kernel Subsystems
+### The 6 Core Engine Subsystems
 
 1. **Async Process Supervisor & Memory Governor**
    Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`maxlen=5000`) below **10MB RAM**.
@@ -102,7 +102,7 @@ To understand Ether, consider the role of a traditional operating system kernel:
    Discovered findings are automatically converted into 384-dimensional unit vectors stored inside SQLite via `sqlite-vec`'s `vec0` virtual table. Enables sub-millisecond k-NN semantic search and task-directed context retrieval for AI agents with **zero model downloads, zero external API keys, and zero network egress**.
 
 5. **Dual-Mode Security Policy Seam (`GatePolicy`)**
-   Provides first-class kernel policy enforcement:
+   Provides first-class runtime policy enforcement:
    * `GatePolicy.SAFE`: Strictly blocks cloud metadata endpoints (AWS IMDSv2 `169.254.169.254`, GCP, Azure), enforces authorized CIDR scope guardrails, and strips credentials.
    * `GatePolicy.UNRESTRICTED`: Unlocks raw, unconstrained execution for authorized red-team engagements and advanced penetration testing operations.
 
@@ -313,7 +313,7 @@ Ether strictly adheres to the following mechanical engineering contracts:
 
 | Invariant | Technical Implementation | Guarantee |
 | :--- | :--- | :--- |
-| **Strict Headless Core** | Zero Textual, curses, or UI imports | Verified via AST linting (`pytest -m tier0`). Pure kernel. |
+| **Strict Headless Core** | Zero Textual, curses, or UI imports | Verified via AST linting (`pytest -m tier0`). Pure headless engine. |
 | **Process Isolation** | Pure argument vectors (`asyncio.create_subprocess_exec`) | Zero `shell=True`. 100% immune to shell injection. |
 | **Bounded Memory Ceiling** | Bounded ring buffers (`maxlen=5000`) & 64KB disk spooling | Memory usage strictly capped at **<10MB** per active job. |
 | **Secret Scrubbing** | Child environment scrubbing (`sanitize_subprocess_env`) | Host API keys (`OPENAI_*`, `AWS_*`, `SSH_*`) never leak to child tools. |
@@ -343,7 +343,7 @@ Ether decouples command building and parsing into pluggable tool adapters locate
 | **`dnspython`** | DNS Records & Zone Transfers | Native Coroutine (Tier A) | `dns.record`, `domain.info` |
 | **`http_probe`** | HTTP Surface & Favicon Probing | Native Coroutine (Tier A) | `web.endpoint`, `web.technology` |
 
-*To build your own tool adapter, consult the [Adapter Authoring Guide](docs/how-to/author-adapters.md).*
+*To build or scaffold your own tool adapter, consult the [Adapter Authoring Guide](docs/how-to/author-adapters.md) and use the official [Ether DevKit (`ether-devkit`)](https://github.com/h45sh/ether-devkit) developer CLI & agent skill (`pipx install git+https://github.com/h45sh/ether-devkit.git` or `npx skills add h45sh/ether-devkit`).*
 
 ---
 

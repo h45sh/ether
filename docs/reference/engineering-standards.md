@@ -6,7 +6,7 @@ These standards are mechanically enforced via automated linting, property-based 
 
 ## 1. Zero UI Code Invariant
 - **Rule:** Under no circumstances may any file inside `src/ether/` import `textual`, `curses`, or any TUI/GUI presentation library.
-- **Enforcement:** Enforced via AST inspection in `tests/unit/test_architecture.py`. Ether is strictly a headless kernel/engine.
+- **Enforcement:** Enforced via AST inspection in `tests/unit/test_architecture.py`. Ether is strictly a headless runtime engine.
 
 ---
 

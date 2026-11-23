@@ -18,6 +18,11 @@ Ether strictly decouples process execution and graph telemetry from cybersecurit
 
 ## 2. Anatomy of a Tool Plugin
 
+> [!TIP]
+> **Use Ether DevKit for Scaffolding & Linting**: We strongly recommend using **[Ether DevKit (`ether-devkit`)](https://github.com/h45sh/ether-devkit)** to scaffold new tool plugins (`ether-devkit new <tool>`) and validate existing ones (`ether-devkit validate tools/<tool>`) against our architectural invariants before submitting a PR.
+>
+> Install globally with `pipx install git+https://github.com/h45sh/ether-devkit.git` or load the skill into your coding agent via `npx skills add h45sh/ether-devkit -g -y`.
+
 Every security tool plugin lives in its own subdirectory under `tools/<tool_name>/` and requires two files:
 
 ```text

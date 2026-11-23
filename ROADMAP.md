@@ -4,11 +4,11 @@ This authoritative roadmap outlines the evolution of **Ether** from its current 
 
 ---
 
-## The Vision: The "Cybersecurity Kernel"
+## The Vision: The Autonomous Runtime Substrate
 
-Every modern computing environment has an operating system kernel that multiplexes hardware, manages processes, provides IPC, and maintains filesystem state without caring which applications run on top.
+Every modern computing environment relies on a predictable supervisory runtime that schedules processes, manages execution lifecycles, provides IPC, and maintains structured state without coupling to presentation layers.
 
-**Ether is that kernel for cybersecurity operations.**
+**Ether is that supervisory runtime engine for cybersecurity operations.**
 
 Instead of human operators and AI agents clumsily spawning raw bash subshells and drowning in thousands of unstructured stdout lines, Ether provides:
 1. **Universal Execution Virtualization:** Sandboxed process supervision, secret scrubbing, and backpressure-regulated streaming.
@@ -105,10 +105,10 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ### Epoch 3: High-Throughput Chained Execution & Pipeline DAG
 *Target: v0.4.0*
-*Focus: Reactive pipeline DAGs, kernel-bypass tools, and deception defense.*
+*Focus: Reactive pipeline DAGs, high-throughput network tools, and deception defense.*
 
-- [ ] **High-Throughput Arsenal Expansion (Tier B Kernel-Bypass Binaries):**
-  - High-throughput adapters for kernel-bypass tools (`masscan`, `zmap`, `katana`) streaming raw JSON directly into bounded memory ring buffers.
+- [ ] **High-Throughput Arsenal Expansion (Tier B High-Performance Binaries):**
+  - High-throughput adapters for raw-socket / asynchronous tools (`masscan`, `zmap`, `katana`) streaming raw JSON directly into bounded memory ring buffers.
 - [ ] **Chained Reactive Pipeline Engine (Unix Pipe Metaphor for Security):**
   - Allow declarative piping of security tools where findings from tool A automatically parameterize tool B:
     ```bash
@@ -192,7 +192,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 | **AI Agent Support** | Context bloat / Failures | None (Tutor only) | **Native MCP Server + Token-Zero Graph Diffs** |
 | **Tool Orchestration** | Fragile bash pipes | Manual single-shot | **Automated Reactive DAG Pipelines** |
 | **Interactive Shell** | Raw OS terminal | Non-PTY stream | **Supervised PTY with Background Extraction** |
-| **UI Coupling** | High (terminal emulator) | High (Textual TUI) | **Zero (100% Headless Engine/Kernel)** |
+| **UI Coupling** | High (terminal emulator) | High (Textual TUI) | **Zero (100% Headless Engine)** |
 | **Encrypted Archives** | GPG manual tar | None | **Argon2id + AES-256-GCM Authenticated SQLite** |
 | **Vector Intelligence**| None | None | **In-Process `sqlite-vec` Semantic Embeddings** |
 | **Concurrency Scaling**| OS fork/exec cap (~500 procs)| UI process block | **10,000+ Native Async Coroutines (<150MB RAM)** |

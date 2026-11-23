@@ -21,7 +21,7 @@
 ## 2. Headless Architecture & UI Anti-Patterns
 1. **NEVER Import Textual, Curses, or Presentation Libraries in `src/ether/`**:
    - *Failure Mode*: Violates strict headless core invariant; breaks downstream consumption by headless daemons and AI agents.
-   - *Replacement*: Keep Ether strictly as an operating system kernel for security tools. All presentation code lives in consumer applications (like CyGuide).
+   - *Replacement*: Keep Ether strictly as a headless runtime engine for security tools. All presentation code lives in consumer applications (like CyGuide).
    - *Verification*: `pytest tests/unit/test_architecture.py -k test_no_textual_imports`
 
 ## 3. Storage & Engine Anti-Patterns

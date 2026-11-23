@@ -50,18 +50,18 @@ Ether solves this through a **"Smart Adapter / Simple Core"** architecture:
 ```
 
 ### Key Architectural Invariants:
-1. **Strict Headless Invariant**: Ether contains **zero UI code, zero Textual imports, and zero presentation widgets**. Ether is an engine/kernel, not an application.
+1. **Strict Headless Invariant**: Ether contains **zero UI code, zero Textual imports, and zero presentation widgets**. Ether is a headless engine, not an application.
 2. **Additive Extensibility**: Adding support for a new security tool never requires modifying core engine, database, or API code. An author simply adds a standalone directory under `tools/` containing a `manifest.toml` and `adapter.py`.
 3. **Deterministic Canonicalization**: Raw tool outputs are sanitized syntactically before ingestion, ensuring uniform IP addresses, lowercased domains, and normalized URL endpoints.
 4. **Strict Encapsulation & Deep Modules**: Interface simplicity hides significant internal complexity. Private connection pools, ring buffers, and session states are never leaked across layer boundaries.
 
 ---
 
-## 2. The Operating System Kernel Model for Cybersecurity Tooling
+## 2. The Supervisory Runtime Model for Cybersecurity Tooling
 
-Ether treats cybersecurity operations through the lens of operating system design. Traditional security orchestration attempts to solve coordination via brittle shell scripts, monolithic wrappers, or presentation-heavy GUIs/TUIs. Ether rejects this approach in favor of a true **kernel substrate**:
+Ether treats cybersecurity operations through the lens of supervisory runtime design. Traditional security orchestration attempts to solve coordination via brittle shell scripts, monolithic wrappers, or presentation-heavy GUIs/TUIs. Ether rejects this approach in favor of a true **supervisory substrate**:
 
-| Operating System Concept | Ether Kernel Implementation | Architectural Function |
+| Supervisory Concept | Ether Implementation | Architectural Function |
 | :--- | :--- | :--- |
 | **Process Scheduler & Lifecycle** | `ExecutionSession` & `Executor` | Spawns binaries via pure argument vectors (`asyncio.create_subprocess_exec`), enforces process tree lifecycle, and manages automated `SIGTERM` $\to$ `SIGKILL` escalations. Zero `shell=True`. |
 | **Memory Management & Limits** | `LogSpooler` & Bounded Ring Buffer | Enforces hard memory ceilings (<10MB RAM per job) using `deque(maxlen=5000)` while streaming raw GBs of output to disk in 64KB chunks. Sanitizes memory with `wipe_credentials()`. |

@@ -26,7 +26,7 @@ Before beginning, ensure you have:
 
 ## Step 1: Verify System Readiness (`ether doctor`)
 
-Ether operates as a headless kernel supervising underlying security tools. First, verify that your environment, database, vector extensions, and tool adapters are healthy:
+Ether operates as a headless runtime engine supervising underlying security tools. First, verify that your environment, database, vector extensions, and tool adapters are healthy:
 
 ```bash
 ether doctor
