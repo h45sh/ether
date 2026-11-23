@@ -17,7 +17,7 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **Integrate MCP:** [Agent Telemetry & MCP Integration Guide](how-to/agent-telemetry-mcp.md) — Connect Claude Desktop, Cursor, or agent swarms via native MCP tools.
 * **Understand Zero-Token Diffs:** [Architecture Deep Dive](explanation/architecture.md) — Learn how set-theoretic deltas save 98% of context tokens.
 
-### I am a Security Operator or Red-Teamer (CLI & Beast Mode)
+### I am a Security Operator or Red-Teamer (CLI & Unrestricted Policy)
 * **Master the CLI:** [Headless CLI Operations Manual](how-to/cli-usage.md) — Full reference for all 8 subcommands (`doctor`, `tool`, `run`, `session`, `graph`, `telemetry`, `logs`, `mcp`).
 * **Unconstrained Execution:** Learn how to unlock raw, unconstrained execution using `--policy unrestricted` in [GatePolicy Reference](reference/engineering-standards.md).
 * **Forensic Archiving:** Export and import encrypted session databases using AES-256-GCM in [CLI Operations Guide](how-to/cli-usage.md#7-exporting--importing-investigation-archives).
@@ -84,7 +84,7 @@ Select your persona or operational goal to jump directly to the relevant guides:
 ### 3. Reference (Facts & Specifications)
 * **[Schema Registry](reference/schema-registry.md)**: Authoritative specification of all 18 normalized finding schemas, Primary Identity Keys (PIK), and child relations.
 * **[Engineering Standards](reference/engineering-standards.md)**: Strict headless invariants, deep module principles, memory limits, and testing standards.
-* **[Domain Glossary](reference/glossary.md)**: Ubiquitous language defining core concepts like PIK, Zero-Token Diff, Flapping State, and Beast Mode.
+* **[Domain Glossary](reference/glossary.md)**: Ubiquitous language defining core concepts like PIK, Zero-Token Diff, Flapping State, and GatePolicy.
 * **[Performance Benchmarks](benchmarks/README.md)**: Quantitative speed, throughput, and memory measurements verified across CI and release preflights.
 
 ### 4. Explanation (Architecture & Design)

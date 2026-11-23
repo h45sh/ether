@@ -45,7 +45,7 @@ To understand Ether, consider the role of a traditional operating system kernel:
 | **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using bounded ring buffers (`deque(maxlen=5000)`). |
 | **Device Drivers** (`/dev/*` hardware modules) | **Pluggable Smart Adapters**: Decoupled drivers in `tools/<name>/` normalizing heterogenous CLI outputs into structured Pydantic finding schemas. |
 | **Filesystem & Inodes** (ext4, deterministic paths) | **Deterministic GraphStore**: SQLite WAL engine indexing findings by deterministic SHA-256 **Primary Identity Keys (PIK)** ($H(\text{schema} + \text{sorted\_pik})$). |
-| **Security Rings / SELinux Capabilities** | **Dual GatePolicy Seam**: Kernel-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` ("Beast Mode"). |
+| **Security Rings / SELinux Capabilities** | **Dual GatePolicy Seam**: Kernel-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for red-teams). |
 | **Hardware State Invariance & Migration** | **Cryptographic Identity Anchoring & Temporal Decay**: Decouples volatile IPs via cryptographic fingerprints (`tls:`, `ssh:`, `favicon:`) and decays stale states (`confirmed` $\to$ `flapping` $\to$ `stale`). |
 | **Embedded Hardware Acceleration** | **Zero-Egress Vector Memory (`sqlite-vec`)**: Embedded 384-dimensional unit vector engine for sub-millisecond semantic search without external model downloads or API egress. |
 | **Kernel Audit Subsystem & dmesg** | **Forensic Event Log & Zero-Token Diffs**: Append-only event sourcing and set-theoretic graph deltas ($\Delta = S_{t+1} \setminus S_t$) cutting agent token usage by 98%. |
@@ -75,7 +75,7 @@ To understand Ether, consider the role of a traditional operating system kernel:
 │  ┌─────────────────────────┐  ┌─────────────────────────────────────┐  │
 │  │ GatePolicy Enforcement  │  │ AI Telemetry & Injection Sandbox    │  │
 │  │ - SAFE (SSRF/IMDS Def)  │  │ - Zero-Token Graph Diffs (98% cut)  │  │
-│  │ - UNRESTRICTED (Beast)  │  │ - Neutralized Prompt Injection Bounds│ │
+│  │ - UNRESTRICTED Policy   │  │ - Neutralized Prompt Injection Bounds│ │
 │  └─────────────────────────┘  └─────────────────────────────────────┘  │
 │                                │                                       │
 │                                ▼                                       │
@@ -104,7 +104,7 @@ To understand Ether, consider the role of a traditional operating system kernel:
 5. **Dual-Mode Security Policy Seam (`GatePolicy`)**
    Provides first-class kernel policy enforcement:
    * `GatePolicy.SAFE`: Strictly blocks cloud metadata endpoints (AWS IMDSv2 `169.254.169.254`, GCP, Azure), enforces authorized CIDR scope guardrails, and strips credentials.
-   * `GatePolicy.UNRESTRICTED`: Unlocks raw, unconstrained execution ("Beast Mode") for sovereign red-teams and offensive cyber warfare operations.
+   * `GatePolicy.UNRESTRICTED`: Unlocks raw, unconstrained execution for authorized red-team engagements and advanced penetration testing operations.
 
 6. **AI Prompt Injection Boundary Sandbox**
    Protects AI reasoning loops from malicious target payloads (e.g. prompt injection embedded in target HTTP headers, TLS certs, or HTML comments). Wraps untrusted target stdout inside structural `<untrusted_scan_output>` boundary tags, neutralizing breakout sequences (`</untrusted_scan_output>` escaped to `<\/untrusted_scan_output>`) and redacting private keys and bearer tokens.
@@ -319,7 +319,7 @@ Ether strictly adheres to the following mechanical engineering contracts:
 | **Secret Scrubbing** | Child environment scrubbing (`sanitize_subprocess_env`) | Host API keys (`OPENAI_*`, `AWS_*`, `SSH_*`) never leak to child tools. |
 | **Deterministic State** | Primary Identity Key (PIK) hashing via SHA-256 | Non-destructive idempotent entity merging in SQLite WAL. |
 | **Zero-Token Diffs** | Set-theoretic delta calculation ($\Delta = S_{t+1} \setminus S_t$) | Cuts LLM agent context window consumption by **98%**. |
-| **Dual Policy Seam** | `GatePolicy.SAFE` vs `GatePolicy.UNRESTRICTED` | Defends against SSRF & cloud metadata theft; unlocks Beast Mode for red-teams. |
+| **Dual Policy Seam** | `GatePolicy.SAFE` vs `GatePolicy.UNRESTRICTED` | Defends against SSRF & cloud metadata theft; unlocks unconstrained execution for red-teams. |
 | **Offline Vector RAG** | Native `sqlite-vec` k-NN search (384-dimensional) | High-speed semantic search with zero network egress or external API calls. |
 
 ---

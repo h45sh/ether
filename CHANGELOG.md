@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   * Child process environment secret scrubbing (`sanitize_subprocess_env`) stripping host API keys and tokens.
 * **Dual Security Policy Seam (`GatePolicy`)**:
   * `GatePolicy.SAFE`: Enforces CIDR scope boundaries, blocks link-local and cloud metadata endpoints (AWS IMDSv2, GCP, Azure).
-  * `GatePolicy.UNRESTRICTED`: Unconstrained execution mode ("Beast Mode") for sovereign red-teams and offensive cyber warfare operations.
+  * `GatePolicy.UNRESTRICTED`: Unconstrained execution mode for authorized red-team engagements and advanced penetration testing operations.
 * **Prompt Injection Defense Sandbox (`ether.core.sandbox`)**:
   * Structural `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with breakout neutralization (`</untrusted_scan_output>` escaped to `<\/untrusted_scan_output>`).
   * Automatic redaction of private keys, authorization tokens, passwords, and API keys.
