@@ -1,4 +1,4 @@
-# PROTECTED FILE — See CONTRIBUTING.md before modifying.
+# PROTECTED FILE — See docs/CONTRIBUTING.md before modifying.
 # Changes to this file require team agreement.
 """Dynamic tool discovery and loading."""
 

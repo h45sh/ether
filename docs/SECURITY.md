@@ -9,7 +9,7 @@ Ether receives active security updates, vulnerability patches, and invariant aud
 | **Latest Release / Default Branch (`main`)** | **Yes** | Active security support, AST invariant enforcement, and patches. |
 | **Prior Releases** | **Best Effort** | Security fixes are backported or rolled into the next minor/patch release. |
 
-We recommend always running the latest packaged release (`pip install -U ether`) or pulling the latest container image (`ghcr.io/h45sh/ether:latest`).
+We recommend always running the latest packaged release (`pip install -U ether-core`) or pulling the latest container image (`ghcr.io/h45sh/ether:latest`).
 
 ---
 

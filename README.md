@@ -4,7 +4,7 @@
 
 **The Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents**
 
-[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security Policy](.github/SECURITY.md)
+[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](docs/CONTRIBUTING.md) · [Security Policy](docs/SECURITY.md)
 
 [![CodeQL Security Analysis](https://github.com/h45sh/ether/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/codeql.yml)
 [![PyPI](https://img.shields.io/pypi/v/ether-core.svg)](https://pypi.org/project/ether-core/)
@@ -387,7 +387,7 @@ Ether’s documentation is structured according to the **[Diátaxis Framework](h
                                          │      - [Authoring Tool Adapters]
                                          │        (docs/how-to/author-adapters.md)
                                          │      - [Contributing Guidelines]
-                                         │        (docs/how-to/contributing.md)
+                                         │        (docs/CONTRIBUTING.md)
      ────────────────────────────────────┼────────────────────────────────────
                                          │
                  Explanation             │               Reference

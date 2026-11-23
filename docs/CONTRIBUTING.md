@@ -109,7 +109,7 @@ To enable tool chaining, all findings inherit from `BaseFinding` and declare a d
 | `vulnerability.found` | `VulnerabilityFound` | `{"host_ip": "<ip>", "vuln_id": "<cve_or_id>"}` |
 
 > [!TIP]
-> Consult [`docs/reference/schema-registry.md`](../reference/schema-registry.md) for the complete reference of all 18 active finding schemas.
+> Consult [`reference/schema-registry.md`](reference/schema-registry.md) for the complete reference of all 18 active finding schemas.
 
 ---
 

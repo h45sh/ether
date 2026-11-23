@@ -51,7 +51,7 @@ Select your persona or operational goal to jump directly to the relevant guides:
                                          │      - [Authoring Tool Adapters]
                                          │        (how-to/author-adapters.md)
                                          │      - [Contributing Guidelines]
-                                         │        (how-to/contributing.md)
+                                         │        (CONTRIBUTING.md)
      ────────────────────────────────────┼────────────────────────────────────
                                          │
                  Explanation             │               Reference
@@ -80,7 +80,8 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **[Headless CLI Operations Manual](how-to/cli-usage.md)**: Authoritative operational manual for all 8 subcommands, global flags, and error handling.
 * **[Agent Telemetry & MCP Integration](how-to/agent-telemetry-mcp.md)**: Step-by-step setup for Claude Desktop, Cursor, and custom agent swarms with zero-token diffs and finding RAG.
 * **[Authoring Pluggable Tool Adapters](how-to/author-adapters.md)**: Complete guide to implementing Tier A in-process async coroutines and Tier B subprocess tool adapters with `manifest.toml`.
-* **[Contributing Guidelines](how-to/contributing.md)**: Developer setup, code standards, PR checklists, and mechanical quality gates.
+* **[Contributing Guidelines](CONTRIBUTING.md)**: Developer setup, code standards, PR checklists, and mechanical quality gates.
+* **[Security Policy](SECURITY.md)**: Vulnerability disclosure, bug bounty guidelines, and reporting channels.
 
 ### 3. Reference (Facts & Specifications)
 * **[Schema Registry](reference/schema-registry.md)**: Authoritative specification of all 18 normalized finding schemas, Primary Identity Keys (PIK), and child relations.
