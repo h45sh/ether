@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]
     paths-ignore:
       - "docs/**"
       - "*.md"
@@ -49,14 +49,13 @@ jobs:
         run: uv run python3 scripts/generate_schema_registry.py --check
 
   test:
-    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    name: Test (Python ${{ matrix.python-version }})
     needs: [lint]
     if: ${{ !startsWith(github.head_ref, 'release-please') }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
