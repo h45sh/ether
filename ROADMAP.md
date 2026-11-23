@@ -76,7 +76,12 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Automatically falls back to binary subprocess execution for compiled tools (`nmap`, `nuclei`, `ffuf`).
 - [x] **Native Model Context Protocol (MCP) Server (`ether.mcp`):**
   - Stdio and Server-Sent Events (SSE) server allowing Cursor, Claude Desktop, and autonomous agent swarms to drive Ether directly.
-  - Minimal high-leverage interface (5 core tools): `execute_tool`, `query_graph`, `get_diff`, `inspect_entity`, `abort_action`.
+  - Complete 13-tool supervisory agent interface:
+    - Execution & Diagnostics: `execute_tool`, `abort_action`, `read_action_log`
+    - State & Telemetry: `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`
+    - Arsenal Introspection: `list_tools`, `get_tool_info`
+    - Graph Intelligence & Attack Paths: `get_attack_path`, `get_blast_radius`, `get_crown_jewels`
+    - Workspace Management: `manage_session`
 - [x] **Deterministic Zero-Token Graph Diffing Engine:**
   - After any action completes, compute the exact set-theoretic delta:
     $$\Delta = S_{t+1} \setminus S_t$$

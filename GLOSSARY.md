@@ -22,6 +22,14 @@ _Avoid_: Dumb framework, wrapper script, plugin system
 
 ## Execution & Policy Engine
 
+**Tool Arsenal**:
+The collection of registered security tool adapters discoverable and executable by Ether, categorised by execution tier (`coroutine` vs `subprocess`).
+_Avoid_: Plugin list, tool directory, script folder
+
+**Graph Analytics**:
+Deterministic graph algorithms (BFS attack paths, transitive blast radius, crown-jewel identification, betweenness centrality) executed over the entity graph.
+_Avoid_: Heuristics, AI reasoning, network scanning
+
 **Execution Session**:
 An isolated, headless asynchronous runtime context supervising child process lifecycles, streaming raw logs, and emitting validated findings.
 _Avoid_: Terminal session, workspace run, shell job, task
