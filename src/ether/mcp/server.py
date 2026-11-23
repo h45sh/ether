@@ -3,14 +3,18 @@
 import asyncio
 import json
 import logging
+import os
+import shutil
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from mcp.server.mcpserver import MCPServer
 
+from ether import paths
 from ether.common import sanitize_untrusted_output
 from ether.core.session import ExecutionCompleted, ExecutionFailed
 from ether.gateway.gate import ActionGateway, GatePolicy
+from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
 from ether.graph.telemetry import GraphTelemetryCompiler
 from ether.registry.registry import ToolRegistry
@@ -378,5 +382,308 @@ def create_mcp_server(
 
         success = await exec_sess.kill_job(act_uuid)
         return json.dumps({"action_id": action_id, "aborted": success}, indent=2)
+
+    @server.tool()
+    async def list_tools() -> str:
+        """List all security tools registered in the Ether arsenal with execution tiers and install status."""
+        tools_list = []
+        for name in sorted(reg.list_tools()):
+            data = reg.get_tool(name)
+            manifest = data.get("manifest") if data else None
+            adapter = data.get("adapter") if data else None
+            meta = getattr(manifest, "meta", None)
+            tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+            binary = getattr(meta, "binary", name) if meta else name
+
+            if tier == "coroutine":
+                is_installed = adapter.validate_install() if adapter else True
+                display_bin = binary or "native"
+            else:
+                is_installed = shutil.which(binary) is not None if binary else False
+                display_bin = binary or name
+
+            tools_list.append(
+                {
+                    "name": name,
+                    "binary": display_bin,
+                    "tier": tier,
+                    "execution_tier": tier,
+                    "installed": is_installed,
+                    "category": getattr(meta, "category", "general") if meta else "general",
+                    "description": getattr(meta, "description", "") if meta else "",
+                }
+            )
+
+        return json.dumps(
+            {
+                "total": len(tools_list),
+                "tools": tools_list,
+            },
+            indent=2,
+        )
+
+    @server.tool()
+    async def get_tool_info(tool_name: str) -> str:
+        """Get detailed manifest, input contracts, emitted finding schemas, and binary info for a tool.
+
+        Args:
+            tool_name: Registered tool name (e.g. 'nmap', 'http_probe', 'nuclei').
+        """
+        data = reg.get_tool(tool_name)
+        if not data or not data.get("manifest"):
+            return json.dumps(
+                {
+                    "error": "ToolNotFound",
+                    "message": f"Tool '{tool_name}' is not registered in Ether arsenal.",
+                },
+                indent=2,
+            )
+
+        manifest = data["manifest"]
+        meta = getattr(manifest, "meta", None)
+        tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+        binary = getattr(meta, "binary", tool_name) if meta else tool_name
+        bin_path = shutil.which(binary) if binary else None
+        adapter = data.get("adapter")
+        is_installed = (
+            adapter.validate_install()
+            if (tier == "coroutine" and adapter)
+            else (bin_path is not None)
+        )
+
+        return json.dumps(
+            {
+                "name": tool_name,
+                "tier": tier,
+                "execution_tier": tier,
+                "binary": binary or "native",
+                "binary_path": bin_path,
+                "installed": is_installed,
+                "category": getattr(meta, "category", "general") if meta else "general",
+                "description": getattr(meta, "description", "") if meta else "",
+                "input_accepts": getattr(manifest.input, "accepts", [])
+                if hasattr(manifest, "input")
+                else [],
+                "output_emits": getattr(manifest.output, "emits", [])
+                if hasattr(manifest, "output")
+                else [],
+            },
+            indent=2,
+        )
+
+    @server.tool()
+    async def get_attack_path(
+        source_id: str,
+        target_id: str,
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Compute the shortest directed attack path connecting two entity IDs via BFS.
+
+        Args:
+            source_id: Origin entity ID.
+            target_id: Destination target entity ID.
+            session_id: Target session ID (optional, defaults to active session).
+        """
+        sess_id = await _resolve_session(session_id)
+        nodes = await store.get_all_nodes(sess_id)
+        edges = await store.get_all_edges(sess_id)
+        analytics = GraphAnalyticsEngine(nodes, edges)
+        path = analytics.find_shortest_attack_path(source_id, target_id)
+        return json.dumps(
+            {
+                "session_id": sess_id,
+                "source_id": source_id,
+                "target_id": target_id,
+                "found": path is not None,
+                "path": path if path is not None else [],
+            },
+            indent=2,
+        )
+
+    @server.tool()
+    async def get_blast_radius(
+        compromised_node_id: str,
+        max_depth: int = 10,
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Calculate the compromise blast radius (all transitively reachable nodes).
+
+        Args:
+            compromised_node_id: Compromised entity ID.
+            max_depth: Maximum hops to traverse (default: 10).
+            session_id: Target session ID (optional, defaults to active session).
+        """
+        sess_id = await _resolve_session(session_id)
+        nodes = await store.get_all_nodes(sess_id)
+        edges = await store.get_all_edges(sess_id)
+        analytics = GraphAnalyticsEngine(nodes, edges)
+        radius_set = analytics.calculate_blast_radius(compromised_node_id, max_depth=max_depth)
+        return json.dumps(
+            {
+                "session_id": sess_id,
+                "compromised_node_id": compromised_node_id,
+                "max_depth": max_depth,
+                "total_affected": len(radius_set),
+                "affected_entity_ids": sorted(list(radius_set)),
+            },
+            indent=2,
+        )
+
+    @server.tool()
+    async def get_crown_jewels(
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Identify critical crown-jewel assets and topological choke points across the session.
+
+        Args:
+            session_id: Target session ID (optional, defaults to active session).
+        """
+        sess_id = await _resolve_session(session_id)
+        nodes = await store.get_all_nodes(sess_id)
+        edges = await store.get_all_edges(sess_id)
+        analytics = GraphAnalyticsEngine(nodes, edges)
+        jewels = analytics.identify_critical_assets()
+        cb = analytics.calculate_betweenness_centrality()
+        sorted_cb = sorted(
+            [(nid, score) for nid, score in cb.items() if score > 0.0],
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        choke_points = []
+        for nid, score in sorted_cb[:5]:
+            node_info = dict(analytics.nodes_by_id[nid])
+            node_info["betweenness_centrality"] = score
+            choke_points.append(node_info)
+
+        return json.dumps(
+            {
+                "session_id": sess_id,
+                "crown_jewels": jewels,
+                "choke_points": choke_points,
+                "total_critical": len(jewels),
+            },
+            indent=2,
+        )
+
+    @server.tool()
+    async def manage_session(
+        action: str,
+        name: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Manage investigation workspaces and session lifecycles.
+
+        Args:
+            action: Action to perform ('list', 'create', or 'info').
+            name: Session name (for 'create').
+            session_id: Target session ID (for 'info').
+        """
+        if action == "list":
+            workspaces = await store.list_workspaces()
+            all_sessions = []
+            for ws in workspaces:
+                ws_sessions = await store.list_sessions(ws["id"])
+                all_sessions.extend(ws_sessions)
+            return json.dumps(
+                {
+                    "total": len(all_sessions),
+                    "sessions": all_sessions,
+                },
+                indent=2,
+            )
+        elif action == "create":
+            sess_name = name or "agent-session"
+            workspaces = await store.list_workspaces()
+            if workspaces:
+                ws_id = workspaces[0]["id"]
+            else:
+                ws_id = await store.create_workspace("DefaultWorkspace")
+            new_sess_id = await store.create_session(ws_id, sess_name)
+            return json.dumps(
+                {
+                    "action": "create",
+                    "session_id": new_sess_id,
+                    "name": sess_name,
+                    "workspace_id": ws_id,
+                },
+                indent=2,
+            )
+        elif action == "info":
+            sess_id = await _resolve_session(session_id)
+            sess_data = await store.get_session(sess_id)
+            nodes = await store.get_all_nodes(sess_id)
+            return json.dumps(
+                {
+                    "session_id": sess_id,
+                    "session": sess_data,
+                    "total_nodes": len(nodes),
+                },
+                indent=2,
+            )
+        else:
+            return json.dumps(
+                {
+                    "error": "InvalidAction",
+                    "message": f"Action '{action}' is not supported. Use 'list', 'create', or 'info'.",
+                },
+                indent=2,
+            )
+
+    @server.tool()
+    async def read_action_log(
+        action_id: str,
+        tail_lines: int = 50,
+    ) -> str:
+        """Read the recent spooled execution log lines for an action, sanitized through prompt bounds.
+
+        Args:
+            action_id: Action UUID to inspect.
+            tail_lines: Number of trailing log lines to return (default: 50).
+        """
+        try:
+            act_uuid = UUID(action_id)
+        except Exception:
+            act_uuid = None
+
+        log_lines: List[str] = []
+        if act_uuid:
+            try:
+                log_lines = exec_sess.get_output_history(act_uuid)
+            except Exception:
+                log_lines = []
+
+        if not log_lines:
+            log_dir = paths.get_default_logs_dir()
+            log_file = os.path.join(log_dir, f"{action_id}.log")
+            if os.path.exists(log_file):
+                try:
+                    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                        log_lines = f.readlines()
+                except Exception:
+                    log_lines = []
+
+        if not log_lines:
+            return json.dumps(
+                {
+                    "action_id": action_id,
+                    "message": "No log output recorded for this action.",
+                    "log": "",
+                },
+                indent=2,
+            )
+
+        selected_lines = log_lines[-tail_lines:] if tail_lines > 0 else log_lines
+        raw_text = "".join(selected_lines)
+        sanitized = sanitize_untrusted_output(raw_text)
+
+        return json.dumps(
+            {
+                "action_id": action_id,
+                "tail_lines": len(selected_lines),
+                "total_lines": len(log_lines),
+                "log": sanitized,
+            },
+            indent=2,
+        )
 
     return server

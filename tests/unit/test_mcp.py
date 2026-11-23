@@ -11,7 +11,7 @@ from ether.schemas.network import NetworkHost, NetworkService
 
 @pytest.mark.asyncio
 async def test_mcp_server_creation_and_tool_listing():
-    """Verify that MCP server registers canonical tools."""
+    """Verify that MCP server registers canonical 13 tools."""
     store = GraphStore(":memory:")
     await store.initialize()
 
@@ -19,9 +19,29 @@ async def test_mcp_server_creation_and_tool_listing():
     tools = await server.list_tools()
     tool_names = {t.name for t in tools}
 
-    assert "query_graph" in tool_names
-    assert "inspect_entity" in tool_names
-    assert "get_diff" in tool_names
+    expected_tools = {
+        # Execution & Cancellation & Diagnostics
+        "execute_tool",
+        "abort_action",
+        "read_action_log",
+        # State & Telemetry
+        "query_graph",
+        "inspect_entity",
+        "get_diff",
+        "search_findings_semantic",
+        # Arsenal Introspection
+        "list_tools",
+        "get_tool_info",
+        # Graph Intelligence
+        "get_attack_path",
+        "get_blast_radius",
+        "get_crown_jewels",
+        # Session Management
+        "manage_session",
+    }
+
+    assert tool_names == expected_tools
+    assert len(tool_names) == 13
 
     await store.close()
 
@@ -315,3 +335,161 @@ async def test_mcp_query_graph_include_stale():
     assert h1_id in node_ids_all
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_tools_and_get_tool_info():
+    """Verify list_tools and get_tool_info tools via MCP."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    server = create_mcp_server(store)
+
+    # 1. list_tools
+    res_list = await server.call_tool("list_tools", {})
+    assert res_list.is_error is False
+    data_list = json.loads(res_list.content[0].text)
+    assert data_list["total"] >= 10
+    tool_names = {t["name"] for t in data_list["tools"]}
+    assert "nmap" in tool_names
+    assert "http_probe" in tool_names
+    assert "whois" in tool_names
+
+    # Check coroutine tier identification
+    http_probe_meta = next(t for t in data_list["tools"] if t["name"] == "http_probe")
+    assert http_probe_meta["tier"] == "coroutine"
+
+    # 2. get_tool_info valid tool
+    res_info = await server.call_tool("get_tool_info", {"tool_name": "http_probe"})
+    assert res_info.is_error is False
+    data_info = json.loads(res_info.content[0].text)
+    assert data_info["name"] == "http_probe"
+    assert data_info["tier"] == "coroutine"
+    assert "input_accepts" in data_info
+    assert "output_emits" in data_info
+
+    # 3. get_tool_info nonexistent tool
+    res_nonexistent = await server.call_tool("get_tool_info", {"tool_name": "nonexistent_tool_xyz"})
+    assert res_nonexistent.is_error is False
+    err_info = json.loads(res_nonexistent.content[0].text)
+    assert err_info["error"] == "ToolNotFound"
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_graph_intelligence():
+    """Verify get_attack_path, get_blast_radius, and get_crown_jewels via MCP."""
+    from ether.schemas.network import NetworkHost, NetworkService
+    from ether.schemas.vulnerability import VulnerabilityFound
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    # Create a 3-hop attack chain: Host -> Service -> Critical Vulnerability (RCE)
+    host = NetworkHost.create(ip="10.10.10.100", hostname="dc.corp.local")
+    host_id = await store.upsert_finding(sess_id, host)
+
+    service = NetworkService.create(host_ip="10.10.10.100", port=88, service_name="kerberos")
+    service_id = await store.upsert_finding(sess_id, service)
+
+    vuln = VulnerabilityFound.create(
+        host_ip="10.10.10.100",
+        vuln_id="CVE-2024-9999",
+        port=88,
+        severity="critical",
+        title="Kerberos Remote Code Execution",
+    )
+    vuln_id = await store.upsert_finding(sess_id, vuln)
+
+    server = create_mcp_server(store, default_session_id=sess_id)
+
+    # 1. get_attack_path
+    res_path = await server.call_tool(
+        "get_attack_path", {"source_id": host_id, "target_id": service_id}
+    )
+    assert res_path.is_error is False
+    data_path = json.loads(res_path.content[0].text)
+    assert data_path["found"] is True
+    assert len(data_path["path"]) == 2
+    assert data_path["path"][0]["id"] == host_id
+    assert data_path["path"][1]["id"] == service_id
+
+    # Negative attack path
+    res_no_path = await server.call_tool(
+        "get_attack_path", {"source_id": "nonexistent_src", "target_id": service_id}
+    )
+    assert res_no_path.is_error is False
+    data_no_path = json.loads(res_no_path.content[0].text)
+    assert data_no_path["found"] is False
+    assert data_no_path["path"] == []
+
+    # 2. get_blast_radius
+    res_blast = await server.call_tool(
+        "get_blast_radius", {"compromised_node_id": host_id, "max_depth": 5}
+    )
+    assert res_blast.is_error is False
+    data_blast = json.loads(res_blast.content[0].text)
+    assert data_blast["total_affected"] >= 1
+    assert service_id in data_blast["affected_entity_ids"]
+
+    # 3. get_crown_jewels
+    res_jewels = await server.call_tool("get_crown_jewels", {})
+    assert res_jewels.is_error is False
+    data_jewels = json.loads(res_jewels.content[0].text)
+    assert data_jewels["total_critical"] >= 1
+    assert any(j["id"] == vuln_id for j in data_jewels["crown_jewels"])
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_manage_session_and_read_action_log():
+    """Verify manage_session and read_action_log via MCP."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+
+    server = create_mcp_server(store)
+
+    # 1. manage_session - create
+    res_create = await server.call_tool(
+        "manage_session", {"action": "create", "name": "AgentEngagement"}
+    )
+    assert res_create.is_error is False
+    data_create = json.loads(res_create.content[0].text)
+    assert data_create["action"] == "create"
+    new_sess_id = data_create["session_id"]
+    assert new_sess_id is not None
+
+    # 2. manage_session - list
+    res_list = await server.call_tool("manage_session", {"action": "list"})
+    assert res_list.is_error is False
+    data_list = json.loads(res_list.content[0].text)
+    assert data_list["total"] >= 1
+    assert any(s["id"] == new_sess_id for s in data_list["sessions"])
+
+    # 3. manage_session - info
+    res_info = await server.call_tool(
+        "manage_session", {"action": "info", "session_id": new_sess_id}
+    )
+    assert res_info.is_error is False
+    data_info = json.loads(res_info.content[0].text)
+    assert data_info["session_id"] == new_sess_id
+    assert data_info["total_nodes"] == 0
+
+    # 4. manage_session - invalid action
+    res_invalid = await server.call_tool("manage_session", {"action": "destroy"})
+    assert res_invalid.is_error is False
+    data_invalid = json.loads(res_invalid.content[0].text)
+    assert data_invalid["error"] == "InvalidAction"
+
+    # 5. read_action_log - empty/nonexistent
+    res_log = await server.call_tool(
+        "read_action_log", {"action_id": "00000000-0000-0000-0000-000000000000"}
+    )
+    assert res_log.is_error is False
+    data_log = json.loads(res_log.content[0].text)
+    assert "No log output recorded" in data_log["message"]
+
+    await store.close()
+
