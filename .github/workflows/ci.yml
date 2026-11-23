@@ -81,3 +81,29 @@ jobs:
 
       - name: Build Distribution Packages (sdist & wheel)
         run: uv build
+
+  test-macos:
+    name: Test (macOS, Python 3.12)
+    needs: [lint]
+    if: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.base_ref == 'main')) && !startsWith(github.head_ref, 'release-please') }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Tier 0 AST Architectural & Mathematical Invariants
+        run: uv run pytest -m tier0 -q
+
+      - name: Run Full Regression Test Suite
+        run: uv run pytest tests/
