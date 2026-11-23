@@ -1,6 +1,7 @@
 """Pure-Python HTTP Probe tool adapter with SSRF defense."""
 
 import re
+import ssl
 import urllib.parse
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -102,7 +103,11 @@ class HTTPProbeAdapter(ToolAdapter):
         # 3. Request execution with httpx
         timeout_sec = float(params.get("timeout", 10.0))
         limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
-        transport = httpx.AsyncHTTPTransport(retries=1, verify=False)
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        transport = httpx.AsyncHTTPTransport(retries=1, verify=ssl_ctx)
 
         await context.spool_line(f"[*] Probing {url} (timeout={timeout_sec}s)...")
 
@@ -129,12 +134,8 @@ class HTTPProbeAdapter(ToolAdapter):
         if not tls_fingerprint and scheme == "https":
             import hashlib
             import socket
-            import ssl
 
             try:
-                ssl_ctx = ssl.create_default_context()
-                ssl_ctx.check_hostname = False
-                ssl_ctx.verify_mode = ssl.CERT_NONE
                 with socket.create_connection(
                     (hostname, port), timeout=min(timeout_sec, 5.0)
                 ) as sock:
@@ -152,7 +153,7 @@ class HTTPProbeAdapter(ToolAdapter):
 
         async with httpx.AsyncClient(
             transport=transport,
-            verify=False,
+            verify=ssl_ctx,
             timeout=httpx.Timeout(timeout_sec, connect=5.0),
             follow_redirects=True,
             limits=limits,

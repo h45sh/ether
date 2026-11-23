@@ -39,7 +39,8 @@ class SqlmapAdapter(ToolAdapter):
                 s.startswith("___")
                 or s.startswith("|_")
                 or s.startswith("__H__")
-                or "sqlmap.org" in s
+                or s.startswith("http://")
+                or s.startswith("https://")
                 or "[*] starting @" in s
                 or "[*] ending @" in s
                 or s.startswith("[!] legal disclaimer")
