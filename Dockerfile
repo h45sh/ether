@@ -1,5 +1,5 @@
 # Multi-arch compatible Debian image for headless Ether security engine
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 LABEL org.opencontainers.image.title="Ether" \
       org.opencontainers.image.description="Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents" \
