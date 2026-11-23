@@ -4,8 +4,13 @@
 
 **The Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents**
 
-[![CI](https://github.com/h45sh/ether/actions/workflows/ci.yml/badge.svg)](https://github.com/h45sh/ether/actions/workflows/ci.yml)
+[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](docs/how-to/contributing.md) · [Security Policy](.github/SECURITY.md)
+
+[![CI](https://github.com/h45sh/ether/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/ci.yml)
+[![CodeQL Security Analysis](https://github.com/h45sh/ether/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/codeql.yml)
+[![PyPI](https://img.shields.io/pypi/v/ether-core.svg)](https://pypi.org/project/ether-core/)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/h45sh/ether/pkgs/container/ether)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Architecture: Headless Core](https://img.shields.io/badge/architecture-headless%20core-success)](docs/explanation/architecture.md)
@@ -28,7 +33,7 @@ Security tools like `nmap`, `nuclei`, `ffuf`, and `gobuster` are essential, but 
 
 ---
 
-## 🧠 The Operating System Kernel for Cybersecurity Operations
+## The Operating System Kernel for Cybersecurity Operations
 
 To understand Ether, consider the role of a traditional operating system kernel: Linux does not perform word processing or web browsing itself; it schedules processes, manages memory bounds, abstracts hardware via device drivers, enforces security rings, and provides predictable system calls.
 
@@ -84,24 +89,24 @@ To understand Ether, consider the role of a traditional operating system kernel:
 
 ### The 6 Core Kernel Subsystems
 
-1. 🛡️ **Async Process Supervisor & Memory Governor**
+1. **Async Process Supervisor & Memory Governor**
    Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`maxlen=5000`) below **10MB RAM**.
 
-2. 🧬 **Deterministic Entity State Machine**
+2. **Deterministic Entity State Machine**
    Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter.
 
-3. ⏳ **Cryptographic Identity Anchoring & Temporal State Decay**
+3. **Cryptographic Identity Anchoring & Temporal State Decay**
    Decouples volatile IP addresses from logical service identities using invariant cryptographic fingerprints (`tls:<sha256>`, `ssh:<fingerprint>`, `favicon:<hash>`). When a service migrates across cloud IPs, Ether automatically links cross-IP identity migration edges (`anchored_identity`). Unseen nodes undergo automatic confidence state decay (`confirmed` $\to$ `flapping` $\to$ `stale`).
 
-4. 🧠 **Zero-Egress Embedded Vector Memory (`sqlite-vec`)**
+4. **Zero-Egress Embedded Vector Memory (`sqlite-vec`)**
    Discovered findings are automatically converted into 384-dimensional unit vectors stored inside SQLite via `sqlite-vec`'s `vec0` virtual table. Enables sub-millisecond k-NN semantic search and task-directed context retrieval for AI agents with **zero model downloads, zero external API keys, and zero network egress**.
 
-5. ⚖️ **Dual-Mode Security Policy Seam (`GatePolicy`)**
+5. **Dual-Mode Security Policy Seam (`GatePolicy`)**
    Provides first-class kernel policy enforcement:
    * `GatePolicy.SAFE`: Strictly blocks cloud metadata endpoints (AWS IMDSv2 `169.254.169.254`, GCP, Azure), enforces authorized CIDR scope guardrails, and strips credentials.
    * `GatePolicy.UNRESTRICTED`: Unlocks raw, unconstrained execution ("Beast Mode") for sovereign red-teams and offensive cyber warfare operations.
 
-6. 🔒 **AI Prompt Injection Boundary Sandbox**
+6. **AI Prompt Injection Boundary Sandbox**
    Protects AI reasoning loops from malicious target payloads (e.g. prompt injection embedded in target HTTP headers, TLS certs, or HTML comments). Wraps untrusted target stdout inside structural `<untrusted_scan_output>` boundary tags, neutralizing breakout sequences (`</untrusted_scan_output>` escaped to `<\/untrusted_scan_output>`) and redacting private keys and bearer tokens.
 
 ---

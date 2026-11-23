@@ -8,33 +8,33 @@ Our documentation strictly follows the **[Diátaxis Framework](https://diataxis.
 
 ---
 
-## 🎯 Find Documentation by Your Goal
+## Find Documentation by Your Goal
 
 Select your persona or operational goal to jump directly to the relevant guides:
 
-### 🤖 I am building or connecting an AI Agent (Claude, Cursor, Swarms)
+### I am building or connecting an AI Agent (Claude, Cursor, Swarms)
 * **Start here:** [Quickstart Tutorial](tutorials/quickstart.md) — Walk through an end-to-end session from scratch.
 * **Integrate MCP:** [Agent Telemetry & MCP Integration Guide](how-to/agent-telemetry-mcp.md) — Connect Claude Desktop, Cursor, or agent swarms via native MCP tools.
 * **Understand Zero-Token Diffs:** [Architecture Deep Dive](explanation/architecture.md) — Learn how set-theoretic deltas save 98% of context tokens.
 
-### 🛡️ I am a Security Operator or Red-Teamer (CLI & Beast Mode)
+### I am a Security Operator or Red-Teamer (CLI & Beast Mode)
 * **Master the CLI:** [Headless CLI Operations Manual](how-to/cli-usage.md) — Full reference for all 8 subcommands (`doctor`, `tool`, `run`, `session`, `graph`, `telemetry`, `logs`, `mcp`).
 * **Unconstrained Execution:** Learn how to unlock raw, unconstrained execution using `--policy unrestricted` in [GatePolicy Reference](reference/engineering-standards.md).
 * **Forensic Archiving:** Export and import encrypted session databases using AES-256-GCM in [CLI Operations Guide](how-to/cli-usage.md#7-exporting--importing-investigation-archives).
 
-### 💻 I am a Python Developer or Tool Author (SDK & Adapters)
+### I am a Python Developer or Tool Author (SDK & Adapters)
 * **Programmatic Quickstart:** Embed Ether into Python apps via [Quickstart Tutorial](tutorials/quickstart.md#step-8-taking-it-programmatic-python-sdk).
 * **Write Custom Adapters:** [Authoring Pluggable Tool Adapters](how-to/author-adapters.md) — Create Tier A in-process async coroutines or Tier B subprocess parsers.
 * **Inspect Finding Schemas:** [Schema Registry Catalog](reference/schema-registry.md) — Specifications for all 18 normalized Pydantic finding models.
 
-### 🚀 I am a DevOps or Platform Engineer (Docker & CI/CD)
+### I am a DevOps or Platform Engineer (Docker & CI/CD)
 * **Container Workflows:** Run Ether via multi-arch container images in the [README Quickstart](../README.md#method-4-docker-container-for-containerized--cloud-workflows).
 * **Automated CI Security Gates:** Integrate automated regression scanning with `ether run` into your CI pipelines.
 * **Performance Benchmarks:** Inspect verified throughput, query latency, and memory ceilings in [Mechanical Performance Benchmarks](benchmarks/README.md).
 
 ---
 
-## 🗺️ Diátaxis Documentation Navigation Matrix
+## Diátaxis Documentation Navigation Matrix
 
 ```text
                                   PRACTICAL (Doing)

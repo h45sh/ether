@@ -46,6 +46,7 @@ docs/benchmarks/.history/
 # Environment configurations and secrets
 .env
 .env.local
+.python-version
 
 # IDE, editors, and OS metadata
 .idea/
