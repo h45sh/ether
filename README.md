@@ -6,7 +6,6 @@
 
 [PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security Policy](.github/SECURITY.md)
 
-[![CI](https://github.com/h45sh/ether/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/ci.yml)
 [![CodeQL Security Analysis](https://github.com/h45sh/ether/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/codeql.yml)
 [![PyPI](https://img.shields.io/pypi/v/ether-core.svg)](https://pypi.org/project/ether-core/)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
