@@ -125,7 +125,7 @@ explanation = """
 Unlike TCP, UDP is connectionless and does not utilize a handshake.
 When a scanner transmits a UDP packet to an open port, the application usually does not respond unless the packet matches its exact payload format.
 However, if the port is closed, the host's IP stack MUST reply with an ICMP Type 3 Code 3 (Destination Unreachable: Port Unreachable) packet.
-Linux kernels strictly rate-limit ICMP error messages (typically 1 packet per second), making UDP scans significantly slower.
+Linux operating systems strictly rate-limit ICMP error messages (typically 1 packet per second), making UDP scans significantly slower.
 """
 packet_wire_summary = "Client sends protocol-specific UDP datagram -> If Port Closed: Server returns ICMP Type 3 Code 3"
 remediation = "Firewall unused UDP ports and disable legacy protocols (SNMPv1/v2c, NTP monlist reflection) vulnerable to amplification attacks."
@@ -133,13 +133,13 @@ remediation = "Firewall unused UDP ports and disable legacy protocols (SNMPv1/v2
 [[learning.recipes]]
 name = "OS Fingerprinting & TCP/IP Stack Profiling"
 difficulty = "Advanced"
-description = "Analyze quirks in TCP/IP packet generation to fingerprint the target operating system kernel and version."
+description = "Analyze quirks in TCP/IP packet generation to fingerprint the target operating system and version."
 flags = ["-O", "-sV"]
 
 [learning.recipes.theory]
 concept = "TCP/IP Stack Quirks & Initial Sequence Number (ISN) Predictability"
 explanation = """
-Different operating systems (Linux kernel versions, Windows NT, FreeBSD) implement RFC specifications with minor vendor differences.
+Different operating systems (Linux distributions, Windows NT, FreeBSD) implement RFC specifications with minor vendor differences.
 Nmap's '-O' engine transmits a sequence of crafted TCP/UDP/ICMP probes and evaluates responses against thousands of OS signatures:
 1. TCP Initial Sequence Number (ISN) generation algorithm.
 2. TCP Window Size and Window Scale option support.
@@ -147,7 +147,7 @@ Nmap's '-O' engine transmits a sequence of crafted TCP/UDP/ICMP probes and evalu
 4. TCP Options ordering and timestamp behaviors.
 """
 packet_wire_summary = "Client transmits crafted probes with unusual flag combinations -> Compares response packet headers against nmap-os-db"
-remediation = "Modern Linux kernels randomize ISN and IP ID by default; maintain up-to-date kernel patches to prevent legacy OS fingerprinting."
+remediation = "Modern operating systems randomize ISN and IP ID by default; maintain up-to-date system patches to prevent legacy OS fingerprinting."
 
 [power]
 enabled = true

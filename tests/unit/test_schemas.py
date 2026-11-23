@@ -146,9 +146,9 @@ SCHEMA_CONTRACT_CASES = [
         [],
     ),
     (
-        lambda: VulnerabilityFound.create(host_ip="192.168.1.1", vuln_id="KERNEL-PANIC-01"),
+        lambda: VulnerabilityFound.create(host_ip="192.168.1.1", vuln_id="SYS-PANIC-01"),
         "vulnerability.found",
-        {"host_ip": "192.168.1.1", "vuln_id": "KERNEL-PANIC-01"},
+        {"host_ip": "192.168.1.1", "vuln_id": "SYS-PANIC-01"},
         ("network.host", {"ip": "192.168.1.1"}, "host_has_vuln"),
         [],
     ),
