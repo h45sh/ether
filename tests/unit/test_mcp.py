@@ -189,6 +189,9 @@ async def test_mcp_execute_tool_timeout_fallback():
 
     registry = ToolRegistry()
     registry.load_tools()
+    whois_tool = registry.get_tool("whois")
+    if whois_tool and whois_tool.get("adapter"):
+        whois_tool["adapter"].validate_install = lambda: True
     runner = SlowRunner()
     gateway = ActionGateway(registry=registry, store=store, policy=GatePolicy.SAFE)
     exec_sess = ExecutionSession(
