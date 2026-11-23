@@ -175,7 +175,7 @@ class Executor:
             self._active_processes[tracking_id] = process
 
         # Internal queue to bridge stream readers and findings generator
-        finding_queue = asyncio.Queue()
+        finding_queue: asyncio.Queue[BaseFinding] = asyncio.Queue()
         parsing_context = {"params": params}  # Shared context for the duration of this tool run
         spooler = LogSpooler(log_file_path)
 

@@ -237,6 +237,7 @@ async def test_mcp_execute_tool_timeout_fallback():
     assert "action_id" in data
     assert "continuing in background" in data["message"]
 
+    await exec_sess.shutdown()
     await store.close()
 
 
@@ -492,4 +493,3 @@ async def test_mcp_manage_session_and_read_action_log():
     assert "No log output recorded" in data_log["message"]
 
     await store.close()
-

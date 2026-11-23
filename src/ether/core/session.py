@@ -91,7 +91,7 @@ class TerminalSuspendContext(Protocol):
 class CommandRunner(Protocol):
     """Protocol for executing tools or shell commands and streaming raw output."""
 
-    async def run(
+    def run(
         self,
         adapter: ToolAdapter,
         target: BaseFinding,
@@ -109,7 +109,7 @@ class CommandRunner(Protocol):
     async def stop(self, task_id: str) -> None: ...
 
 
-class SubprocessCommandRunner:
+class SubprocessCommandRunner(CommandRunner):
     """Production CommandRunner delegating to Executor subprocess management."""
 
     def __init__(self, executor: Executor):
@@ -499,12 +499,20 @@ class ExecutionSession:
             import json
 
             node_data = await self.store.get_node(str(action.session_id), action.target_entity_id)
-            target = BaseFinding(
-                schema_type=node_data["schema_type"],
-                pik=json.loads(node_data["pik_json"]),
-                data=json.loads(node_data["data_json"]),
-                status=node_data.get("status", "confirmed"),
-            )
+            if node_data:
+                target = BaseFinding(
+                    schema_type=node_data["schema_type"],
+                    pik=json.loads(node_data["pik_json"]),
+                    data=json.loads(node_data["data_json"]),
+                    status=node_data.get("status", "confirmed"),
+                )
+            else:
+                target = BaseFinding(
+                    schema_type="unknown.target",
+                    pik={"id": action.target_entity_id},
+                    data={},
+                    status="confirmed",
+                )
         else:
             target = BaseFinding(
                 schema_type="system.shell",
@@ -586,7 +594,7 @@ class ExecutionSession:
             ExecutionStarted(
                 action_id=action.action_id,
                 tool_name="sudo",
-                command_snippet=job.command_snippet,
+                command_snippet=job.command_snippet or "",
                 log_file=log_file_path,
             ),
         )
@@ -769,7 +777,7 @@ class ExecutionSession:
                         command_summary + (f" (failed: {err_msg})" if err_msg else ""),
                     )
                     if str(action.action_id) in self.closed_job_ids:
-                        self.evict_job(action.action_id)
+                        self.remove_job(action.action_id)
                 except Exception:
                     pass
 
@@ -809,7 +817,7 @@ class ExecutionSession:
             ExecutionStarted(
                 action_id=action.action_id,
                 tool_name=action.tool_name,
-                command_snippet=job.command_snippet,
+                command_snippet=job.command_snippet or "",
                 log_file=log_file_path,
             ),
         )
@@ -822,10 +830,13 @@ class ExecutionSession:
                 except Exception:
                     pass
 
+        raw_policy = getattr(self.gateway, "policy", "safe")
+        policy_str = str(getattr(raw_policy, "value", raw_policy))
+
         exec_context = ExecutionContext(
             action_id=str(action.action_id),
             session_id=str(action.session_id),
-            policy=str(self.gateway.policy.value),
+            policy=policy_str,
             cwd=cwd,
             env=clean_env,
             use_shell=action.is_explicit_shell,

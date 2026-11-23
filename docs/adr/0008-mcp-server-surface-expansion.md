@@ -11,7 +11,7 @@ While these provided essential execution and set-theoretic diff telemetry, auton
 3. **Session Lock-in**: Agents could not manage multi-target engagement lifecycles, list workspaces, or switch active sessions.
 
 ## Decision
-We expand Ether's Native MCP Server surface in `src/ether/mcp/server.py` to a total of 12 canonical tools:
+We expand Ether's Native MCP Server surface in `src/ether/mcp/server.py` to a total of 13 canonical tools across 5 functional areas:
 
 ### 1. Tool Arsenal Self-Discovery
 - `list_tools()`: Discovers registered tools, execution tiers (`coroutine` vs `subprocess`), installation status, categories, and descriptions.
@@ -24,6 +24,10 @@ We expand Ether's Native MCP Server surface in `src/ether/mcp/server.py` to a to
 
 ### 3. Session & Investigation Lifecycle
 - `manage_session(action: 'list' | 'create' | 'info', name?: str, session_id?: str)`: Consolidated high-leverage interface managing multi-session lifecycles and workspace isolation.
+
+### 4. Forensic Telemetry & Execution Supervision
+- `read_action_log(action_id: str, tail_lines?: int)`: Retrieves recent spooled console execution logs sanitized through prompt boundary tags.
+- Plus foundational tools: `execute_tool`, `abort_action`, `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`.
 
 ## Consequences
 - **Positive**: Autonomous agents can introspect the arsenal, execute tools with valid schemas, compute strategic attack paths, and manage investigation workspaces autonomously with zero token waste.

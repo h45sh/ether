@@ -53,6 +53,7 @@ class JobStatus(BaseModel):
     completed_at: Optional[datetime] = None
     log_file: Optional[str] = None
     command_snippet: Optional[str] = None
+    error_snippet: Optional[str] = None
     tab_id: Optional[str] = None
 
 

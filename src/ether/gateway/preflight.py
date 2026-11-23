@@ -708,7 +708,7 @@ class PreflightVerifier:
     ) -> None:
         """Inspect command flags for wordlist dependencies and ensure required files exist."""
         dest_dir = self.wordlists_dir or paths.get_default_wordlists_dir()
-        dest_path = shutil.os.path.abspath(dest_dir)
+        dest_path = os.path.abspath(dest_dir)
 
         # 1. Macro Tokens: {wordlist:name} or {wordlist}
         macro_matches = WORDLIST_MACRO_REGEX.findall(flags)

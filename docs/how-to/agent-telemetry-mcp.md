@@ -67,20 +67,40 @@ ether mcp --transport sse --port 8000
 
 ## 3. Authoritative MCP Tool Catalog
 
-The Ether MCP server exposes 6 high-leverage tools:
+The Ether MCP server exposes **13 high-leverage tools** organized across 5 core operational domains:
 
-### 1. `execute_tool`
-Supervise and execute a security tool scan.
+### Execution & Process Supervision
+
+#### 1. `execute_tool`
+Supervise and execute a security tool scan. If execution exceeds `timeout_seconds`, the action automatically falls back to background execution and returns a running status with an `action_id` to prevent client disconnects.
 * **Arguments:**
   * `tool_name` (str): Registered tool name (e.g. `"nmap"`, `"nuclei"`, `"ffuf"`, `"http_probe"`).
   * `target` (str): Target domain, IP address, or URL.
   * `arguments` (dict, optional): Custom parameters (e.g. `{"raw_flags": "-sV -p 80,443"}`).
   * `session_id` (str, optional): Target session ID (defaults to active session).
-  * `timeout_seconds` (int, default: 60): Execution timeout.
+  * `timeout_seconds` (int, default: 60): Execution timeout before background fallback.
 * **Returns:** Structured JSON execution status, discovered findings count, and sanitized terminal preview.
 
-### 2. `query_graph`
-Query discovered entities and services from the persistent graph.
+#### 2. `abort_action`
+Safely cancel a running or stalled background scan task (`SIGTERM` $\to$ `SIGKILL`).
+* **Arguments:**
+  * `action_id` (str): Action UUID to terminate.
+  * `session_id` (str, optional): Target session ID.
+* **Returns:** JSON confirmation: `{"action_id": "...", "aborted": true}`.
+
+#### 3. `read_action_log`
+Read recent spooled execution log lines for an action, sanitized through prompt injection boundary tags.
+* **Arguments:**
+  * `action_id` (str): Action UUID to inspect.
+  * `tail_lines` (int, default: 50): Number of trailing log lines to return.
+* **Returns:** JSON object containing the action status and the sanitized log text preview.
+
+---
+
+### Graph Query & Telemetry
+
+#### 4. `query_graph`
+Query discovered entities and services from the persistent SQLite graph.
 * **Arguments:**
   * `session_id` (str, optional): Target session ID.
   * `schema_type` (str, optional): Filter by schema (e.g. `"network.host"`, `"network.service"`, `"vulnerability.found"`).
@@ -88,35 +108,22 @@ Query discovered entities and services from the persistent graph.
   * `include_stale` (bool, default: false): Include decayed stale nodes.
 * **Returns:** JSON list of matching node entities with PIK and attribute data.
 
-### 3. `inspect_entity`
+#### 5. `inspect_entity`
 Inspect deep relational connections and incident edges for a specific finding node.
 * **Arguments:**
   * `entity_id` (str): Deterministic SHA-256 node ID.
   * `session_id` (str, optional): Target session ID.
 * **Returns:** Entity finding details and all parent/child/association edges.
 
-### 4. `get_diff`
-Retrieve the zero-token set-theoretic delta envelope for an action or baseline timestamp.
+#### 6. `get_diff`
+Retrieve the zero-token set-theoretic delta envelope ($\Delta = S_{t+1} \setminus S_t$) for an action or baseline timestamp.
 * **Arguments:**
   * `session_id` (str, optional): Target session ID.
   * `action_id` (str, optional): Filter changes produced by a specific action execution run.
   * `baseline_timestamp` (str, optional): Filter changes produced since an ISO or epoch timestamp.
-* **Returns:** Compact JSON diff:
-  ```json
-  {
-    "action_id": "act-9a8b7c",
-    "added_nodes": [
-      {"schema_type": "network.service", "pik": {"host_ip": "10.0.0.1", "port": 443, "protocol": "tcp"}}
-    ],
-    "updated_nodes": [],
-    "added_edges": [
-      {"source_id": "...", "target_id": "...", "relation_type": "parent"}
-    ],
-    "status_counts": {"confirmed": 4, "flapping": 0, "stale": 0}
-  }
-  ```
+* **Returns:** Compact JSON diff containing `added_nodes`, `updated_nodes`, `added_edges`, and `status_counts`.
 
-### 5. `search_findings_semantic`
+#### 7. `search_findings_semantic`
 Natural language similarity search over findings using embedded `sqlite-vec` vector memory.
 * **Arguments:**
   * `query` (str): Natural language query (e.g. `"Apache HTTP Server path traversal"`, `"WordPress admin endpoint"`).
@@ -126,12 +133,58 @@ Natural language similarity search over findings using embedded `sqlite-vec` vec
   * `min_score` (float, default: 0.0): Minimum cosine similarity threshold [0.0, 1.0].
 * **Returns:** Top matching finding entities ranked by similarity score.
 
-### 6. `abort_action`
-Safely cancel a long-running or stalled background scan task.
+---
+
+### Strategic Graph Intelligence
+
+#### 8. `get_attack_path`
+Compute the shortest directed multi-hop attack path connecting two entity IDs using `GraphAnalyticsEngine` BFS traversal.
 * **Arguments:**
-  * `action_id` (str): Action UUID to terminate.
+  * `source_id` (str): Origin entity ID (e.g., initial compromised host).
+  * `target_id` (str): Destination entity ID (e.g., database or crown jewel service).
   * `session_id` (str, optional): Target session ID.
-* **Returns:** Confirmation of process termination (`SIGTERM` $\to$ `SIGKILL`).
+* **Returns:** JSON object containing `found: bool` and the ordered list of graph nodes forming the shortest path.
+
+#### 9. `get_blast_radius`
+Calculate the transitive compromise blast radius (all downstream reachable nodes) from a compromised entity.
+* **Arguments:**
+  * `compromised_node_id` (str): Root compromised entity ID.
+  * `max_depth` (int, default: 10): Maximum hops to traverse.
+  * `session_id` (str, optional): Target session ID.
+* **Returns:** JSON object containing `total_affected` count and sorted list of `affected_entity_ids`.
+
+#### 10. `get_crown_jewels`
+Identify critical high-value assets (Domain Controllers, databases, Kerberos, RCE vulnerabilities, credentials) and topological choke points via betweenness centrality.
+* **Arguments:**
+  * `session_id` (str, optional): Target session ID.
+* **Returns:** JSON object containing `crown_jewels` list, top `choke_points` ranked by betweenness centrality score, and `total_critical` count.
+
+---
+
+### Arsenal Self-Discovery
+
+#### 11. `list_tools`
+List all security tools registered in the Ether arsenal with execution tiers (`coroutine` vs `subprocess`), installation status, categories, and descriptions.
+* **Arguments:** None.
+* **Returns:** JSON list of registered tools with `name`, `binary`, `tier`, `installed`, `category`, and `description`.
+
+#### 12. `get_tool_info`
+Get detailed manifest specifications, accepted input formats, emitted finding schemas, and binary discovery paths for a registered tool.
+* **Arguments:**
+  * `tool_name` (str): Registered tool name (e.g., `"nmap"`, `"http_probe"`, `"nuclei"`).
+* **Returns:** Detailed JSON metadata with `input_accepts`, `output_emits`, `execution_tier`, and `binary_path`.
+
+---
+
+### Session & Workspace Management
+
+#### 13. `manage_session`
+Unified interface to create, list, or inspect investigation workspaces and sessions.
+* **Arguments:**
+  * `action` (str): Action to perform (`"list"`, `"create"`, or `"info"`).
+  * `name` (str, optional): Session name (when `action="create"`).
+  * `session_id` (str, optional): Target session ID (when `action="info"`).
+* **Returns:** JSON status, session IDs, and active node counts.
 
 ---
 

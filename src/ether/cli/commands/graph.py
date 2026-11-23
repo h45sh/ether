@@ -123,7 +123,7 @@ async def handle_graph_export(args: Any, context: CliContext) -> int:
             os.makedirs(out_dir, exist_ok=True)
 
         if encrypt:
-            encrypted_payload = encrypt_bytes(raw_json.encode("utf-8"), passphrase)
+            encrypted_payload = encrypt_bytes(raw_json.encode("utf-8"), passphrase or "")
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             fd = os.open(output_path, flags, 0o600)
             with open(fd, "wb") as f:
@@ -200,13 +200,13 @@ async def handle_graph_import(args: Any, context: CliContext) -> int:
         findings_to_upsert = []
         for n in data.get("nodes", []):
             try:
-                f = BaseFinding(
+                node_finding = BaseFinding(
                     schema_type=n["schema_type"],
                     pik=n["pik"],
                     data=n.get("data", {}),
                     status=n.get("status", "confirmed"),
                 )
-                findings_to_upsert.append(f)
+                findings_to_upsert.append(node_finding)
             except Exception:
                 continue
 

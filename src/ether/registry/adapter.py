@@ -88,8 +88,11 @@ class ToolAdapter(ABC):
         pass
 
     @abstractmethod
-    async def parse_output(
-        self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
+    def parse_output(
+        self,
+        raw_stdout: str,
+        target: BaseFinding,
+        context: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[BaseFinding]:
         """Parse tool output and yield standardized findings.
 

@@ -5,6 +5,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.1.3] - 2026-11-23
+
+### Supervisory Model Context Protocol (MCP) Expansion & Extreme Mechanical Constraints
+
+#### Model Context Protocol (MCP)
+* **Full 13-Tool Supervisory Interface**: Expanded MCP server from 6 to 13 first-class tools:
+  * Graph intelligence tools: `get_attack_path` (Dijkstra shortest attack vector traversal), `get_blast_radius` (BFS multi-hop compromise impact analysis), `get_crown_jewels` (critical/high severity vulnerability indexing).
+  * Environment inspection & adapter discovery: `list_tools`, `get_tool_info` (adapter execution tier, binary requirement, schema contract).
+  * Session lifecycle & forensic log streaming: `manage_session` (workspace and session creation/listing), `read_action_log` (streaming sanitized stdout logs).
+  * Tool execution timeout fallback: automatic background continuation without job killing when timeout elapses.
+
+#### Engineering Constraints & Mechanical Hardening
+* **Strict Static Typing**: Comprehensive MyPy strict type annotations across 56 source modules in `src/ether/`.
+* **In-Tree AST Mutation Testing**: Implemented sub-second AST mutation engine (`scripts/run_mutation_tests.py`) asserting 100% mutation kill score on core canonicalization and security boundary primitives.
+* **Behavioral Scenario Contracts**: Golden lifecycle contracts verifying full recon-to-compromise ingestion, SHA-256 PIK deterministic invariance, idempotent upsert, and forensic session immutability (`PermissionError` on sealed sessions).
+* **Package & PyPI Documentation Hardening**: Upgraded all relative links to absolute GitHub URLs in `README.md` to prevent broken links on the PyPI package page, and added comprehensive project URLs in `pyproject.toml`.
+
+---
+
+## [0.1.2] - 2026-11-23
+
+### Bug Fixes
+* **Graph Database Migration**: Avoid non-constant default `CURRENT_TIMESTAMP` in SQLite `ALTER TABLE ADD COLUMN` for backward compatibility on existing databases.
+
+---
+
+## [0.1.1] - 2026-11-23
+
+### Features
+* **Session & Graph Store Contracts**: Enhance session, graph store, and gateway contracts for external consumer integration.
+
+---
+
 ## [0.1.0] - 2026-11-22
 
 ### Initial Release: Headless Process Supervisor & Agent Telemetry Protocol

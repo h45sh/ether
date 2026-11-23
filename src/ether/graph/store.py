@@ -12,7 +12,7 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import aiosqlite
 
@@ -127,8 +127,8 @@ class GraphStore:
 
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._on_upsert_callbacks = []
-        self._on_batch_callbacks = []
+        self._on_upsert_callbacks: List[Callable[[str, BaseFinding], Any]] = []
+        self._on_batch_callbacks: List[Callable[[str, List[BaseFinding]], Any]] = []
         self._conn: Optional[aiosqlite.Connection] = None
         self._lock: Optional[asyncio.Lock] = None
         self._closed: bool = False
@@ -419,6 +419,11 @@ class GraphStore:
             )
             await db.commit()
 
+    async def is_session_closed(self, session_id: str) -> bool:
+        """Check if a session is forensically closed."""
+        session = await self.get_session(session_id)
+        return bool(session and session.get("status") == "CLOSED")
+
     async def reopen_session(self, session_id: str) -> None:
         """Reopen an archived session back to ACTIVE."""
         async with self._get_conn() as db:
@@ -546,6 +551,9 @@ class GraphStore:
         """Atomically upsert a batch of findings in a single SQLite transaction."""
         if not findings:
             return []
+
+        if await self.is_session_closed(session_id):
+            raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
 
         node_ids: List[str] = []
         event_log_params = []
@@ -860,12 +868,12 @@ class GraphStore:
 
         if self._on_upsert_callbacks and findings:
             for finding in findings:
-                for cb in self._on_upsert_callbacks:
+                for upsert_cb in self._on_upsert_callbacks:
                     try:
-                        await cb(session_id, finding)
+                        await upsert_cb(session_id, finding)
                     except Exception as e:
                         logger.error(
-                            f"Error in reactive callback {getattr(cb, '__name__', 'callback')}: {e}"
+                            f"Error in reactive callback {getattr(upsert_cb, '__name__', 'callback')}: {e}"
                         )
 
         return node_ids

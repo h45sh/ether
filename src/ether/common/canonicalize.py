@@ -1,9 +1,10 @@
 """Normalization filters for finding data."""
 
+from typing import Any, Dict
 from urllib.parse import urlparse, urlunparse
 
 
-def canonicalize(value):
+def canonicalize(value: Any) -> Any:
     """Apply normalization rules based on the type of value."""
     if isinstance(value, str):
         # General string cleaning
@@ -77,7 +78,7 @@ def canonicalize_field(key: str, value) -> object:
 
 def canonicalize_mapping(data: dict) -> dict:
     """Recursively canonicalize keys and values in a dictionary."""
-    normalized = {}
+    normalized: Dict[str, Any] = {}
     for k, v in data.items():
         if isinstance(v, dict):
             normalized[k] = canonicalize_mapping(v)

@@ -61,7 +61,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
   - Cryptographic verification test suite rejecting truncated, bit-flipped, or tampered archives.
 - [x] **Zero-Leakage In-Memory Credential & Secret Scrubbing (`ether.common.secure_memory`):**
   - Explicit memory sanitization (`wipe_credentials()`, `SecureBuffer`, `ctypes.memset`) upon process and task finalization, preventing residual keys from lingering in Python heap or core dumps.
-- [x] **Packaging & PyPI Readiness:** Clean wheel builds with `uv build` and zero external C dependencies (`dist/ether-0.1.0-py3-none-any.whl`).
+- [x] **Packaging & PyPI Readiness:** Clean wheel builds with `uv build` and zero external C dependencies (`dist/ether_core-0.1.3-py3-none-any.whl`).
 
 ---
 

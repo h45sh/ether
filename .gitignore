@@ -27,6 +27,7 @@ tests/.ruff_cache/
 tests/.mypy_cache/
 .hypothesis/
 tests/.hypothesis/
+mutants/
 
 # Local databases, runtime logs, and data
 *.db

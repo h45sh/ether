@@ -244,11 +244,18 @@ ether mcp --transport sse --port 8000
 
 **Exposed MCP Tools:**
 * `execute_tool`: Supervise and run tools with timeout and output capture.
+* `abort_action`: Safely terminate active running background scan tasks.
+* `read_action_log`: Read recent spooled execution log lines for an action.
 * `query_graph`: Query typed finding entities and attributes from the graph.
 * `inspect_entity`: Fetch detailed attributes, PIK, and incident edges for a node.
 * `get_diff`: Retrieve zero-token delta envelope for an action or baseline timestamp.
 * `search_findings_semantic`: Natural language vector search via `sqlite-vec`.
-* `abort_action`: Terminate active running background scan tasks.
+* `get_attack_path`: Compute shortest directed multi-hop attack path between two entity nodes.
+* `get_blast_radius`: Calculate transitive compromise blast radius up to a maximum hop depth.
+* `get_crown_jewels`: Identify critical high-value assets and topological choke points.
+* `list_tools`: Discover all registered security tools, execution tiers, and installation status.
+* `get_tool_info`: Inspect input/output schema contracts and binary discovery status.
+* `manage_session`: Create, list, or inspect investigation sessions and workspaces.
 
 ---
 

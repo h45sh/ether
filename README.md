@@ -4,7 +4,7 @@
 
 **The Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents**
 
-[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](docs/README.md) · [Roadmap](ROADMAP.md) · [Contributing](docs/CONTRIBUTING.md) · [Security Policy](docs/SECURITY.md)
+[PyPI](https://pypi.org/project/ether-core/) · [Documentation Hub](https://github.com/h45sh/ether/blob/main/docs/README.md) · [Roadmap](https://github.com/h45sh/ether/blob/main/ROADMAP.md) · [Contributing](https://github.com/h45sh/ether/blob/main/docs/CONTRIBUTING.md) · [Security Policy](https://github.com/h45sh/ether/blob/main/docs/SECURITY.md)
 
 [![CodeQL Security Analysis](https://github.com/h45sh/ether/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/h45sh/ether/actions/workflows/codeql.yml)
 [![PyPI](https://img.shields.io/pypi/v/ether-core.svg)](https://pypi.org/project/ether-core/)
@@ -12,7 +12,7 @@
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/h45sh/ether/pkgs/container/ether)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Architecture: Headless Core](https://img.shields.io/badge/architecture-headless%20core-success)](docs/explanation/architecture.md)
+[![Architecture: Headless Core](https://img.shields.io/badge/architecture-headless%20core-success)](https://github.com/h45sh/ether/blob/main/docs/explanation/architecture.md)
 
 *Ether operates as a deterministic process supervisor and reactive telemetry engine for cybersecurity operations—supervising CLI processes, normalizing streaming stdout/stderr into typed findings, and maintaining a live, event-sourced entity graph without UI bloat.*
 
@@ -184,13 +184,13 @@ ether telemetry snapshot "$SESSION_ID" --budget 2000
 ether graph export "$SESSION_ID" -o engagement_backup.enc --encrypt --passphrase "StrongPassword123"
 ```
 
-*For complete CLI reference and all flags, see the [Headless CLI Operations Guide](docs/how-to/cli-usage.md).*
+*For complete CLI reference and all flags, see the [Headless CLI Operations Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/cli-usage.md).*
 
 ---
 
 ### Method 2: Native AI Agent MCP Server (For Claude Desktop, Cursor, & Swarms)
 
-Ether provides a built-in **Model Context Protocol (MCP)** server over standard I/O (`stdio`) or Server-Sent Events (`sse`), exposing 6 tools: `execute_tool`, `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`, and `abort_action`.
+Ether provides a built-in **Model Context Protocol (MCP)** server over standard I/O (`stdio`) or Server-Sent Events (`sse`), exposing 13 tools: `execute_tool`, `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`, `abort_action`, `get_attack_path`, `get_blast_radius`, `get_crown_jewels`, `list_tools`, `get_tool_info`, `manage_session`, and `read_action_log`.
 
 #### Configure Claude Desktop (`claude_desktop_config.json`)
 ```json
@@ -225,7 +225,7 @@ Once connected, give your agent natural language cybersecurity tasks:
 
 The agent will autonomously invoke `execute_tool`, retrieve zero-token graph deltas via `get_diff`, and query vector memory via `search_findings_semantic` without flooding its context window.
 
-*For complete MCP instructions, see the [Agent Telemetry & MCP Guide](docs/how-to/agent-telemetry-mcp.md).*
+*For complete MCP instructions, see the [Agent Telemetry & MCP Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/agent-telemetry-mcp.md).*
 
 ---
 
@@ -342,7 +342,7 @@ Ether decouples command building and parsing into pluggable tool adapters locate
 | **`dnspython`** | DNS Records & Zone Transfers | Native Coroutine (Tier A) | `dns.record`, `domain.info` |
 | **`http_probe`** | HTTP Surface & Favicon Probing | Native Coroutine (Tier A) | `web.endpoint`, `web.technology` |
 
-*To build or scaffold your own tool adapter, consult the [Adapter Authoring Guide](docs/how-to/author-adapters.md) and use the official [Ether DevKit (`ether-devkit`)](https://github.com/h45sh/ether-devkit) developer CLI & agent skill (`pipx install git+https://github.com/h45sh/ether-devkit.git` or `npx skills add h45sh/ether-devkit`).*
+*To build or scaffold your own tool adapter, consult the [Adapter Authoring Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/author-adapters.md) and use the official [Ether DevKit (`ether-devkit`)](https://github.com/h45sh/ether-devkit) developer CLI & agent skill (`pipx install git+https://github.com/h45sh/ether-devkit.git` or `npx skills add h45sh/ether-devkit`).*
 
 ---
 
@@ -409,4 +409,4 @@ Ether’s documentation is structured according to the **[Diátaxis Framework](h
 
 ## License
 
-Ether is released under the **MIT License**. See [LICENSE](LICENSE) for details.
+Ether is released under the **MIT License**. See [LICENSE](https://github.com/h45sh/ether/blob/main/LICENSE) for details.

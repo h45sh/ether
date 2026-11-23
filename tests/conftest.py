@@ -1,9 +1,24 @@
 """Pytest configuration and global canonical fixtures for Ether."""
 
+import sys
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List
 
 import pytest
+
+# Ensure real repo src/ is on python path regardless of whether running normally or under mutmut isolation
+p = Path(__file__).resolve()
+if "mutants" in p.parts:
+    idx = p.parts.index("mutants")
+    repo_root = Path(*p.parts[:idx])
+    mutants_root = Path(*p.parts[: idx + 1])
+    sys.path.insert(0, str(repo_root / "src"))
+    sys.path.insert(0, str(mutants_root / "src"))
+else:
+    repo_root = p.parent.parent
+    repo_src = str(repo_root / "src")
+    if repo_src not in sys.path:
+        sys.path.insert(0, repo_src)
 
 # Ensure Hypothesis persists its database and caches strictly inside tests/.hypothesis
 try:

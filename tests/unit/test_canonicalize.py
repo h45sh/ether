@@ -6,6 +6,17 @@ def test_canonicalize_host():
     assert canonicalize_host("GOOGLE.COM") == "google.com"
 
 
+def test_canonicalize_general_string_heuristic():
+    from ether.common.canonicalize import canonicalize
+
+    # String with spaces and dots should not be lowercased
+    assert canonicalize("Hello World. Text here") == "Hello World. Text here"
+    # String with colon should not be lowercased
+    assert canonicalize("10.0.0.1:8080") == "10.0.0.1:8080"
+    # Bare hostname with dot should be lowercased
+    assert canonicalize("API.CORP.LAN") == "api.corp.lan"
+
+
 def test_canonicalize_port():
     assert canonicalize_port(80) == 80
     assert canonicalize_port("80") == 80

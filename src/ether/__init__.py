@@ -11,7 +11,12 @@ from ether.registry.adapter import ToolAdapter
 from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import PackageNotFoundError, version
+
+    __version__ = version("ether-core")
+except (PackageNotFoundError, ImportError):
+    __version__ = "0.1.3"
 
 __all__ = [
     "ActionGateway",

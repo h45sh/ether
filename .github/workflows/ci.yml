@@ -45,6 +45,12 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
 
+      - name: Run Strict Static Type Check (MyPy)
+        run: uv run mypy src/ether
+
+      - name: Run Targeted Mutation Testing (Tier 1 Core)
+        run: uv run python3 scripts/run_mutation_tests.py --target=canonicalize
+
       - name: Verify Schema Registry Documentation Sync
         run: uv run python3 scripts/generate_schema_registry.py --check
 
@@ -76,8 +82,8 @@ jobs:
       - name: Run Tier 0 AST Architectural & Mathematical Invariants
         run: uv run pytest -m tier0 -q
 
-      - name: Run Full Regression Test Suite
-        run: uv run pytest tests/
+      - name: Run Full Regression Test Suite with Branch Coverage
+        run: uv run pytest tests/ --cov=src/ether --cov-branch --cov-fail-under=75 --cov-report=term-missing:skip-covered
 
       - name: Build Distribution Packages (sdist & wheel)
         run: uv build

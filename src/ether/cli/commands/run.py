@@ -117,7 +117,7 @@ async def handle_run(args: Any, context: CliContext) -> int:
         async for event in session.subscribe(action_id):
             if isinstance(event, ExecutionStarted):
                 if not context.is_json and context.verbose:
-                    print(f"[*] Command: {' '.join(event.command)}")
+                    print(f"[*] Command: {event.command_snippet}")
             elif isinstance(event, ExecutionChunk):
                 if not context.is_json:
                     sys.stdout.write(event.text)

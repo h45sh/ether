@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic_core import PydanticUndefined
 
 from ether.common.canonicalize import canonicalize_mapping
 
@@ -53,7 +54,16 @@ class BaseFinding(BaseModel):
     ) -> "BaseFinding":
         """Construct a finding instance deriving its PIK automatically from class pik_fields."""
         pik = {k: data[k] for k in cls.pik_fields if k in data}
+        st = ""
+        if "schema_type" in cls.model_fields:
+            field_def = cls.model_fields["schema_type"].default
+            if field_def is not None and field_def is not PydanticUndefined:
+                st = str(field_def)
+        if not st:
+            st = str(data.get("schema_type", ""))
+
         return cls(
+            schema_type=st,
             pik=pik,
             parent=parent,
             associations=associations or [],

@@ -189,9 +189,14 @@ class ActionGateway:
 
         return report
 
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from ether.core.session import CommandRunner
+
     def create_session(
         self,
-        command_runner: Optional[Any] = None,
+        command_runner: Optional["CommandRunner"] = None,
         user_env: Optional[Dict[str, str]] = None,
         user_shell: Optional[str] = None,
     ):
@@ -367,6 +372,8 @@ class ActionGateway:
                 f"Tool '{action.tool_name}' requires a selected target entity."
             )
 
+        if not self.store:
+            return True
         node = await self.store.get_node(str(action.session_id), action.target_entity_id)
         if not node:
             raise ActionValidationError(

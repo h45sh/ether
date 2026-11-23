@@ -83,7 +83,9 @@ class IPRadixTrie:
             bit = (net_int >> (total_bits - 1 - i)) & 1
             if curr.children[bit] is None:
                 curr.children[bit] = _TrieNode()
-            curr = curr.children[bit]
+            child = curr.children[bit]
+            assert child is not None
+            curr = child
 
         curr.is_terminal = True
         curr.data = data
@@ -120,9 +122,10 @@ class IPRadixTrie:
 
         for i in range(total_bits):
             bit = (ip_int >> (total_bits - 1 - i)) & 1
-            curr = curr.children[bit]
-            if curr is None:
+            nxt = curr.children[bit]
+            if nxt is None:
                 break
+            curr = nxt
             if curr.is_terminal:
                 longest_match = curr.data
 
