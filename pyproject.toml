@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ether"
+name = "ether-core"
 version = "0.1.0"
 description = "Reactive process supervisor and graph telemetry engine for security tools and autonomous agents"
 readme = "README.md"

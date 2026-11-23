@@ -129,19 +129,16 @@ Every executed command and parsed finding is logged into an append-only event so
 - Linux or macOS
 
 ```bash
-# Clone the repository
+# Option A: Install directly from PyPI
+pip install ether-core
+# (or with pipx for isolated global CLI access)
+pipx install ether-core
+
+# Option B: Clone for local development
 git clone https://github.com/h45sh/ether.git
 cd ether
-
-# Install using uv (recommended for 10x faster installation)
-uv venv
-source .venv/bin/activate
+uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
-
-# Or install using standard pip
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
 
 # Install supervised external security tools (nmap, nuclei, ffuf, etc.)
 ./scripts/install_deps.sh

@@ -177,7 +177,7 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 - [ ] **Pluggable WebAssembly (Wasm) Parser Sandboxing:**
   - Execute third-party community adapters in lightweight Wasm sandboxes, ensuring community tool parsers can never compromise the host machine.
 - [ ] **Ecosystem Integration:**
-  - CyGuide permanently re-based on top of `pip install ether`.
+  - CyGuide permanently re-based on top of `pip install ether-core`.
   - Independent release of the offensive workstation utilizing Ether's full PTY and offensive capabilities.
 
 ---
