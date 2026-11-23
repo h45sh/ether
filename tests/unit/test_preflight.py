@@ -133,33 +133,39 @@ def test_preflight_network_tool_with_url_warning():
 
 
 def test_preflight_sudo_policy_seam():
+    fake_adapter = FakeToolAdapter("nmap", is_installed=True)
+    registry = FakeRegistry({"nmap": fake_adapter})
+
     # Under SAFE policy: sudo is blocked
-    safe_verifier = PreflightVerifier(policy=GatePolicy.SAFE)
+    safe_verifier = PreflightVerifier(registry=registry, policy=GatePolicy.SAFE)
     safe_report = safe_verifier.verify("nmap", target="127.0.0.1", flags="sudo -sS")
     assert not safe_report.is_valid
     assert any("sudo" in i.title.lower() for i in safe_report.errors)
 
     # Apply remedy
-    issue = safe_report.errors[0]
+    issue = next(i for i in safe_report.errors if "sudo" in i.title.lower())
     _, new_flags, msg = safe_verifier.apply_remedy(issue, target="127.0.0.1", flags="sudo -sS")
     assert "sudo" not in new_flags
 
     # Under UNRESTRICTED policy: sudo is allowed
-    unres_verifier = PreflightVerifier(policy=GatePolicy.UNRESTRICTED)
+    unres_verifier = PreflightVerifier(registry=registry, policy=GatePolicy.UNRESTRICTED)
     unres_report = unres_verifier.verify("nmap", target="127.0.0.1", flags="sudo -sS")
     assert unres_report.is_valid
     assert not any("sudo" in i.title.lower() for i in unres_report.errors)
 
 
 def test_preflight_ssrf_metadata_policy_seam():
+    fake_adapter = FakeToolAdapter("nmap", is_installed=True)
+    registry = FakeRegistry({"nmap": fake_adapter})
+
     # Under SAFE policy: metadata is blocked
-    safe_verifier = PreflightVerifier(policy=GatePolicy.SAFE)
+    safe_verifier = PreflightVerifier(registry=registry, policy=GatePolicy.SAFE)
     safe_report = safe_verifier.verify("nmap", target="169.254.169.254")
     assert not safe_report.is_valid
     assert any("blocked by security policy" in i.title for i in safe_report.errors)
 
     # Under UNRESTRICTED policy: allowed
-    unres_verifier = PreflightVerifier(policy=GatePolicy.UNRESTRICTED)
+    unres_verifier = PreflightVerifier(registry=registry, policy=GatePolicy.UNRESTRICTED)
     unres_report = unres_verifier.verify("nmap", target="169.254.169.254")
     assert unres_report.is_valid
     assert not any("blocked by security policy" in i.title for i in unres_report.errors)
