@@ -17,7 +17,7 @@ from ether.schemas.power import ActionRequest, ActionSource
 def _resolve_lhost() -> Tuple[Optional[str], Optional[str]]:
     import sys
 
-    pf = sys.modules.get("ether.facade")
+    pf = sys.modules.get("cyguide.engine.power_facade") or sys.modules.get("ether.facade")
     resolver = getattr(pf, "get_lhost_info", get_lhost_info) if pf else get_lhost_info
     try:
         return resolver()

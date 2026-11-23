@@ -263,13 +263,15 @@ class GraphStore:
                 pass
             self._conn = None
 
-    async def get_or_create_default_session(self) -> tuple[str, str]:
-        """Ensure the default workspace and session exist and return their IDs (ws_id, sess_id)."""
+    async def get_or_create_workspace_session(
+        self, workspace_name: str = "Default Workspace", session_name: str = "Default Session"
+    ) -> tuple[str, str]:
+        """Ensure a named workspace and session exist and return their IDs (ws_id, sess_id)."""
         async with self._get_conn() as db:
             db.row_factory = aiosqlite.Row
-            # 1. Check for existing Default Workspace
             cursor = await db.execute(
-                "SELECT id FROM workspaces WHERE name = 'Default Workspace' LIMIT 1"
+                "SELECT id FROM workspaces WHERE name = ? LIMIT 1",
+                (workspace_name,),
             )
             row = await cursor.fetchone()
             if row:
@@ -278,13 +280,12 @@ class GraphStore:
                 ws_id = str(uuid.uuid4())
                 await db.execute(
                     "INSERT INTO workspaces (id, name, status) VALUES (?, ?, ?)",
-                    (ws_id, "Default Workspace", "SYSTEM"),
+                    (ws_id, workspace_name, "SYSTEM"),
                 )
 
-            # 2. Check for existing Default Session
             cursor = await db.execute(
-                "SELECT id FROM sessions WHERE workspace_id = ? AND name = 'Default Session' LIMIT 1",
-                (ws_id,),
+                "SELECT id FROM sessions WHERE workspace_id = ? AND name = ? LIMIT 1",
+                (ws_id, session_name),
             )
             row = await cursor.fetchone()
             if row:
@@ -293,11 +294,19 @@ class GraphStore:
                 sess_id = str(uuid.uuid4())
                 await db.execute(
                     "INSERT INTO sessions (id, workspace_id, name, status) VALUES (?, ?, ?, ?)",
-                    (sess_id, ws_id, "Default Session", "SYSTEM"),
+                    (sess_id, ws_id, session_name, "SYSTEM"),
                 )
 
             await db.commit()
             return ws_id, sess_id
+
+    async def get_or_create_default_session(self) -> tuple[str, str]:
+        """Ensure the default workspace and session exist and return their IDs (ws_id, sess_id)."""
+        return await self.get_or_create_workspace_session("Default Workspace", "Default Session")
+
+    async def get_or_create_learning_sandbox(self) -> tuple[str, str]:
+        """Ensure the singleton Learning Sandbox and its session exist and return their IDs."""
+        return await self.get_or_create_workspace_session("Learning Sandbox", "Guided Session")
 
     # --- Workspace Management ---
 

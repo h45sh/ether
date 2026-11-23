@@ -717,7 +717,7 @@ class PreflightVerifier:
             if wl_key.endswith(".txt"):
                 wl_key = wl_key[:-4]
 
-            candidate_path = paths.get_wordlist_path(wl_key, data_dir=self.wordlists_dir)
+            candidate_path = os.path.join(dest_dir, f"{wl_key}.txt")
             if not os.path.exists(candidate_path):
                 report.issues.append(
                     PreflightIssue(

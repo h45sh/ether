@@ -2,7 +2,7 @@
 name = "http_probe"
 description = "Pure-Python asynchronous HTTP discovery, banner grabbing, and web technology identification engine."
 one_line_summary = "zero-binary in-process HTTP discovery engine"
-category = "Web Reconnaissance"
+category = "Web Enumeration"
 categories = ["recon", "web", "http"]
 binary = ""
 execution_tier = "coroutine"

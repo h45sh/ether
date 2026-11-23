@@ -295,6 +295,37 @@ class ExecutionSession:
         """Get the original ActionRequest for a job."""
         return self._job_actions.get(action_id)
 
+    def register_job(self, job: JobStatus) -> None:
+        """Register or update a JobStatus in active job tracking."""
+        self._active_jobs[job.job_id] = job
+        self._notify_status(job)
+
+    def register_action(self, action: ActionRequest) -> None:
+        """Register the ActionRequest for a job."""
+        self._job_actions[action.action_id] = action
+
+    def append_job_buffer(self, action_id: UUID, chunk: str) -> None:
+        """Append an output chunk to in-memory job buffer."""
+        buf = self._job_buffers.setdefault(action_id, [])
+        buf.append(chunk)
+
+    def remove_job(self, action_id: UUID) -> Optional[JobStatus]:
+        """Remove a job from active in-memory tracking and record in closed_job_ids."""
+        job = self._active_jobs.pop(action_id, None)
+        self._job_actions.pop(action_id, None)
+        self._job_buffers.pop(action_id, None)
+        self._running_tasks.pop(action_id, None)
+        self.closed_job_ids.add(str(action_id))
+        return job
+
+    def mark_job_closed(self, action_id: Any) -> None:
+        """Record an action ID as closed."""
+        self.closed_job_ids.add(str(action_id))
+
+    def is_job_closed(self, action_id: Any) -> bool:
+        """Check if an action has been marked closed."""
+        return str(action_id) in self.closed_job_ids
+
     def get_active_jobs(self) -> List[JobStatus]:
         return list(self._active_jobs.values())
 
@@ -314,6 +345,10 @@ class ExecutionSession:
     def get_output_history(self, action_id: UUID) -> List[str]:
         """Return buffered output chunks for replay when switching or restoring tabs."""
         return list(self._job_buffers.get(action_id, []))
+
+    def get_job_buffer(self, action_id: UUID) -> List[str]:
+        """Return buffered output chunks for an action."""
+        return self.get_output_history(action_id)
 
     def get_active_jobs_count(self, session_id: Optional[str] = None) -> int:
         """Get count of active (running/queued) jobs, optionally filtered by session_id."""
