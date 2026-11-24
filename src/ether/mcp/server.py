@@ -12,7 +12,9 @@ from mcp.server.mcpserver import MCPServer
 
 from ether import paths
 from ether.common import sanitize_untrusted_output
+from ether.common.exceptions import ExecutionErrorCategory
 from ether.core.session import ExecutionCompleted, ExecutionFailed
+from ether.drift.engine import audit_drift as run_audit_drift
 from ether.gateway.gate import ActionGateway, GatePolicy
 from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
@@ -265,6 +267,10 @@ def create_mcp_server(
         if not registry.get_tool(tool_name):
             return json.dumps(
                 {
+                    "is_error": True,
+                    "error_category": ExecutionErrorCategory.BINARY_MISSING.value,
+                    "exit_code": 127,
+                    "stderr_snippet": f"Tool '{tool_name}' is not registered in Ether arsenal.",
                     "error": "ToolNotFound",
                     "message": f"Tool '{tool_name}' is not registered in Ether arsenal.",
                     "remediation": "Check registered tools via 'ether tool list'.",
@@ -292,8 +298,13 @@ def create_mcp_server(
                 }
                 for e in report.errors
             ]
+            snippet = "; ".join(e["description"] for e in error_list)
             return json.dumps(
                 {
+                    "is_error": True,
+                    "error_category": ExecutionErrorCategory.SCOPE_BLOCKED.value,
+                    "exit_code": 1,
+                    "stderr_snippet": snippet,
                     "error": "PreflightGateRejected",
                     "message": f"Execution of '{tool_name}' against '{target}' rejected by policy {gw.policy.value}.",
                     "errors": error_list,
@@ -318,8 +329,17 @@ def create_mcp_server(
         try:
             action_id = await exec_sess.dispatch(action)
         except Exception as e:
+            cat = (
+                ExecutionErrorCategory.BINARY_MISSING.value
+                if isinstance(e, FileNotFoundError)
+                else ExecutionErrorCategory.NON_ZERO_EXIT.value
+            )
             return json.dumps(
                 {
+                    "is_error": True,
+                    "error_category": cat,
+                    "exit_code": 127 if isinstance(e, FileNotFoundError) else 1,
+                    "stderr_snippet": str(e),
                     "error": type(e).__name__,
                     "message": str(e),
                     "remediation": "Verify tool arguments and input schema requirements.",
@@ -342,8 +362,11 @@ def create_mcp_server(
             exit_code, err_msg = await asyncio.wait_for(_await_events(), timeout=timeout_seconds)
             compiler = GraphTelemetryCompiler(store, sess_id, execution_session=exec_sess)
             diff = await compiler.compute_graph_diff(action_id=str(action_id))
+            raw_text = "".join(exec_sess.get_output_history(action_id))
+            is_err = (exit_code != 0) or (err_msg is not None)
+
             result: Dict[str, Any] = {
-                "status": "completed" if exit_code == 0 else "failed",
+                "status": "completed" if not is_err else "failed",
                 "action_id": str(action_id),
                 "exit_code": exit_code,
                 "error": err_msg,
@@ -351,8 +374,67 @@ def create_mcp_server(
                 "status_breakdown": diff.get("status_breakdown", {}),
                 "summary": f"Execution of {tool_name} completed with {diff['total_delta_count']} new or updated findings.",
             }
+
+            if is_err:
+                result["is_error"] = True
+                combined = f"{err_msg or ''} {raw_text}".lower()
+                if any(
+                    x in combined
+                    for x in (
+                        "timed out",
+                        "timeout",
+                        "deadline exceeded",
+                        "command timed out",
+                    )
+                ):
+                    cat = ExecutionErrorCategory.COMMAND_TIMEOUT.value
+                elif any(
+                    x in combined
+                    for x in (
+                        "connection refused",
+                        "no route to host",
+                        "host unreachable",
+                        "network unreachable",
+                        "name or service not known",
+                        "could not resolve host",
+                        "target unreachable",
+                    )
+                ):
+                    cat = ExecutionErrorCategory.TARGET_UNREACHABLE.value
+                elif any(
+                    x in combined
+                    for x in (
+                        "command not found",
+                        "not found",
+                        "no such file or directory",
+                        "cannot find binary",
+                    )
+                ):
+                    cat = ExecutionErrorCategory.BINARY_MISSING.value
+                elif any(
+                    x in combined
+                    for x in (
+                        "scope blocked",
+                        "policy violation",
+                        "ssrf blocked",
+                        "permission denied",
+                    )
+                ):
+                    cat = ExecutionErrorCategory.SCOPE_BLOCKED.value
+                else:
+                    cat = ExecutionErrorCategory.NON_ZERO_EXIT.value
+
+                result["error_category"] = cat
+                snippet = err_msg or (
+                    raw_text[-500:].strip()
+                    if raw_text
+                    else "Execution failed with non-zero exit code."
+                )
+                result["stderr_snippet"] = snippet
+            else:
+                result["is_error"] = False
+
             if include_raw:
-                raw_text = "".join(exec_sess.get_output_history(action_id))
                 result["untrusted_output"] = sanitize_untrusted_output(raw_text)
             return json.dumps(result, indent=2)
         except asyncio.TimeoutError:
@@ -360,6 +442,7 @@ def create_mcp_server(
                 {
                     "status": "running",
                     "action_id": str(action_id),
+                    "is_error": False,
                     "message": f"Execution exceeded {timeout_seconds}s deadline and is continuing in background. Use get_diff(action_id='{action_id}') to inspect findings.",
                     "tokens_consumed": 0,
                 },
@@ -717,5 +800,30 @@ def create_mcp_server(
             },
             indent=2,
         )
+
+    @server.tool()
+    async def audit_drift(
+        baseline: str,
+        session_id: Optional[str] = None,
+        mode: str = "topology",
+        record_findings: bool = False,
+    ) -> str:
+        """Audit session graph against an architectural baseline specification.
+
+        Args:
+            baseline: Baseline specification JSON string or file path.
+            session_id: Investigation session ID to audit.
+            mode: Evaluation mode ('topology' or 'strict').
+            record_findings: Whether to record AuditDrift findings into session graph.
+        """
+        sess_id = await _resolve_session(session_id)
+        report = await run_audit_drift(
+            store,
+            sess_id,
+            baseline=baseline,
+            mode=mode,
+            record_findings=record_findings,
+        )
+        return json.dumps(report.to_dict(), indent=2)
 
     return server

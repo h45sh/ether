@@ -38,10 +38,14 @@ async def test_mcp_server_creation_and_tool_listing():
         "get_crown_jewels",
         # Session Management
         "manage_session",
+        # Deception & Active Defense
+        "get_deception_report",
+        # Architectural Drift
+        "audit_drift",
     }
 
     assert tool_names == expected_tools
-    assert len(tool_names) == 13
+    assert len(tool_names) == 15
 
     await store.close()
 

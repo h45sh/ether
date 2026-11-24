@@ -21,6 +21,11 @@ from ether.common.crypto import (
     encrypt_bytes,
     encrypt_file,
 )
+from ether.common.exceptions import (
+    EtherError,
+    ExecutionErrorCategory,
+    PolicyViolationError,
+)
 from ether.common.secure_memory import SecureBuffer, wipe_buffer, wipe_credentials
 
 __all__ = [
@@ -29,10 +34,13 @@ __all__ = [
     "CTF_FLAG_RE",
     "CryptoError",
     "DisjointSet",
+    "EtherError",
+    "ExecutionErrorCategory",
     "IPRadixTrie",
     "InvalidArchiveFormatError",
     "InvalidPassphraseError",
     "MinHash",
+    "PolicyViolationError",
     "SecureBuffer",
     "TamperedArchiveError",
     "decrypt_bytes",
