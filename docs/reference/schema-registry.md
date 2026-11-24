@@ -6,6 +6,7 @@ This registry defines the shared language of Ether findings. Every tool must emi
 
 | Schema Type | Description | PIK Fields | Parent | Associations |
 | :--- | :--- | :--- | :--- | :--- |
+| `audit.drift` | An architectural drift discrepancy finding. Child of host, service, or endpoint. Denotes topological divergence or configuration/version discrepancy between observed state and baseline specification. | `target_key`, `discrepancy_type` | — | — |
 | `audit.misconfig` | A detected security misconfiguration, policy violation, or information exposure. Child of web.endpoint, network.service, or network.host. Produced by nuclei, nikto, testssl. | `target`, `check_id` | `web.endpoint` / `network.service` | — |
 | `cloud.asset` | Represents a cloud-hosted resource (S3 bucket, Azure Blob container, GCP bucket, IMDS metadata). | `provider`, `resource_id` | — | — |
 | `credential.found` | A username/password or token discovery. Linked to a host or domain. Produced by hydra, medusa, leak-lookups. | `context`, `username` | `network.host` | — |

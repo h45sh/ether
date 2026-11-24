@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from ether import __version__
 from ether.cli.commands.doctor import handle_doctor
+from ether.cli.commands.drift import handle_drift_audit, handle_drift_export_baseline
 from ether.cli.commands.graph import (
     handle_graph_belief,
     handle_graph_export,
@@ -317,6 +318,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Session ID to associate findings with",
     )
 
+    # 10. drift
+    drift_parser = subparsers.add_parser(
+        "drift",
+        parents=[common_options],
+        help="Audit architectural drift against baseline ground truth",
+    )
+    drift_subs = drift_parser.add_subparsers(dest="drift_action")
+    drift_export_p = drift_subs.add_parser(
+        "export-baseline",
+        parents=[common_options],
+        help="Export session graph as ground-truth baseline JSON",
+    )
+    drift_export_p.add_argument("session_id", help="Session ID to export")
+    drift_export_p.add_argument(
+        "-o", "--out", dest="out", help="Output file path for baseline JSON"
+    )
+
+    drift_audit_p = drift_subs.add_parser(
+        "audit",
+        parents=[common_options],
+        help="Audit session graph against baseline JSON",
+    )
+    drift_audit_p.add_argument("session_id", help="Session ID to audit")
+    drift_audit_p.add_argument(
+        "-b",
+        "--baseline",
+        required=True,
+        dest="baseline",
+        help="Path to ground-truth baseline JSON file",
+    )
+    drift_audit_p.add_argument(
+        "-m",
+        "--mode",
+        choices=["topology", "strict"],
+        default="topology",
+        help="Evaluation mode (default: topology)",
+    )
+    drift_audit_p.add_argument(
+        "-r",
+        "--record",
+        action="store_true",
+        help="Record AuditDrift findings into session graph",
+    )
+
     return parser
 
 
@@ -546,6 +591,31 @@ def normalize_cli_args(argv: Optional[List[str]] = None) -> List[str]:
                 return prefix + sub_prefix + [sess_val] + new_sub_rest
             return prefix + rest
 
+    elif subcmd == "drift":
+        if rest and rest[0] in ("export-baseline", "audit"):
+            sub_action = rest[0]
+            sub_prefix = [sub_action]
+            sub_rest = rest[1:]
+            sess_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+
     return prefix + rest
 
 
@@ -608,6 +678,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         elif args.subcommand == "pipeline":
             return _run_coroutine(handle_pipeline_run(args, context))
+
+        elif args.subcommand == "drift":
+            if args.drift_action == "export-baseline":
+                return _run_coroutine(handle_drift_export_baseline(args, context))
+            elif args.drift_action == "audit":
+                return _run_coroutine(handle_drift_audit(args, context))
+            else:
+                parser.print_help()
+                return EXIT_USAGE_ERROR
 
         else:
             parser.print_help()
