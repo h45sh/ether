@@ -21,6 +21,9 @@ This registry defines the shared language of Ether findings. Every tool must emi
 | `process.running` | A running process on a host. Child of network.host. Produced by ps, netstat. | `host_ip`, `pid` | `network.host` | — |
 | `software.package` | An installed software package. Child of network.host. Produced by dpkg, rpm, brew. | `host_ip`, `package_name` | `network.host` | — |
 | `tls.certificate` | A TLS certificate associated with a service. Child of network.service. Produced by sslscan, nmap-scripts. | `fingerprint` | `network.service` | — |
+| `tls.certificate` | A TLS certificate associated with a service. Child of network.service. Produced by sslscan, nmap-scripts. | `fingerprint` | `network.service` | — |
+| `tls.cipher_suite` | A TLS cipher suite supported by a service. Child of network.service. | `host_ip`, `port`, `cipher_suite` | — | — |
+| `tls.cipher_suite` | A TLS cipher suite supported by a service. Child of network.service. | `host_ip`, `port`, `cipher_suite` | — | — |
 | `vulnerability.found` | A generic vulnerability linked to a host or service. Child of network.service or network.host. Produced by nmap-vulners, nessus. | `host_ip`, `vuln_id` | `network.service` / `network.host` | — |
 | `web.endpoint` | A reachable HTTP/S URL with response metadata. Child of network.service. Produced by gobuster, curl. | `url` | `network.service` | — |
 | `web.parameter` | Represents an HTTP parameter discovered via URL crawling, fuzzing, or parameter mining (e.g. Arjun). | `endpoint_url`, `param_name`, `method` | `web.endpoint` | — |

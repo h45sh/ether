@@ -146,3 +146,50 @@ class TLSCertificate(BaseFinding):
         host = self.data.get("host_ip", "")
         port = self.data.get("port", "")
         return f"TLS Certificate (SHA-256: {fp}) on {host}:{port}."
+
+
+class TLSCipherSuite(BaseFinding):
+    """A TLS cipher suite supported by a service. Child of network.service."""
+
+    schema_type: str = "tls.cipher_suite"
+    pik_fields: ClassVar[list[str]] = ["host_ip", "port", "cipher_suite"]
+
+    @classmethod
+    def create(
+        cls,
+        host_ip: str,
+        port: int,
+        cipher_suite: str,
+        protocol_version: str = "TLSv1.2",
+        pfs: Optional[bool] = None,
+        deprecated: bool = False,
+        **kwargs,
+    ):
+        pik = {"host_ip": host_ip, "port": port, "cipher_suite": cipher_suite}
+        return cls(
+            pik=pik,
+            parent=Relation(
+                target_type="network.service",
+                target_pik={"host_ip": host_ip, "port": port, "protocol": "tcp"},
+                via="supports_cipher",
+            ),
+            data={
+                **pik,
+                "protocol_version": protocol_version,
+                "pfs": pfs,
+                "deprecated": deprecated,
+                **kwargs,
+            },
+        )
+
+    def to_semantic_text(self) -> str:
+        host = self.pik.get("host_ip") or self.data.get("host_ip", "")
+        port = self.pik.get("port") or self.data.get("port", "")
+        cipher = self.pik.get("cipher_suite") or self.data.get("cipher_suite", "")
+        proto = self.data.get("protocol_version", "")
+        dep = " [DEPRECATED]" if self.data.get("deprecated") else ""
+        return f"TLS Cipher Suite on {host}:{port}: {cipher} ({proto}){dep}."
+
+
+TlsCertificate = TLSCertificate
+TlsCipherSuite = TLSCipherSuite
