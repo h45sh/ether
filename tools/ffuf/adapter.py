@@ -1,15 +1,48 @@
 """FFUF tool adapter."""
 
 import json
+import logging
 import re
 import shlex
+import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+import httpx
+
+from ether.common.context import ExecutionContext
 from ether.registry.adapter import ToolAdapter
 from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.vulnerability import AuditMisconfig
 from ether.schemas.web import WebEndpoint
+
+logger = logging.getLogger(__name__)
+
+
+async def calibrate_fuzzer_baseline(url: str, timeout_sec: float = 3.0) -> Optional[Dict[str, Any]]:
+    """Probe random non-existent path to detect custom 404 / wildcard response geometry.
+
+    Returns dict with 'size', 'words', 'lines', 'status_code' if server responds uniformly,
+    or None if fail-open on network timeout / error.
+    """
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        return None
+
+    nonce = uuid.uuid4().hex[:8]
+    probe_url = f"{url.rstrip('/')}/.ether_probe_{nonce}"
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=timeout_sec, follow_redirects=True) as client:
+            resp = await client.get(probe_url)
+            text = resp.text
+            return {
+                "status_code": resp.status_code,
+                "size": len(resp.content),
+                "words": len(text.split()),
+                "lines": len(text.splitlines()),
+            }
+    except Exception as e:
+        logger.warning(f"Fuzzer baseline calibration failed-open on {probe_url}: {e}")
+        return None
 
 
 class FfufAdapter(ToolAdapter):
@@ -23,6 +56,25 @@ class FfufAdapter(ToolAdapter):
         r"^(\S+)\s+\[Status:\s*(\d+),\s*Size:\s*(\d+),\s*Words:\s*(\d+),\s*Lines:\s*(\d+)",
         re.MULTILINE,
     )
+
+    async def execute_action(
+        self,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> AsyncIterator[BaseFinding]:
+        """Execute ffuf scan with pre-flight response geometry baseline calibration."""
+        url = self.extract_url(target)
+        if url and not params.get("skip_calibration"):
+            calib = await calibrate_fuzzer_baseline(url)
+            if calib and calib.get("size") is not None:
+                params = dict(params)
+                raw_flags = params.get("raw_flags", "")
+                if "-fs" not in raw_flags:
+                    params["raw_flags"] = f"{raw_flags} -fs {calib['size']}".strip()
+
+        async for finding in super().execute_action(target, params, context):
+            yield finding
 
     def validate_install(self) -> bool:
         """Check if ffuf binary is available in PATH."""

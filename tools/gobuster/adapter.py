@@ -4,10 +4,12 @@ import re
 import shlex
 from typing import Any, AsyncIterator, Dict, List
 
+from ether.common.context import ExecutionContext
 from ether.registry.adapter import ToolAdapter
 from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.web import WebEndpoint
+from tools.ffuf.adapter import calibrate_fuzzer_baseline
 
 
 class GobusterAdapter(ToolAdapter):
@@ -15,6 +17,25 @@ class GobusterAdapter(ToolAdapter):
 
     URL_FLAG_RE = re.compile(r"-u\s+([^\s]+)")
     STATUS_PATTERN = re.compile(r"(\S+)\s+\(Status:\s+(\d+)\)")
+
+    async def execute_action(
+        self,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> AsyncIterator[BaseFinding]:
+        """Execute gobuster scan with pre-flight response geometry baseline calibration."""
+        url = self.extract_url(target)
+        if url and not params.get("skip_calibration"):
+            calib = await calibrate_fuzzer_baseline(url)
+            if calib and calib.get("size") is not None:
+                params = dict(params)
+                raw_flags = params.get("raw_flags", "")
+                if "--exclude-length" not in raw_flags:
+                    params["raw_flags"] = f"{raw_flags} --exclude-length {calib['size']}".strip()
+
+        async for finding in super().execute_action(target, params, context):
+            yield finding
 
     def validate_install(self) -> bool:
         return self.is_binary_available("gobuster")
