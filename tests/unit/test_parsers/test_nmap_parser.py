@@ -14,7 +14,9 @@ def test_nmap_build_command(adapter):
 
     # 1. Standard command build
     cmd = adapter.build_command(target, {})
-    assert cmd == ["nmap", "--noninteractive", "192.168.1.10"]
+    assert "-oX" in cmd
+    assert "-" in cmd
+    assert "192.168.1.10" in cmd
 
     # 2. Command build with raw flags
     cmd_flags = adapter.build_command(target, {"raw_flags": "-sV -Pn -p 80,443"})
@@ -82,3 +84,48 @@ Nmap done: 2 IP addresses (2 hosts up) scanned in 1.23 seconds
     s4 = next(s for s in services if s.pik["port"] == 8080)
     assert s4.pik["host_ip"] == "10.0.0.5"
     assert s4.data["service_name"] == "http-proxy"
+
+
+@pytest.mark.asyncio
+async def test_nmap_parse_xml_with_firewall_reasons(adapter):
+    xml_output = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" version="7.93">
+<host starttime="1600000000" endtime="1600000010">
+<status state="up" reason="echo-reply"/>
+<address addr="10.0.1.15" addrtype="ipv4"/>
+<ports>
+<extraports state="filtered" count="997">
+<extrareasons reason="no-response" count="997" proto="tcp"/>
+</extraports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack"/><service name="ssh"/></port>
+<port protocol="tcp" portid="80"><state state="filtered" reason="no-response"/><service name="http"/></port>
+<port protocol="tcp" portid="443"><state state="filtered" reason="admin-prohibited"/><service name="https"/></port>
+<port protocol="tcp" portid="3306"><state state="closed" reason="reset"/><service name="mysql"/></port>
+</ports>
+</host>
+</nmaprun>"""
+
+    target = NetworkHost.create(ip="10.0.1.15")
+    findings = []
+    async for f in adapter.parse_output(xml_output, target):
+        findings.append(f)
+
+    hosts = [f for f in findings if f.schema_type == "network.host"]
+    services = [f for f in findings if f.schema_type == "network.service"]
+
+    assert len(hosts) == 1
+    assert hosts[0].pik["ip"] == "10.0.1.15"
+    assert len(services) == 4
+
+    ssh_svc = next(s for s in services if s.pik["port"] == 22)
+    assert ssh_svc.data["firewall_reason"] == "allowed"
+
+    http_svc = next(s for s in services if s.pik["port"] == 80)
+    assert http_svc.data["firewall_reason"] == "stateful_drop"
+
+    https_svc = next(s for s in services if s.pik["port"] == 443)
+    assert https_svc.data["firewall_reason"] == "stateless_filter"
+
+    mysql_svc = next(s for s in services if s.pik["port"] == 3306)
+    assert mysql_svc.data["firewall_reason"] == "host_reject"

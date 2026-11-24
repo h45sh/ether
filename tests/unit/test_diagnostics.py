@@ -81,3 +81,78 @@ def test_format_terminal_report():
     assert "[Tools]" in output
     assert "Remedy:" in output
     assert "UNHEALTHY" in output
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_engine_runtime_metrics():
+    """Verify substrate telemetry metrics collection."""
+    engine = DiagnosticEngine()
+    metrics = await engine.collect_runtime_metrics()
+
+    assert "open_fds" in metrics
+    assert "resident_memory_bytes" in metrics
+    assert "event_loop_lag_seconds" in metrics
+    assert "max_fds" in metrics
+    assert "soft" in metrics["max_fds"]
+    assert metrics["open_fds"] >= 0 or metrics["open_fds"] == -1
+    assert metrics["resident_memory_bytes"] > 0
+    assert metrics["event_loop_lag_seconds"] >= 0.0
+
+
+def test_diagnostic_engine_prometheus_exporter():
+    """Verify Prometheus text format compliance."""
+    engine = DiagnosticEngine()
+    custom_metrics = {
+        "open_fds": 42,
+        "max_fds": {"soft": 1024, "hard": 4096},
+        "resident_memory_bytes": 10485760,
+        "event_loop_lag_seconds": 0.0015,
+        "active_workers": 2,
+        "queue_depth": 5,
+        "subprocess_latencies": {"p50": 0.05, "p90": 0.12, "p99": 0.35},
+    }
+    prom_text = engine.to_prometheus_text(custom_metrics)
+
+    assert "ether_process_open_fds 42" in prom_text
+    assert "ether_process_max_fds 1024" in prom_text
+    assert "ether_process_resident_memory_bytes 10485760" in prom_text
+    assert "ether_event_loop_lag_seconds 0.001500" in prom_text
+    assert "ether_active_workers 2" in prom_text
+    assert "ether_queue_depth 5" in prom_text
+    assert 'ether_subprocess_duration_seconds{quantile="0.5"} 0.05' in prom_text
+    assert 'ether_subprocess_duration_seconds{quantile="0.9"} 0.12' in prom_text
+    assert 'ether_subprocess_duration_seconds{quantile="0.99"} 0.35' in prom_text
+    assert "# TYPE ether_subprocess_duration_seconds summary" in prom_text
+
+
+@pytest.mark.asyncio
+async def test_cli_telemetry_health(tmp_path, capsys):
+    """Verify CLI 'telemetry health' command execution with json and prometheus flags."""
+    from argparse import Namespace
+
+    from ether.cli.commands.telemetry import handle_telemetry_health
+    from ether.cli.context import CliContext
+    from ether.gateway.gate import GatePolicy
+
+    db_file = str(tmp_path / "test.db")
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=db_file,
+        tools_dir=None,
+        is_json=True,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+
+    args = Namespace(prometheus=False)
+    exit_code = await handle_telemetry_health(args, ctx)
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"resident_memory_bytes"' in captured.out
+
+    # Test Prometheus format
+    args_prom = Namespace(prometheus=True)
+    exit_code = await handle_telemetry_health(args_prom, ctx)
+    assert exit_code == 0
+    captured_prom = capsys.readouterr()
+    assert "ether_process_resident_memory_bytes" in captured_prom.out

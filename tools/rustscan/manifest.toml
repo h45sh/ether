@@ -1,0 +1,31 @@
+[meta]
+name = "rustscan"
+description = "Modern, high-speed multi-threaded port scanner written in Rust designed to scan 65k ports in seconds."
+one_line_summary = "modern ultra-fast Rust-based port scanner"
+category = "Network Reconnaissance"
+categories = ["recon", "network", "portscan"]
+binary = "rustscan"
+theory = """
+### Protocol Theory & Async Socket Sweeps
+Rustscan leverages asynchronous green-threads in Rust to interrogate all 65,535 TCP ports
+at speeds exceeding traditional scanners, piping open ports into detailed service scanners.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.host"]
+
+[output]
+produces = ["network.service"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Full Port Range Scan"
+difficulty = "Beginner"
+description = "Fast port scan across all ports with high batch size."
+flags = ["--batch-size", "1000", "-r", "1-65535"]

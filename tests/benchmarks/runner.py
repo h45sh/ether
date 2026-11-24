@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Ether Automated Benchmark Report Generator & Performance Regression Guard.
+"""Ether Automated Benchmark Runner & Performance Regression Guard.
 
 Measures and validates headless runtime invariants, import latency, ingestion throughput,
 query latency, and memory footprints against the authoritative engineering standards in AGENTS.md.
 
 Modes:
-- Default: Executes full benchmark matrix and writes docs/benchmarks/README.md.
+- Default: Executes full benchmark matrix and writes docs/benchmarks/README.md and results.json.
 - --check: Evaluates performance limits against mechanical regression thresholds (for CI and release-check.sh).
 """
 
 import argparse
 import asyncio
+import json
 import platform
 import subprocess
 import sys
@@ -21,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 sys.path.insert(0, str(project_root))
 
@@ -349,6 +350,12 @@ async def async_main():
         action="store_true",
         help="Evaluate performance thresholds against regression limits (exit 1 on regression)",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=project_root / "docs" / "benchmarks",
+        help="Target directory for benchmark documentation and json results",
+    )
     args = parser.parse_args()
 
     python_bin = sys.executable
@@ -393,12 +400,17 @@ async def async_main():
     for f in failed:
         print(f"  [-] FAIL: {f}")
 
-    # Write docs/benchmarks/README.md
-    bench_dir = project_root / "docs" / "benchmarks"
+    # Write documentation & results to docs/benchmarks
+    bench_dir = args.output_dir
     bench_dir.mkdir(parents=True, exist_ok=True)
     md_content = render_markdown(data, meta)
     (bench_dir / "README.md").write_text(md_content, encoding="utf-8")
-    print(f"\n[+] Benchmark report saved to docs/benchmarks/README.md")
+    (bench_dir / "results.json").write_text(
+        json.dumps({"meta": meta, "data": data, "passed": passed, "failed": failed}, indent=2),
+        encoding="utf-8",
+    )
+    print(f"\n[+] Benchmark report saved to {bench_dir / 'README.md'}")
+    print(f"[+] Benchmark metrics saved to {bench_dir / 'results.json'}")
 
     if args.check:
         if failed:

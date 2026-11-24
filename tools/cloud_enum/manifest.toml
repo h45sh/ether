@@ -1,0 +1,31 @@
+[meta]
+name = "cloud_enum"
+description = "Multi-cloud OSINT tool enumerating public S3 buckets, Azure blobs, and Google Cloud storage."
+one_line_summary = "multi-cloud OSINT public storage and resource enumerator"
+category = "Asset Discovery"
+categories = ["cloud", "osint", "recon"]
+binary = "cloud_enum"
+theory = """
+### Protocol Theory & Cloud Storage Enumeration
+Cloud providers host public object storage using predictable URI patterns.
+Cloud_enum audits DNS and HTTP responses to discover exposed corporate buckets.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["domain.info", "dns.record"]
+
+[output]
+produces = ["cloud.asset"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard Multi-Cloud Audit"
+difficulty = "Beginner"
+description = "Enumerate public cloud storage for target organization keyword."
+flags = ["-l", "-"]

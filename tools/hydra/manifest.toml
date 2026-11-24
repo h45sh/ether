@@ -1,0 +1,31 @@
+[meta]
+name = "hydra"
+description = "Fast network logon cracker for auditing weak service credentials across protocols."
+one_line_summary = "fast network logon and credential assessment tool"
+category = "Credential Auditing"
+categories = ["auth", "credentials", "cracking"]
+binary = "hydra"
+theory = """
+### Protocol Theory & Authentication Verification
+Hydra tests candidate authentication pairs across protocols (SSH, FTP, HTTP, SMB, RDP, MySQL)
+to uncover weak or default service credentials.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.service", "network.host", "web.endpoint"]
+
+[output]
+produces = ["credential.found"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Target Credential Check"
+difficulty = "Intermediate"
+description = "Check common credentials against target service."
+flags = ["-b", "json"]

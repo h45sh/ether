@@ -1,7 +1,9 @@
 """Canonical findings and intelligence schemas for Ether."""
 
 from ether.schemas.base import BaseFinding, Relation
+from ether.schemas.cloud import CloudAsset
 from ether.schemas.credential import CredentialFound
+from ether.schemas.database import DatabaseService
 from ether.schemas.dns import DnsRecord, DomainInfo, EntityAlias
 from ether.schemas.host_internal import (
     FileSystemObject,
@@ -21,6 +23,7 @@ from ether.schemas.vulnerability import (
 )
 from ether.schemas.web import (
     WebEndpoint,
+    WebParameter,
     WebResource,
     WebTechnology,
     WebVulnerability,
@@ -29,7 +32,9 @@ from ether.schemas.web import (
 __all__ = [
     "AuditMisconfig",
     "BaseFinding",
+    "CloudAsset",
     "CredentialFound",
+    "DatabaseService",
     "DnsRecord",
     "DomainInfo",
     "EntityAlias",
@@ -44,6 +49,7 @@ __all__ = [
     "TLSCertificate",
     "VulnerabilityFound",
     "WebEndpoint",
+    "WebParameter",
     "WebResource",
     "WebTechnology",
     "WebVulnerability",

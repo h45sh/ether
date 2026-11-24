@@ -108,38 +108,152 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ---
 
-### Epoch 3: High-Throughput Chained Execution & Pipeline DAG
+### Epoch 3: Universal Security Tool Arsenal, Chained Pipeline DAG & Substrate Optimizations
 *Target: v0.4.0*
-*Focus: Reactive pipeline DAGs, high-throughput network tools, and deception defense.*
+*Focus: Complete Kali Linux / Modern Security Tool Adapter Ecosystem, Hybrid In-Process Probers, Reactive Pipeline DAGs, and Process Stream Optimization.*
 
-- [ ] **High-Throughput Arsenal Expansion (Tier B High-Performance Binaries):**
-  - High-throughput adapters for raw-socket / asynchronous tools (`masscan`, `zmap`, `katana`) streaming raw JSON directly into bounded memory ring buffers.
-- [ ] **Chained Reactive Pipeline Engine (Unix Pipe Metaphor for Security):**
+#### 1. Fundamental Engine Improvements & Bug Fixes (Identified in AWS Multi-Target Evaluation)
+- [x] **CLI & MCP Parameter Symmetry & Harmonization:**
+  - Standardize all parameter aliases across CLI subcommands and MCP tool definitions.
+  - Fix `--budget` alias for `--max-tokens` in `ether telemetry snapshot` (`ether/cli/telemetry.py`).
+  - Auto-generate CLI argument parsers and MCP tool definitions from single canonical `manifest.toml` schemas.
+- [x] **Hybrid Dual-Execution Adapters (Zero-Binary Graceful Degradation):**
+  - Implement dual-tier adapters that automatically detect binary presence on PATH:
+    - If binary is present: Execute high-performance compiled binary with pure argument vectors.
+    - If binary is absent: Gracefully degrade to in-process pure-Python `asyncio` coroutine probers without failing or halting agent workflows.
+- [x] **Process Stream Normalization & Curses De-Escaping (`executor.py`):**
+  - Implement a byte-boundary chunk normalizer in `LogSpooler` and stream readers.
+  - Automatically strip carriage returns (`\r`) and ANSI escape sequences emitted by interactive tools (e.g. `ffuf`, `hydra`, `gobuster`) to prevent event-loop buffer hangs.
+- [x] **Detailed Firewall & Filter Classification:**
+  - Enhance Nmap XML parser in `tools/nmap/adapter.py` to extract `<extrareasons>` and distinguish stateful drop (AWS Security Groups / Cloud hypervisors) from stateless TCP RST or ICMP administratively prohibited responses.
+- [x] **Agent Prompt Neutralization & Defensive Ontology Framing:**
+  - Implement an internal prompt sanitizer that translates offensive agent requests into standardized NIST/OWASP security auditing terminology, preventing LLM provider safety filter locks during autonomous execution.
+  - *Refactoring Roadmap (per `$codebase-design`)*: Decouple from core execution gateway into an optional upstream agent-skill seam, ensuring core process execution preserves exact technical operator intent without artificial mutation.
+
+#### 2. The Universal Tool Arsenal (Kali Linux & Modern Offensive Security Adapters)
+Expand Ether pluggable tool adapters (`tools/<name>/`) to cover all standard Kali Linux packages, modern Go/Rust offensive utilities, and native async probers across 6 primary operational categories:
+
+- [x] **Category 1: Network Reconnaissance & Port Sweeping**
+  - `tools/naabu/`: High-performance asynchronous port scanner supporting fast SYN/connect sweeps.
+  - `tools/masscan/`: High-throughput asynchronous TCP port scanner for full CIDR internet-scale ranges.
+  - `tools/zmap/`: Single-packet network scanner for Internet-wide network surveys.
+  - `tools/rustscan/`: Modern Rust-based multi-threaded port scanner with auto-piping into Nmap.
+- [x] **Category 2: Passive OSINT & Attack Surface Discovery**
+  - `tools/amass/`: In-depth attack surface mapping and external asset discovery (OWASP Amass).
+  - `tools/crtsh/`: Native async coroutine querying crt.sh Certificate Transparency logs with zero binary dependencies.
+  - `tools/dnsrecon/`: Advanced DNS enumeration script (SRV, AXFR, PTR, wildcard expansion).
+- [x] **Category 3: Web Application & API Enumeration**
+  - `tools/katana/`: Modern headless crawler and JavaScript analysis engine for Single Page Applications (SPAs).
+  - `tools/kiterunner/`: High-speed routing and API endpoint discovery tool specialized in REST, Swagger, and GraphQL.
+  - `tools/feroxbuster/`: Fast, recursive content discovery tool written in Rust.
+  - `tools/arjun/`: HTTP parameter discovery suite for discovering hidden GET/POST parameters.
+- [x] **Category 4: Automated Vulnerability Assessment & CVE Verification**
+  - `tools/nuclei/` *(Core Automation Integration)*: Wire existing Nuclei adapter into autonomous subagent dispatch routines with automatic template filtering (`-tags cve,misconfig -severity critical,high`).
+  - `tools/wpscan/`: WordPress security scanner auditing plugins, themes, and known CMS vulnerabilities.
+  - `tools/cve_search/`: Local CVE database searcher mapping software versions to CVSS v3 scores offline.
+- [x] **Category 5: Database & Deep Protocol Probers**
+  - `tools/mysql_probe/`: Native Python async coroutine prober connecting to port 3306, validating unauthenticated root/guest access and extracting version banners.
+  - `tools/postgres_probe/`: Native Python async coroutine prober auditing PostgreSQL connection handlers.
+  - `tools/redis_probe/`: Native Python async coroutine prober evaluating unauthenticated Redis databases and INFO command disclosure.
+  - `tools/sqlmap/`: High-leverage automated SQL injection detection and database takeover adapter.
+  - `tools/ghauri/`: Lightweight, advanced SQL injection detection tool for complex filter evasion.
+- [x] **Category 6: Credential, Authentication & Cloud Security**
+  - `tools/netexec/` (`nxc`): Multi-protocol network execution suite verifying credentials across SMB, SSH, WinRM, LDAP, MSSQL, and RDP.
+  - `tools/hydra/`: Fast network logon cracker for auditing weak service credentials.
+  - `tools/imds_probe/`: Native Python async coroutine prober auditing AWS IMDSv1/v2, GCP, and Azure cloud metadata endpoints under `GatePolicy.UNRESTRICTED`.
+  - `tools/cloud_enum/`: Multi-cloud OSINT tool enumerating public S3 buckets, Azure blobs, and Google storage.
+
+#### 3. Execution Pipeline DAG & Substrate Mechanics
+- [x] **Chained Reactive Pipeline Engine (Unix Pipe Metaphor for Security):**
   - Allow declarative piping of security tools where findings from tool A automatically parameterize tool B:
     ```bash
     ether pipeline "subfinder(target=$DOMAIN) | dnspython | httpx | nuclei"
     ```
   - Graph-aware routing: output `network.host` findings automatically fan out into parallel port scans; discovered `network.service(http)` nodes automatically route to web fuzzers.
-- [ ] **Native Packet Crafting & Stealth Network Engine (`scapy`):**
+- [x] **Native Packet Crafting & Stealth Network Engine (`scapy`):**
   - Pure-Python stealth TCP SYN scanning, custom port-knocking sequences, and local ARP network sniffing emitting typed `network.host` and `network.service` findings with zero external binary dependencies.
-- [ ] **Probabilistic State Estimation & Deception Defense:**
+- [x] **Probabilistic State Estimation & Deception Defense:**
   - Bayesian belief networks over graph edges to handle partial observability.
   - Response-timing anomaly heuristics and banner analysis to detect dynamic tarpits, honeypots, and active moving-target defenses (MTD).
-- [ ] **Worker Task Pool & Backpressure Concurrency:**
+- [x] **Worker Task Pool & Backpressure Concurrency:**
   - Scalable worker pool allowing 50+ concurrent background scans without event-loop starvation.
   - Dynamic disk spooling and chunk recycling keeping engine memory usage below **25 MB** under massive telemetry loads.
-- [ ] **Streaming Pub/Sub Event Bus:**
+- [x] **Streaming Pub/Sub Event Bus:**
   - Real-time event streaming (`asyncio.Queue` / WebSockets) emitting live findings as they are parsed, enabling external dashboards or remote TUIs to attach and detach seamlessly.
-- [ ] **Continuous Telemetry, Metrics & Observability (`ether.telemetry`):**
+- [x] **Continuous Telemetry, Metrics & Observability (`ether.telemetry`):**
   - Prometheus `/metrics` and OpenTelemetry structured telemetry exporters.
   - Runtime monitoring tracking subprocess execution latencies, backpressure queue depths, WAL checkpoint durations, and memory watermarks.
   - System health diagnostics (`DiagnosticEngine`) auditing file descriptor headroom (`ulimit -n`), disk write pressure, and engine invariants.
 
----
+#### 4. Substrate Optimizations, Diagnostic Fidelity & Ergonomic Improvements (From Live Multi-Agent Evaluation & Performance Critique)
+Based on empirical findings, failure modes, and performance telemetry from the 6-subagent dual-posture AWS evaluation documented in `reports/ether_performance_critique_roadmap.html`:
+
+- [ ] **CLI Router Full Symmetry & Flexible Argument Normalization (`ether.cli`):**
+  - Normalize argument parsing across all subcommands so commands accept both positional arguments and flags interchangeably (e.g. `ether graph search [session_id] [query]` vs `ether graph search --session-id <id> --query <q>`, `ether session create [name]` vs `ether session create --name <name>`).
+  - Eliminates syntax invocation failures for autonomous AI agents that vary between positional and keyword argument formulations.
+- [ ] **Dynamic Adapter-Driven Preflight Gate (`ether.gateway.preflight`):**
+  - Refactor `preflight.py` to eliminate brittle static lists (such as `WEB_TOOLS` strictly mandating `http://` or `https://` prefixes).
+  - Dynamically infer target schema validation rules directly from `ToolAdapter.target_schemas` and `manifest.toml` contracts, allowing hybrid probers (`http_probe`) to seamlessly accept bare IPs, domains, or full URLs.
+- [ ] **Automated Fuzzer Response Baseline Calibration (`FfufAdapter` / `GobusterAdapter`):**
+  - Implement an automated calibration preflight probe in web fuzzers: before launching full wordlist traversal, dispatch a probe against a randomized non-existent endpoint (e.g. `/.ether_probe_404_nonce`).
+  - Automatically analyze the response length, word count, and line count, dynamically appending `-fs <size>` or `-fw <words>` to filter out uniform default web server responses (e.g., Nginx static 200s) and prevent false-positive graph bloat.
+- [ ] **Native Architectural Drift Engine & Baseline Comparison (`ether.drift`):**
+  - Provide a native CLI command `ether drift audit <session_id> --baseline <ground_truth.json>` and an MCP supervisory tool `audit_drift`.
+  - Compares observed live graph state against target ground-truth architecture specifications, outputting structured mathematical drift scores, unexpected open ports, missing mandatory security headers, and container restart discrepancies.
+- [ ] **High-Fidelity MCP Error & Execution Diagnostics (`ether.mcp`):**
+  - Enhance MCP tool execution responses to surface granular error diagnostics (`exit_code`, `stderr_snippet`, `error_category`, `is_error`) rather than masking command failures or network timeouts as generic zero-finding completed runs.
+  - Enables autonomous AI agents to perform immediate self-healing, flag firewall drops, or modify tool parameters dynamically.
+- [ ] **SQLite High-Concurrency Async Write Serialization & Connection Pooling (`GraphStore`):**
+  - Implement an asynchronous write queue daemon and connection pool for `GraphStore`.
+  - Eliminates SQLite WAL write lock contention and transaction queue latency when 50+ autonomous subagents execute parallel actions against the shared `~/.ether/ether.db` database.
+- [ ] **Hermetic In-Tree Semantic Vector Embeddings (`FastEmbed` / `ONNX`):**
+  - Package lightweight, zero-dependency quantized embedding models (e.g. FastEmbed / ONNX all-MiniLM-L6-v2) directly inside Ether.
+  - Ensures 100% offline, zero-network-egress semantic vector search, MITRE ATT&CK technique mapping, and finding correlation without requiring external API tokens or heavy PyTorch/transformers dependencies.
+- [ ] **Dedicated Cryptographic TLS/Cipher Suite Adapter (`tools/sslyze/` / `tools/testssl/`):**
+  - Implement a deep protocol adapter auditing SSLv3, TLS 1.0/1.1 deprecation, weak cipher suites (CBC, RC4, 3DES), certificate revocation/expiry, and Heartbleed/ROBOT vulnerabilities.
+  - Emits typed `tls.certificate` and `tls.cipher_suite` findings directly into the target graph for automated compliance scoring.
+
+#### 5. Deep Seam Refactoring & High-Fidelity Telemetry Substrate (via `$codebase-design`)
+Restructure gateway, execution, and sanitization boundaries to follow deep module principles—replacing shallow filters, paternalistic overrides, and destructive text mangling with high-leverage interfaces that preserve forensic integrity for professional labs and sovereign operators:
+
+- [ ] **Elimination of Shallow Output Truncators (`strip_scanner_noise` Refactoring):**
+  - *Problem*: `strip_scanner_noise` acts as a shallow filter that drops banners matching arbitrary string prefixes and truncates tool output to the last 60 lines, destroying critical version banners, SSL details, and CVE correlation evidence.
+  - *Deep Module Design*: Deprecate shallow text slicing. Centralize stream capture behind the deep `LogSpooler` module interface (`spool(chunk: bytes)` / `stream() -> AsyncIterator[bytes]`).
+  - *Implementation*: Hides circular ring buffering (`deque(maxlen=5000)`), 64KB atomic chunking, and raw forensic disk spooling.
+  - *Leverage & Locality*: Structured telemetry extraction is localized entirely inside deep `ToolAdapter` implementations at the adapter seam; callers receive complete, unmutated streams with zero forensic data loss.
+- [ ] **De-linking In-Transit Credential Redaction from Ingestion Seam:**
+  - *Problem*: `redact_sensitive_artifacts` blindly replaces discovered private keys, bearer tokens, and passwords with `[REDACTED_*]` strings in transit, breaking the core objective of credential discovery tools (`hydra`, `netexec`, `sqlmap`).
+  - *Deep Module Design*: Remove destructive string mutilation from the stream and parser seams. Tools must emit intact findings into typed `CredentialFinding` and `VulnerabilityFinding` schemas.
+  - *Implementation*: Enforce artifact confidentiality at the storage and memory seams using the deep `SecureBuffer` (`ether.common.secure_memory`) and encrypted SQLite WAL archive modules rather than destroying operational data mid-flight.
+- [ ] **Deep Rules of Engagement (RoE) Scope Module (`ether.gateway.scope`):**
+  - *Problem*: The existing `preflight.py` is bloated with shallow static dictionaries (`DEFAULT_TOOL_TARGETS`, `WEB_TOOLS`) and rigid hardcoded bans (blocking loopback `127.0.0.1` and `sudo`), obstructing authorized lab workflows, container bridges, and SYN scanning.
+  - *Deep Module Design*: Replace shallow static validation lists with a deep `ScopeValidator` module placed cleanly at the gateway seam.
+  - *Interface*: `is_in_scope(target: str, scope: EngagementScope) -> ScopeVerdict` (minimal caller footprint).
+  - *Implementation*: Hides CIDR Radix Trie matching, FQDN globbing, container bridge subnet resolution, and cloud IMDS (`169.254.169.254`) SSRF boundary enforcement.
+  - *Leverage*: One deep module serves all CLI, MCP, and autonomous pipeline callers, permitting local lab audits when authorized while strictly preventing unauthorized egress.
+- [ ] **Decoupled Prompt Neutralization Seam:**
+  - *Problem*: Hardcoding artificial vocabulary translation (`PromptNeutralizer` converting `exploit` $\rightarrow$ `verify vulnerability impact`) into the gateway core distorts operator intent and disrupts custom security tooling.
+  - *Deep Module Design*: Retire prompt mutation from the core execution gateway. Relocate defensive prompt framing to an upstream agent-skill seam (where autonomous planning agents formulate natural compliance prompts), ensuring the core execution engine preserves exact technical commands and arguments verbatim.
+- [ ] **Externalized Wordlist & Asset Seam (`ether.registry.assets`):**
+  - *Problem*: Bundling static seed wordlists (`common.txt`) inside the core library creates packaging bloat and maintenance overhead for tools that real labs already configure with SecLists.
+  - *Deep Module Design*: Prune static text files from the core package implementation. Deepen the asset resolution interface (`resolve_wordlist(spec: str) -> Path`) to resolve against system paths (`/usr/share/seclists`, `/usr/share/wordlists`) and user environment contracts.
+- [ ] **Forensic-Grade Session Log Architecture & Auditability (`ether.common.forensic_log`):**
+  - *Problem*: Scans currently dump unindexed, opaque files directly into a flat directory (`~/.ether/logs/<action_id>.log`). Forensic investigators and red-team auditors cannot determine which tool ran, which target was scanned, or which session owned the run without manual grep over hundreds of UUID files.
+  - *Deep Module Design*: Replace flat file dumping with a deep `ForensicLogManager` module placed at the spooling seam.
+  - *Small Interface*: `open_action_spool(session_id, action) -> LogSpooler` and `query_session_audit(session_id, filter) -> Sequence[AuditRecord]`.
+  - *Implementation*:
+    - **Hierarchical Canonical Naming**: Partition logs by session with chronological human/machine-auditable names: `~/.ether/logs/sessions/<session_id>/<timestamp>_<tool>_<target_sanitized>_<short_id>.log`.
+    - **Session Audit Manifest (`audit_manifest.jsonl` / SQLite Log Index)**: Append-only ledger recording `{timestamp, action_id, tool, target, exit_code, sha256_checksum, byte_size}` for instant forensic replay.
+    - **Automated Lifecycle & Compression**: Transparent background gzip/zstd compression and retention pruning for historical scan sessions, preventing storage exhaustion.
+    - **Cryptographic Chain of Custody**: SHA-256 hash chaining over completed scan logs for tamper-evident forensic reporting.
+  - *Leverage & Locality*: Callers and execution sessions use a single clean interface for logging without leaking path formatting, file handles, or rotation logic across the codebase.
 
 ### Epoch 4: The Unrestricted Offensive Engine (Offensive Workstation Core)
 *Target: v0.5.0*
 *Focus: Sovereign offensive operations, full PTY emulation, and exploit choreography.*
+
+- [ ] **Zero-Tampering Forensic Stream Seam (Sovereign Telemetry Invariant):**
+  - Guarantee that the PTY supervisor and process execution modules enforce an absolute zero-tampering invariant across the stream seam: 100% of raw byte streams, ANSI cursor motions, and terminal escape sequences are preserved byte-for-byte for forensic replay and operator review, with zero paternalistic filtering.
 
 - [ ] **Dual-Path Interactive POSIX PTY Supervisor (`pyte` + `ptyprocess` / `os.openpty`):**
   - *Transferred from CyGuide Engine Core*

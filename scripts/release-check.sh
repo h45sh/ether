@@ -25,23 +25,16 @@ if [ -f ".venv/bin/pytest" ]; then
     PYTEST_BIN=".venv/bin/pytest"
 fi
 
-echo -e "\n[1/6] Code Style & Quality (ruff check & format)..."
-$RUFF_BIN check .
-$RUFF_BIN format --check .
+echo -e "\n[1/4] Running Mechanical Verification Suite (style, schema sync, invariants, regression)..."
+bash scripts/verify.sh
 
-echo -e "\n[2/6] Schema Registry Synchronization Check..."
-$PYTHON_BIN scripts/generate_schema_registry.py --check
+echo -e "\n[2/4] Performance Limits & Benchmark Regression Guard..."
+$PYTHON_BIN tests/benchmarks/runner.py --check
 
-echo -e "\n[3/6] Tier 0 AST Invariants & Property Tests..."
-$PYTEST_BIN -m tier0 -q
+echo -e "\n[3/4] In-Tree AST Mutation Testing..."
+$PYTHON_BIN tests/mutation/run_mutation_tests.py --target=canonicalize
 
-echo -e "\n[4/6] Full Regression Test Suite..."
-$PYTEST_BIN tests/
-
-echo -e "\n[5/6] Performance Limits & Benchmark Regression Guard..."
-$PYTHON_BIN scripts/generate_benchmark_report.py --check
-
-echo -e "\n[6/6] Package Build & Asset Integrity Verification..."
+echo -e "\n[4/4] Package Build & Asset Integrity Verification..."
 rm -rf dist/ build/ *.egg-info
 if command -v uv >/dev/null 2>&1; then
     uv build

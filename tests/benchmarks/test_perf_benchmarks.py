@@ -8,6 +8,7 @@ Verifies:
 """
 
 import asyncio
+import sys
 import time
 import tracemalloc
 
@@ -16,6 +17,13 @@ import pytest
 from ether.core.executor import LogSpooler
 from ether.graph.store import GraphStore
 from ether.schemas.network import NetworkHost, NetworkService
+from tests.benchmarks.runner import (
+    bench_graphstore,
+    bench_imports,
+    bench_schemas_and_parsing,
+    bench_streaming,
+    evaluate_regressions,
+)
 
 pytestmark = pytest.mark.benchmark
 
@@ -173,3 +181,24 @@ def test_log_spooler_throughput_and_bounded_memory(tmp_path):
         f"Peak memory {peak_mem / 1024 / 1024:.2f}MB exceeded 15MB bound"
     )
     assert (tmp_path / "spooler_bench.log").exists()
+
+
+@pytest.mark.asyncio
+async def test_benchmark_regression_invariants():
+    """Verify that all benchmark invariants pass without regression."""
+    python_bin = sys.executable
+    import_results = bench_imports(python_bin)
+    graphstore_results = await bench_graphstore()
+    streaming_results = bench_streaming()
+    schema_results = bench_schemas_and_parsing()
+
+    data = {
+        "imports": import_results,
+        "graphstore": graphstore_results,
+        "streaming": streaming_results,
+        "schemas": schema_results,
+    }
+
+    passed, failed = evaluate_regressions(data)
+    assert not failed, f"Benchmark regressions detected: {failed}"
+    assert len(passed) >= 4

@@ -1,0 +1,31 @@
+[meta]
+name = "naabu"
+description = "Fast, asynchronous SYN/Connect port scanner written in Go designed to enumerate active ports efficiently."
+one_line_summary = "high-performance asynchronous port discovery scanner"
+category = "Network Reconnaissance"
+categories = ["recon", "network", "portscan"]
+binary = "naabu"
+theory = """
+### Protocol Theory & Port Enumeration
+Naabu performs high-throughput TCP port scans using either raw SYN packets or full TCP handshakes.
+It emits streaming JSON records containing host IPs and open port states.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.host", "dns.record", "domain.info"]
+
+[output]
+produces = ["network.service"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard Top Ports Sweep"
+difficulty = "Beginner"
+description = "Fast port scan of standard common ports with streaming JSON output."
+flags = ["-top-ports", "100", "-json"]

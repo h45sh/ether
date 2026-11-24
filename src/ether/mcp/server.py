@@ -686,4 +686,36 @@ def create_mcp_server(
             indent=2,
         )
 
+    @server.tool()
+    async def get_deception_report(session_id: Optional[str] = None) -> str:
+        """Evaluate and retrieve the deception, honeypot, and tarpit report for a session.
+
+        Identifies active honeypots, delay-tarpits, and low-confidence findings
+        using the Bayesian belief engine over port entropy and banner signatures.
+
+        Args:
+            session_id: Target session ID. If omitted, uses the active default session.
+        """
+        sess_id = await _resolve_session(session_id)
+        from ether.graph.analytics import GraphAnalyticsEngine
+
+        beliefs = await GraphAnalyticsEngine.evaluate_and_persist(store, sess_id)
+
+        flagged_honeypots = [b for b in beliefs if b.get("is_honeypot")]
+        active_tarpits = [b for b in beliefs if b.get("is_tarpit")]
+        low_confidence = [
+            b for b in beliefs if b.get("confidence", 1.0) < 0.70 and not b.get("is_honeypot")
+        ]
+
+        return json.dumps(
+            {
+                "session_id": sess_id,
+                "total_evaluated_nodes": len(beliefs),
+                "flagged_honeypots": flagged_honeypots,
+                "active_tarpits": active_tarpits,
+                "low_confidence_findings": low_confidence,
+            },
+            indent=2,
+        )
+
     return server

@@ -1,0 +1,31 @@
+[meta]
+name = "amass"
+description = "In-depth attack surface mapping and external asset discovery tool by OWASP."
+one_line_summary = "OWASP attack surface mapping and external asset discovery"
+category = "Asset Discovery"
+categories = ["recon", "osint", "dns"]
+binary = "amass"
+theory = """
+### Protocol Theory & Attack Surface Mapping
+OWASP Amass aggregates open-source intelligence (OSINT), active DNS sweeps, routing table lookups,
+and scraping to build comprehensive network topology graphs.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["domain.info", "network.netblock"]
+
+[output]
+produces = ["domain.info", "network.host"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Passive Asset Enumeration"
+difficulty = "Intermediate"
+description = "Passive OSINT asset mapping for a target domain."
+flags = ["enum", "-passive", "-o", "-"]

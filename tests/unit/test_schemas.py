@@ -481,3 +481,16 @@ def test_base_finding_from_data_automatic_pik_derivation():
     assert host.pik == {"ip": "10.10.10.10"}
     assert host.data["hostname"] == "target.htb"
     assert host.parent is None
+
+
+@pytest.mark.tier0
+def test_schema_registry_documentation_and_pik_sync():
+    """Verify that all finding schemas declare pik_fields, docstrings, and docs are in sync."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    cmd = [sys.executable, str(repo_root / "scripts" / "generate_schema_registry.py"), "--check"]
+    res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+    assert res.returncode == 0, f"Schema registry check failed:\n{res.stderr}\n{res.stdout}"

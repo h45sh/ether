@@ -37,6 +37,10 @@ def _build_dummy_target(accepts_list: list[str]) -> BaseFinding:
             return WebEndpoint.create(url="http://10.0.0.1:80/api")
         elif schema == "dns.record":
             return DnsRecord.create(domain="target.local", record_type="A", value="10.0.0.1")
+        elif schema in ("domain.info", "domain"):
+            from ether.schemas.dns import DomainInfo
+
+            return DomainInfo.create(domain="target.local")
 
     # Default fallback
     return NetworkHost.create(ip="10.0.0.1", hostname="target.local")

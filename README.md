@@ -364,7 +364,10 @@ pytest -m fuzz
 pytest tests/
 
 # Evaluate Performance Limits & Benchmark Invariants
-python3 scripts/generate_benchmark_report.py --check
+python3 tests/benchmarks/runner.py --check
+
+# Run In-Tree AST Mutation Testing
+python3 tests/mutation/run_mutation_tests.py --target=canonicalize
 ```
 
 ---

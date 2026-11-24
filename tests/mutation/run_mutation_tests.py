@@ -13,12 +13,13 @@ Features:
 """
 
 import ast
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import List, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 TARGETS = {
     "canonicalize": {
@@ -29,7 +30,7 @@ TARGETS = {
     "ssrf": {
         "file": REPO_ROOT / "src" / "ether" / "common" / "ssrf.py",
         "module": "ether.common.ssrf",
-        "test": "tests/unit/test_gateway.py",
+        "test": "tests/unit/test_ssrf.py",
     },
 }
 
@@ -97,12 +98,22 @@ class Mutator(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+def get_pytest_cmd() -> List[str]:
+    venv_pytest = REPO_ROOT / ".venv" / "bin" / "pytest"
+    if venv_pytest.exists():
+        return [str(venv_pytest)]
+    pytest_in_path = shutil.which("pytest")
+    if pytest_in_path:
+        return [pytest_in_path]
+    return [sys.executable, "-m", "pytest"]
+
+
 def test_mutant(file_path: Path, test_path: str, mutant_ast: ast.Module) -> bool:
     """Write mutant, run targeted pytest, and check if mutant was killed (test failed)."""
     original_code = file_path.read_text(encoding="utf-8")
     mutated_code = ast.unparse(mutant_ast)
-    pytest_bin = str(REPO_ROOT / ".venv" / "bin" / "pytest")
-    cmd = [pytest_bin, test_path, "-q", "--tb=no"]
+    pytest_base = get_pytest_cmd()
+    cmd = pytest_base + [test_path, "-q", "--tb=no"]
     try:
         file_path.write_text(mutated_code, encoding="utf-8")
         proc = subprocess.run(
@@ -123,10 +134,10 @@ def run_mutation_suite(target_name: str) -> bool:
     file_path = target["file"]
     test_path = target["test"]
 
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"[*] Running AST Mutation Testing on: {file_path.relative_to(REPO_ROOT)}")
     print(f"[*] Test Suite: {test_path}")
-    print(f"=======================================================")
+    print("=======================================================")
 
     source_code = file_path.read_text(encoding="utf-8")
     tree = ast.parse(source_code, filename=str(file_path))

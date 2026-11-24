@@ -1,0 +1,31 @@
+[meta]
+name = "arjun"
+description = "HTTP parameter discovery suite for uncovering hidden GET and POST parameters on web endpoints."
+one_line_summary = "hidden HTTP GET/POST parameter discovery suite"
+category = "Web Enumeration"
+categories = ["web", "recon", "parameters"]
+binary = "arjun"
+theory = """
+### Protocol Theory & Parameter Discovery
+Arjun mines potential query and body parameters by injecting candidate keys and detecting
+subtle reflections, header alterations, or response body length shifts.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["web.endpoint"]
+
+[output]
+produces = ["web.parameter"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard Parameter Discovery"
+difficulty = "Beginner"
+description = "Find hidden parameters on target URL with JSON output."
+flags = ["-oJ", "-"]

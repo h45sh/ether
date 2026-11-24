@@ -5,8 +5,10 @@ import logging
 import os
 import shlex
 import shutil
-from typing import Any, AsyncIterator, Callable, Coroutine, Dict, Optional
+from collections import deque
+from typing import Any, AsyncIterator, Callable, Coroutine, Dict, Optional, Tuple
 
+from ether.common import strip_ansi
 from ether.graph.store import GraphStore
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
@@ -53,12 +55,58 @@ def sanitize_subprocess_env(env: Optional[Dict[str, str]] = None) -> Dict[str, s
     }
 
 
+class StreamTarpitGuard:
+    """Detects delay-tarpits (sub-byte trickle) and infinite banner loops."""
+
+    def __init__(self, window_seconds: float = 15.0, min_bytes_per_sec: float = 10.0):
+        self.window_seconds = window_seconds
+        self.min_bytes_per_sec = min_bytes_per_sec
+        self._chunks: deque[Tuple[float, int, int]] = deque()
+        self._first_chunk_time: Optional[float] = None
+        self._last_finding_time: Optional[float] = None
+
+    def record_finding(self, current_time: float) -> None:
+        self._last_finding_time = current_time
+
+    def check_chunk(self, chunk_len: int, chunk_bytes: bytes, current_time: float) -> Tuple[bool, str]:
+        """Evaluate incoming stream chunk. Returns (is_tarpit, reason)."""
+        if self._first_chunk_time is None:
+            self._first_chunk_time = current_time
+            self._last_finding_time = current_time
+
+        chunk_hash = hash(chunk_bytes[:256])
+        self._chunks.append((current_time, chunk_len, chunk_hash))
+
+        while self._chunks and (current_time - self._chunks[0][0]) > self.window_seconds:
+            self._chunks.popleft()
+
+        elapsed = current_time - self._first_chunk_time
+        if elapsed < self.window_seconds:
+            return False, ""
+
+        total_window_bytes = sum(c[1] for c in self._chunks)
+        effective_window = max(1.0, current_time - self._chunks[0][0])
+        throughput = total_window_bytes / effective_window
+        if throughput < self.min_bytes_per_sec and len(self._chunks) >= 3:
+            return True, f"Delay-tarpit detected: stream throughput {throughput:.1f} B/s over {effective_window:.1f}s"
+
+        if len(self._chunks) >= 5:
+            hashes = [c[2] for c in self._chunks]
+            if len(set(hashes)) == 1:
+                no_finding_elapsed = current_time - (self._last_finding_time or self._first_chunk_time)
+                if no_finding_elapsed >= self.window_seconds:
+                    return True, f"Banner loop detected: identical chunk repeating for {no_finding_elapsed:.1f}s with 0 findings"
+
+        return False, ""
+
+
 class LogSpooler:
-    """High-throughput disk spooler with 64KB buffering and zero-allocation flushing."""
+    """High-throughput disk spooler with 64KB buffering, ANSI stripping, and \r overwrite normalization."""
 
     def __init__(self, log_path: Optional[str] = None):
         self.log_path = log_path
         self._file = None
+        self._pending_cr_buffer = ""
         if self.log_path:
             try:
                 log_dir = os.path.dirname(os.path.abspath(self.log_path))
@@ -73,13 +121,34 @@ class LogSpooler:
     def write(self, chunk: str) -> None:
         if self._file:
             try:
-                self._file.write(chunk)
+                # 1. Strip ANSI escape codes
+                clean_chunk = strip_ansi(chunk)
+                if not clean_chunk:
+                    return
+
+                # 2. Normalize CRLF to LF and handle carriage return overwrites
+                combined = (self._pending_cr_buffer + clean_chunk).replace("\r\n", "\n")
+                if "\r" in combined:
+                    lines = combined.split("\n")
+                    self._pending_cr_buffer = lines.pop()
+                    # Collapse each complete line by taking the last segment after \r
+                    collapsed_lines = [line.split("\r")[-1] for line in lines]
+                    if collapsed_lines:
+                        self._file.write("\n".join(collapsed_lines) + "\n")
+                else:
+                    self._pending_cr_buffer = ""
+                    self._file.write(combined)
             except Exception:
                 pass
 
     def flush(self) -> None:
         if self._file:
             try:
+                if self._pending_cr_buffer:
+                    final_line = self._pending_cr_buffer.split("\r")[-1]
+                    if final_line:
+                        self._file.write(final_line + "\n")
+                    self._pending_cr_buffer = ""
                 self._file.flush()
             except Exception:
                 pass
@@ -87,7 +156,7 @@ class LogSpooler:
     def close(self) -> None:
         if self._file:
             try:
-                self._file.flush()
+                self.flush()
                 self._file.close()
             except Exception:
                 pass
@@ -178,6 +247,8 @@ class Executor:
         finding_queue: asyncio.Queue[BaseFinding] = asyncio.Queue()
         parsing_context = {"params": params}  # Shared context for the duration of this tool run
         spooler = LogSpooler(log_file_path)
+        tarpit_guard = StreamTarpitGuard(window_seconds=15.0)
+        tarpit_flag = [False]
 
         async def _drain_stream(stream, callback, is_stdout=True):
             buffer = ""
@@ -188,11 +259,38 @@ class Executor:
                     if not chunk:
                         # Process any remaining text in the buffer as a final line
                         if buffer and is_stdout:
-                            async for finding in adapter.parse_output(
-                                buffer, target, context=parsing_context
-                            ):
-                                await finding_queue.put(finding)
+                            final_line = (
+                                strip_ansi(buffer).replace("\r\n", "\n").split("\r")[-1].strip()
+                            )
+                            if final_line:
+                                async for finding in adapter.parse_output(
+                                    final_line, target, context=parsing_context
+                                ):
+                                    tarpit_guard.record_finding(asyncio.get_event_loop().time())
+                                    await finding_queue.put(finding)
                         break
+
+                    # Inline tarpit anomaly detection (slow drip or infinite banner loops)
+                    if is_stdout:
+                        is_tarpit, tarpit_reason = tarpit_guard.check_chunk(
+                            len(chunk), chunk, asyncio.get_event_loop().time()
+                        )
+                        if is_tarpit:
+                            tarpit_flag[0] = True
+                            msg = f"\n[TARPIT DETECTED] {tarpit_reason}. Aborting execution...\n"
+                            logger.warning(msg.strip())
+                            spooler.write(msg)
+                            if callback:
+                                await callback(msg)
+                            elif on_output:
+                                await on_output(msg)
+                            if process.returncode is None:
+                                process.terminate()
+                                try:
+                                    await asyncio.wait_for(process.wait(), timeout=2.0)
+                                except Exception:
+                                    process.kill()
+                            break
 
                     raw_text = chunk.decode(errors="replace")
                     spooler.write(raw_text)
@@ -204,18 +302,33 @@ class Executor:
 
                     # Tool parsing only on stdout
                     if is_stdout:
-                        buffer += raw_text
+                        cleaned = strip_ansi(raw_text).replace("\r\n", "\n")
+                        buffer += cleaned
+
+                        # In-stream carriage return defense: if buffer has \r without \n and exceeds 4KB,
+                        # collapse intermediate overwrites so memory stays strictly bounded
+                        if "\r" in buffer and "\n" not in buffer and len(buffer) > 4096:
+                            buffer = buffer.split("\r")[-1]
+
                         if "\n" in buffer:
                             lines = buffer.split("\n")
                             buffer = lines.pop()
                             for line in lines:
+                                # Collapse in-place \r overwrite within the completed line
+                                collapsed = line.split("\r")[-1].strip()
+                                if not collapsed:
+                                    continue
                                 try:
                                     async for finding in adapter.parse_output(
-                                        line, target, context=parsing_context
+                                        collapsed, target, context=parsing_context
                                     ):
+                                        tarpit_guard.record_finding(asyncio.get_event_loop().time())
                                         await finding_queue.put(finding)
                                 except Exception as parse_e:
-                                    logger.error(f"Error parsing line '{line}': {parse_e}")
+                                    logger.error(f"Error parsing line '{collapsed}': {parse_e}")
+
+                    # Explicitly yield control to the asyncio event loop in tight streaming loops
+                    await asyncio.sleep(0.001)
             except Exception as e:
                 logger.error(f"Error draining stream: {e}")
 
@@ -289,6 +402,19 @@ class Executor:
 
             await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
             spooler.close()
+
+            if tarpit_flag[0] and self.store and hasattr(self.store, "upsert_node_belief"):
+                try:
+                    target_id = getattr(target, "id", None) or "unknown"
+                    await self.store.upsert_node_belief(
+                        node_id=target_id,
+                        session_id=session_id or "default",
+                        confidence=0.1,
+                        is_tarpit=1,
+                        indicators=["inline_stream_tarpit"],
+                    )
+                except Exception as store_e:
+                    logger.error(f"Failed to record tarpit belief: {store_e}")
 
         if process.returncode != 0:
             logger.error(f"Command failed with exit code {process.returncode}")

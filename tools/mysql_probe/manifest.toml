@@ -1,0 +1,32 @@
+[meta]
+name = "mysql_probe"
+description = "Native Python asynchronous coroutine prober connecting to MySQL port 3306, validating version banners and unauthenticated access."
+one_line_summary = "native async MySQL protocol handshake and auth auditor"
+category = "Database Assessment"
+categories = ["database", "auth", "recon"]
+binary = "mysql_probe"
+theory = """
+### Protocol Theory & MySQL Initial Handshake (Packet 0x0a)
+Upon TCP connection establishment to port 3306, the MySQL server immediately transmits an
+Initial Handshake Packet containing protocol version, server version string, thread ID,
+and auth plugin data.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.service", "network.host"]
+
+[output]
+produces = ["database.service"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard MySQL Probe"
+difficulty = "Beginner"
+description = "Audit MySQL port 3306 for version disclosure and unauthenticated root access."
+flags = ["--port", "3306"]

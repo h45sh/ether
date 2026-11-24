@@ -8,6 +8,7 @@ from typing import List, Optional
 from ether import __version__
 from ether.cli.commands.doctor import handle_doctor
 from ether.cli.commands.graph import (
+    handle_graph_belief,
     handle_graph_export,
     handle_graph_import,
     handle_graph_list_nodes,
@@ -16,9 +17,14 @@ from ether.cli.commands.graph import (
 )
 from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.mcp import handle_mcp
+from ether.cli.commands.pipeline import handle_pipeline_run
 from ether.cli.commands.run import handle_run
 from ether.cli.commands.session import handle_session_create, handle_session_list
-from ether.cli.commands.telemetry import handle_telemetry_diff, handle_telemetry_snapshot
+from ether.cli.commands.telemetry import (
+    handle_telemetry_diff,
+    handle_telemetry_health,
+    handle_telemetry_snapshot,
+)
 from ether.cli.commands.tool import handle_tool_info, handle_tool_list
 from ether.cli.context import (
     EXIT_RUNTIME_ERROR,
@@ -215,6 +221,14 @@ def build_parser() -> argparse.ArgumentParser:
         "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.service)"
     )
 
+    belief_p = graph_subs.add_parser(
+        "belief", parents=[common_options], help="Inspect Bayesian belief scores and honeypot/tarpit status"
+    )
+    belief_p.add_argument("session_id", help="Session ID to inspect")
+    belief_p.add_argument(
+        "--evaluate", action="store_true", help="Re-run Bayesian deception analysis before displaying"
+    )
+
     # 6. telemetry
     telemetry_parser = subparsers.add_parser(
         "telemetry",
@@ -229,6 +243,9 @@ def build_parser() -> argparse.ArgumentParser:
     snap_p.add_argument(
         "--max-tokens", dest="max_tokens", type=int, default=4000, help="Max token budget"
     )
+    snap_p.add_argument(
+        "--budget", dest="budget", type=int, default=None, help="Alias for --max-tokens"
+    )
     snap_p.add_argument("--entity-id", dest="entity_id", help="Selected entity node ID")
 
     diff_p = telemetry_subs.add_parser(
@@ -237,6 +254,13 @@ def build_parser() -> argparse.ArgumentParser:
     diff_p.add_argument("session_id", help="Session ID")
     diff_p.add_argument("--action-id", dest="action_id", help="Action ID to diff")
     diff_p.add_argument("--baseline", dest="baseline", help="Baseline timestamp")
+
+    health_p = telemetry_subs.add_parser(
+        "health", parents=[common_options], help="Inspect runtime health, memory, FDs, and metrics"
+    )
+    health_p.add_argument(
+        "--prometheus", action="store_true", help="Output metrics in Prometheus text format"
+    )
 
     # 7. logs
     logs_parser = subparsers.add_parser(
@@ -277,6 +301,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--host",
         default="127.0.0.1",
         help="Host for SSE transport (default: 127.0.0.1)",
+    )
+
+    # 9. pipeline
+    pipeline_parser = subparsers.add_parser(
+        "pipeline",
+        parents=[common_options],
+        help="Execute chained tool pipeline DAG (e.g. 'subfinder | dnspython | http_probe')",
+    )
+    pipeline_parser.add_argument("expression", help="Pipeline expression string")
+    pipeline_parser.add_argument(
+        "-s",
+        "--session",
+        dest="session",
+        help="Session ID to associate findings with",
     )
 
     return parser
@@ -334,11 +372,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_graph_prune(args, context))
             elif args.graph_action == "search":
                 return _run_coroutine(handle_graph_search(args, context))
+            elif args.graph_action == "belief":
+                return _run_coroutine(handle_graph_belief(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":
             if args.telemetry_action == "diff":
                 return _run_coroutine(handle_telemetry_diff(args, context))
+            elif args.telemetry_action == "health":
+                return _run_coroutine(handle_telemetry_health(args, context))
             return _run_coroutine(handle_telemetry_snapshot(args, context))
 
         elif args.subcommand == "logs":
@@ -346,6 +388,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         elif args.subcommand == "mcp":
             return _run_coroutine(handle_mcp(args, context))
+
+        elif args.subcommand == "pipeline":
+            return _run_coroutine(handle_pipeline_run(args, context))
 
         else:
             parser.print_help()

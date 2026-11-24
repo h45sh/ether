@@ -1,0 +1,31 @@
+[meta]
+name = "imds_probe"
+description = "Native Python asynchronous coroutine prober auditing AWS IMDSv1/v2, GCP, and Azure cloud instance metadata endpoints."
+one_line_summary = "native async cloud metadata (AWS/GCP/Azure) endpoint security auditor"
+category = "Cloud Security"
+categories = ["cloud", "auth", "recon"]
+binary = "imds_probe"
+theory = """
+### Protocol Theory & Cloud Instance Metadata Services (IMDS)
+Hypervisors expose Link-Local endpoints (169.254.169.254) to VM guest instances.
+Unprotected IMDSv1 permits SSRF privilege escalation to steal IAM instance profile credentials.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.host", "web.endpoint"]
+
+[output]
+produces = ["cloud.asset"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Audit Local Cloud Metadata"
+difficulty = "Intermediate"
+description = "Probe IMDSv1 and IMDSv2 token endpoints for cloud metadata leakage."
+flags = ["--provider", "aws"]

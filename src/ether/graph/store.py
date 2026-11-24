@@ -94,6 +94,19 @@ CREATE TABLE IF NOT EXISTS notes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (scope_type, scope_id)
 );
+CREATE TABLE IF NOT EXISTS node_beliefs (
+    session_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    is_honeypot INTEGER NOT NULL DEFAULT 0,
+    is_tarpit INTEGER NOT NULL DEFAULT 0,
+    indicators TEXT NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (session_id, node_id),
+    FOREIGN KEY (session_id, node_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_node_beliefs_session ON node_beliefs(session_id);
+CREATE INDEX IF NOT EXISTS idx_node_beliefs_confidence ON node_beliefs(session_id, confidence);
 CREATE INDEX IF NOT EXISTS idx_nodes_session_schema ON nodes(session_id, schema_type);
 CREATE INDEX IF NOT EXISTS idx_nodes_anchor ON nodes(session_id, anchor_hash);
 CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(session_id, status);
@@ -1630,3 +1643,81 @@ class GraphStore:
                     await db.execute("DETACH DATABASE src")
                 except Exception:
                     pass
+
+    async def upsert_node_belief(
+        self,
+        node_id: str,
+        session_id: str,
+        confidence: float = 1.0,
+        is_honeypot: int = 0,
+        is_tarpit: int = 0,
+        indicators: Optional[List[str]] = None,
+    ) -> None:
+        """Upsert probabilistic belief score and deception indicators for a graph node."""
+        indicators_json = json.dumps(indicators or [])
+        async with self.connection() as db:
+            await db.execute(
+                """
+                INSERT INTO node_beliefs (session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(session_id, node_id) DO UPDATE SET
+                    confidence = excluded.confidence,
+                    is_honeypot = excluded.is_honeypot,
+                    is_tarpit = excluded.is_tarpit,
+                    indicators = excluded.indicators,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (session_id, node_id, float(confidence), int(is_honeypot), int(is_tarpit), indicators_json),
+            )
+            await db.commit()
+
+    async def get_node_belief(self, session_id: str, node_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve belief details for a specific node."""
+        async with self.connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at
+                FROM node_beliefs
+                WHERE session_id = ? AND node_id = ?
+                """,
+                (session_id, node_id),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "session_id": row[0],
+                "node_id": row[1],
+                "confidence": float(row[2]),
+                "is_honeypot": bool(row[3]),
+                "is_tarpit": bool(row[4]),
+                "indicators": json.loads(row[5]) if row[5] else [],
+                "updated_at": str(row[6]),
+            }
+
+    async def list_node_beliefs(self, session_id: str) -> List[Dict[str, Any]]:
+        """Retrieve all node beliefs for a session."""
+        async with self.connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at
+                FROM node_beliefs
+                WHERE session_id = ?
+                ORDER BY confidence ASC
+                """,
+                (session_id,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "session_id": r[0],
+                    "node_id": r[1],
+                    "confidence": float(r[2]),
+                    "is_honeypot": bool(r[3]),
+                    "is_tarpit": bool(r[4]),
+                    "indicators": json.loads(r[5]) if r[5] else [],
+                    "updated_at": str(r[6]),
+                }
+                for r in rows
+            ]
+

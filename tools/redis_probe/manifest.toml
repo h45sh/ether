@@ -1,0 +1,31 @@
+[meta]
+name = "redis_probe"
+description = "Native Python asynchronous coroutine prober evaluating unauthenticated Redis databases and INFO command disclosure."
+one_line_summary = "native async Redis unauthenticated access and INFO disclosure auditor"
+category = "Database Assessment"
+categories = ["database", "auth", "recon"]
+binary = "redis_probe"
+theory = """
+### Protocol Theory & Redis RESP (REdis Serialization Protocol)
+Redis operates over plain TCP using the human-readable RESP protocol.
+Default deployments without 'requirepass' allow direct unauthenticated command execution (INFO, CONFIG, KEYS).
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.service", "network.host"]
+
+[output]
+produces = ["database.service"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard Redis Audit"
+difficulty = "Beginner"
+description = "Audit Redis port 6379 for unauthenticated access and server information disclosure."
+flags = ["--port", "6379"]

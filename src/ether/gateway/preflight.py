@@ -36,10 +36,35 @@ INSTALLATION_HINTS: dict[str, str] = {
     "searchsploit": "sudo apt install exploitdb  (or: git clone https://gitlab.com/exploit-database/exploitdb.git)",
 }
 
-WEB_TOOLS: Set[str] = {"gobuster", "ffuf", "nikto", "nuclei", "sqlmap"}
-NETWORK_TOOLS: Set[str] = {"nmap", "netexec", "nxc"}
-DOMAIN_TOOLS: Set[str] = {"subfinder", "whois", "dnspython"}
-WORDLIST_TOOLS: Set[str] = {"gobuster", "ffuf"}
+WEB_TOOLS: Set[str] = {
+    "gobuster",
+    "ffuf",
+    "nikto",
+    "nuclei",
+    "sqlmap",
+    "katana",
+    "kiterunner",
+    "feroxbuster",
+    "arjun",
+    "wpscan",
+    "ghauri",
+}
+NETWORK_TOOLS: Set[str] = {
+    "nmap",
+    "netexec",
+    "nxc",
+    "naabu",
+    "masscan",
+    "zmap",
+    "rustscan",
+    "hydra",
+    "mysql_probe",
+    "postgres_probe",
+    "redis_probe",
+    "imds_probe",
+}
+DOMAIN_TOOLS: Set[str] = {"subfinder", "whois", "dnspython", "amass", "crtsh", "dnsrecon"}
+WORDLIST_TOOLS: Set[str] = {"gobuster", "ffuf", "feroxbuster", "kiterunner"}
 
 DEFAULT_TOOL_TARGETS: dict[str, str] = {
     "nmap": "127.0.0.1",
@@ -54,6 +79,27 @@ DEFAULT_TOOL_TARGETS: dict[str, str] = {
     "dnspython": "example.com",
     "searchsploit": "Apache 2.4.49",
     "http_probe": "http://scanme.nmap.org",
+    "naabu": "127.0.0.1",
+    "masscan": "127.0.0.1",
+    "zmap": "127.0.0.1",
+    "rustscan": "127.0.0.1",
+    "amass": "example.com",
+    "crtsh": "example.com",
+    "dnsrecon": "example.com",
+    "katana": "http://scanme.nmap.org",
+    "kiterunner": "http://scanme.nmap.org",
+    "feroxbuster": "http://scanme.nmap.org",
+    "arjun": "http://scanme.nmap.org",
+    "wpscan": "http://scanme.nmap.org",
+    "cve_search": "Apache 2.4.49",
+    "mysql_probe": "127.0.0.1",
+    "postgres_probe": "127.0.0.1",
+    "redis_probe": "127.0.0.1",
+    "ghauri": "http://testphp.vulnweb.com/listproducts.php?cat=1",
+    "hydra": "127.0.0.1",
+    "imds_probe": "127.0.0.1",
+    "cloud_enum": "example",
+    "stealth_scan": "127.0.0.1",
 }
 
 TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {
@@ -300,7 +346,22 @@ def get_tool_target_guidance(tool_name: str) -> str:
     """Return formatted Markdown target guidance for a specified security tool."""
     guidance = TOOL_TARGET_GUIDANCE.get(tool_name.lower())
     if not guidance:
-        return f"# Target Guidance: {tool_name}\n\n*General Security Target:* Provide an authorized IP, hostname, or URL."
+        guidance = {
+            "expected_format": "Target IP, hostname, CIDR, or URL depending on tool capability",
+            "safe_sandbox": "127.0.0.1 (local loopback) or authorized test lab targets",
+            "permissible": [
+                "Local loopback (127.0.0.1) and authorized lab environments.",
+                "Authorized targets within scoped Rules of Engagement.",
+            ],
+            "prohibited": [
+                "Cloud metadata endpoints (169.254.169.254).",
+                "Out-of-scope third-party production systems.",
+            ],
+            "precautions": [
+                "Ensure target scope compliance before executing scans.",
+            ],
+            "general_knowledge": f"Automated security tool adapter for {tool_name}.",
+        }
 
     perm_bullets = "\n".join(f"- {p}" for p in guidance["permissible"])
     proh_bullets = "\n".join(f"- {p}" for p in guidance["prohibited"])

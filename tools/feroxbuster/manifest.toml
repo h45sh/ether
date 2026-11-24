@@ -1,0 +1,31 @@
+[meta]
+name = "feroxbuster"
+description = "Fast, recursive content discovery tool written in Rust using asynchronous HTTP requests."
+one_line_summary = "fast recursive content and directory discovery scanner in Rust"
+category = "Web Enumeration"
+categories = ["web", "recon", "crawler"]
+binary = "feroxbuster"
+theory = """
+### Protocol Theory & Recursive Content Enumeration
+Feroxbuster performs multi-threaded recursive directory brute forcing.
+When a directory or redirect is discovered, it recurses into sub-paths to construct a site tree.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["web.endpoint", "network.service"]
+
+[output]
+produces = ["web.endpoint"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard Recursive Fuzz"
+difficulty = "Beginner"
+description = "Recursive content discovery with JSON streaming output."
+flags = ["--json", "--silent"]

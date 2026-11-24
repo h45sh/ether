@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 #### Engineering Constraints & Mechanical Hardening
 * **Strict Static Typing**: Comprehensive MyPy strict type annotations across 56 source modules in `src/ether/`.
-* **In-Tree AST Mutation Testing**: Implemented sub-second AST mutation engine (`scripts/run_mutation_tests.py`) asserting 100% mutation kill score on core canonicalization and security boundary primitives.
+* **In-Tree AST Mutation Testing**: Implemented sub-second AST mutation engine (`tests/mutation/run_mutation_tests.py`) asserting 100% mutation kill score on core canonicalization and security boundary primitives.
 * **Behavioral Scenario Contracts**: Golden lifecycle contracts verifying full recon-to-compromise ingestion, SHA-256 PIK deterministic invariance, idempotent upsert, and forensic session immutability (`PermissionError` on sealed sessions).
 * **Package & PyPI Documentation Hardening**: Upgraded all relative links to absolute GitHub URLs in `README.md` to prevent broken links on the PyPI package page, and added comprehensive project URLs in `pyproject.toml`.
 

@@ -309,3 +309,47 @@ async def handle_graph_search(args: Any, context: CliContext) -> int:
 
     print_table(headers, rows)
     return EXIT_SUCCESS
+
+
+async def handle_graph_belief(args: Any, context: CliContext) -> int:
+    """Inspect and evaluate Bayesian beliefs and deception state for a session."""
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required.")
+        return EXIT_RUNTIME_ERROR
+
+    evaluate = bool(getattr(args, "evaluate", False))
+
+    async with context.open_store() as store:
+        if evaluate:
+            from ether.graph.analytics import GraphAnalyticsEngine
+
+            beliefs = await GraphAnalyticsEngine.evaluate_and_persist(store, session_id)
+        else:
+            beliefs = await store.list_node_beliefs(session_id)
+            if not beliefs:
+                from ether.graph.analytics import GraphAnalyticsEngine
+
+                beliefs = await GraphAnalyticsEngine.evaluate_and_persist(store, session_id)
+
+    if context.is_json:
+        print_json(beliefs)
+        return EXIT_SUCCESS
+
+    if not beliefs:
+        print("No findings or belief records found for session.")
+        return EXIT_SUCCESS
+
+    headers = ["NODE ID", "CONFIDENCE", "HONEYPOT", "TARPIT", "INDICATORS"]
+    rows = []
+    for b in beliefs:
+        rows.append([
+            b["node_id"][:12] + "...",
+            f"{b['confidence']:.2f}",
+            "YES" if b["is_honeypot"] else "no",
+            "YES" if b["is_tarpit"] else "no",
+            ", ".join(b["indicators"]) if b["indicators"] else "none",
+        ])
+    print_table(headers, rows)
+    return EXIT_SUCCESS
+

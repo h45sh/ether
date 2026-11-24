@@ -1,0 +1,31 @@
+[meta]
+name = "wpscan"
+description = "WordPress security scanner auditing plugins, themes, and known CMS vulnerabilities."
+one_line_summary = "WordPress CMS vulnerability, theme, and plugin scanner"
+category = "Vulnerability Assessment"
+categories = ["web", "vuln", "cms"]
+binary = "wpscan"
+theory = """
+### Protocol Theory & CMS Component Auditing
+WPScan enumerates WordPress versions, installed plugins, and theme style headers, matching
+hashes and slug names against the WPScan vulnerability database.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["web.endpoint"]
+
+[output]
+produces = ["vulnerability.found", "audit.misconfig"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard WordPress Scan"
+difficulty = "Beginner"
+description = "Audit WordPress site for vulnerable plugins and core versions."
+flags = ["-f", "json", "--no-banner"]

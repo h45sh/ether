@@ -1,0 +1,31 @@
+[meta]
+name = "dnsrecon"
+description = "Advanced DNS enumeration tool performing SRV, AXFR zone transfer, PTR, and wildcard discovery."
+one_line_summary = "advanced DNS enumeration, zone transfer, and record discovery"
+category = "Asset Discovery"
+categories = ["recon", "dns", "osint"]
+binary = "dnsrecon"
+theory = """
+### Protocol Theory & DNS Record Enumeration
+Interrogates authoritative DNS nameservers for Zone Transfers (AXFR), SRV service discovery,
+TXT SPF/DMARC configurations, and reverse pointer PTR mappings.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["domain.info", "dns.record"]
+
+[output]
+produces = ["dns.record"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "Standard DNS Enumeration"
+difficulty = "Beginner"
+description = "Enumerate common DNS records with JSON output."
+flags = ["-j", "-"]

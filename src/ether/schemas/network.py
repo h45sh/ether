@@ -43,10 +43,13 @@ class NetworkService(BaseFinding):
         tls_cert_sha256: Optional[str] = None,
         ssh_hostkey_fingerprint: Optional[str] = None,
         anchor_hash: Optional[str] = None,
+        firewall_reason: Optional[str] = None,
         **kwargs,
     ):
         pik = {"host_ip": host_ip, "port": port, "protocol": protocol}
         data = {**pik, "service_name": service_name, **kwargs}
+        if firewall_reason:
+            data["firewall_reason"] = firewall_reason
         if tls_cert_sha256:
             data["tls_cert_sha256"] = tls_cert_sha256
             if not anchor_hash:
@@ -85,6 +88,9 @@ class NetworkService(BaseFinding):
             parts.append(f"Product banner: {banner}")
         if tls:
             parts.append(f"TLS SHA-256: {tls}")
+        fw = self.data.get("firewall_reason")
+        if fw:
+            parts.append(f"Firewall state: {fw}")
         return ". ".join(parts) + "."
 
 
