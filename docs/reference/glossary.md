@@ -134,3 +134,24 @@ _Avoid_: Raw JSON dump, stringified dict, toString
 The retrieval-augmented generation pattern in `GraphTelemetryCompiler` and MCP tools that pulls semantically related vulnerabilities, services, and credentials based on an agent's tactical objective.
 _Avoid_: Document search, semantic lookup, finding search
 
+---
+
+## Substrate Optimizations & Drift Analytics (Epoch 3)
+
+**Architectural Drift**:
+The measured structural divergence between an observed entity graph and a verified baseline specification, expressed as discrepancy findings across network surfaces, services, and endpoints.
+_Avoid_: Configuration audit, state diff, compliance scan, environment skew
+
+**Baseline Calibration**:
+A synthetic preflight probe dispatched by a web discovery tool to ascertain ambient 404 response geometry, deriving negative filter bounds to prevent graph pollution.
+_Avoid_: Fuzz tuning, 404 test, warmup scan, response profiling
+
+**Async Write Queue**:
+An asynchronous serialization channel that orders concurrent graph mutation requests through a single dedicated write connection to prevent contention in append-heavy workloads.
+_Avoid_: Task pool, write lock, transaction worker, batch worker
+
+**Drift Discrepancy Finding**:
+A normalized domain finding (`audit.drift`) denoting a specific topological divergence (such as an unexpected open port, absent expected service, or missing required HTTP header) between an observed session graph and an architectural baseline specification.
+_Avoid_: Diff node, discrepancy record, drift error, violation finding
+
+

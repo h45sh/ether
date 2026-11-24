@@ -243,7 +243,7 @@ ether mcp --transport sse --port 8000
 ```
 
 **Exposed MCP Tools:**
-* `execute_tool`: Supervise and run tools with timeout and output capture.
+* `execute_tool`: Supervise and run tools with timeout, output capture, and structured error diagnostics.
 * `abort_action`: Safely terminate active running background scan tasks.
 * `read_action_log`: Read recent spooled execution log lines for an action.
 * `query_graph`: Query typed finding entities and attributes from the graph.
@@ -256,10 +256,49 @@ ether mcp --transport sse --port 8000
 * `list_tools`: Discover all registered security tools, execution tiers, and installation status.
 * `get_tool_info`: Inspect input/output schema contracts and binary discovery status.
 * `manage_session`: Create, list, or inspect investigation sessions and workspaces.
+* `get_deception_report`: Analyze honeypots, delay-tarpits, and low-confidence finding beliefs.
+* `audit_drift`: Audit session graph against an architectural baseline specification.
 
 ---
 
-## 10. Real-World Goal-Oriented CLI Workflows
+## 10. Architectural Drift & Baseline Auditing (`ether drift`)
+
+The `ether drift` subsystem enables continuous architectural compliance verification by measuring the structural divergence between an observed session graph and an expected ground-truth baseline specification:
+
+```bash
+# 1. Export current verified graph state as ground-truth baseline JSON
+ether drift export-baseline <SESSION_ID> --out baseline.json
+
+# 2. Audit an observed session graph against the baseline in topology mode
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json
+
+# 3. Audit in strict mode (checking service versions, banners, and headers)
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json --mode strict
+
+# 4. Automatically record discrepancy findings (audit.drift) into session graph
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json --record
+
+# 5. Output drift report as machine-readable JSON
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json --json
+```
+
+### Full Positional & Keyword Argument Symmetry
+Ether CLI features an internal argument pre-normalization router. Autonomous AI agents and scripts can supply parameters either positionally or via standard options interchangeably without syntax errors:
+```bash
+# Equivalent positional and flag invocations:
+ether drift export-baseline <SESSION_ID> --out baseline.json
+ether drift export-baseline --session <SESSION_ID> --out baseline.json
+
+ether drift audit <SESSION_ID> --baseline baseline.json
+ether drift audit --session <SESSION_ID> --baseline baseline.json
+
+ether run nmap 192.168.1.1
+ether run --tool nmap --target 192.168.1.1
+```
+
+---
+
+## 11. Real-World Goal-Oriented CLI Workflows
 
 ### Workflow A: End-to-End External Surface Discovery Pipeline
 Automate a multi-stage target reconnaissance pass across passive DNS, port discovery, and web probing:

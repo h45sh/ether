@@ -156,7 +156,7 @@ Ether is multi-modal by design. You can drive the engine through any of the foll
 
 ### Method 1: The Headless CLI (For Operators & Shell Automation)
 
-The `ether` CLI provides 8 high-leverage subcommands to manage workspaces, supervise scans, query the graph, and search findings:
+The `ether` CLI provides 10 high-leverage subcommands to manage workspaces, supervise scans, query the graph, search findings, and audit architectural drift:
 
 ```bash
 # 1. Verify environment health and discovered security tools
@@ -182,6 +182,9 @@ ether telemetry snapshot "$SESSION_ID" --budget 2000
 
 # 8. Export forensic audit archive (encrypted with AES-256-GCM)
 ether graph export "$SESSION_ID" -o engagement_backup.enc --encrypt --passphrase "StrongPassword123"
+
+# 9. Audit architectural drift against an expected baseline
+ether drift audit "$SESSION_ID" --baseline baseline.json --record
 ```
 
 *For complete CLI reference and all flags, see the [Headless CLI Operations Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/cli-usage.md).*
@@ -190,7 +193,7 @@ ether graph export "$SESSION_ID" -o engagement_backup.enc --encrypt --passphrase
 
 ### Method 2: Native AI Agent MCP Server (For Claude Desktop, Cursor, & Swarms)
 
-Ether provides a built-in **Model Context Protocol (MCP)** server over standard I/O (`stdio`) or Server-Sent Events (`sse`), exposing 13 tools: `execute_tool`, `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`, `abort_action`, `get_attack_path`, `get_blast_radius`, `get_crown_jewels`, `list_tools`, `get_tool_info`, `manage_session`, and `read_action_log`.
+Ether provides a built-in **Model Context Protocol (MCP)** server over standard I/O (`stdio`) or Server-Sent Events (`sse`), exposing 15 tools: `execute_tool`, `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`, `abort_action`, `get_attack_path`, `get_blast_radius`, `get_crown_jewels`, `list_tools`, `get_tool_info`, `manage_session`, `read_action_log`, `get_deception_report`, and `audit_drift`.
 
 #### Configure Claude Desktop (`claude_desktop_config.json`)
 ```json

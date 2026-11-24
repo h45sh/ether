@@ -69,8 +69,10 @@ Ether treats cybersecurity operations through the lens of supervisory runtime de
 | **Filesystem & Inodes** | Deterministic `GraphStore` (SQLite WAL) | Mathematical Primary Identity Keys (PIK) hash into deterministic SHA-256 Node IDs ($H(\text{schema} + \text{sorted\_pik})$), guaranteeing idempotent upserts and relational integrity. |
 | **Access Control & Security Rings** | `ActionGateway` & `GatePolicy` | Policy enforcement: `GatePolicy.SAFE` (SSRF defense, link-local & cloud IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for authorized red-teams). |
 | **Hardware Migration & Anchoring** | Invariant Cryptographic Anchoring | Decouples volatile IPs from logical services via TLS (`tls:<sha256>`), SSH (`ssh:<fingerprint>`), and Favicon (`favicon:<hash>`) fingerprints, auto-wiring cross-IP migration edges. |
+| **Concurrency & Contention Control** | Async Write Queue & Read Pool | Single-writer serialization queue daemon buffering 50+ concurrent agents with adaptive batching (50 ops or 25ms), plus read connection pool (`PRAGMA query_only = ON`). |
 | **Temporal Confidence Engine** | State Decay TTL Windows | Automatically transitions finding confidence from `confirmed` $\to$ `flapping` $\to$ `stale` based on observation timestamps. |
-| **Embedded Acceleration** | Zero-Egress Vector Memory (`sqlite-vec`) | 384-dimensional unit vector engine inside SQLite for sub-millisecond semantic search and finding RAG without external model downloads or network egress. |
+| **Embedded Acceleration** | Zero-Egress Vector Memory (`sqlite-vec`) | Two-tier 384-dimensional unit vector engine (Tier 1 deterministic feature hashing, Tier 2 ONNX promotion) for sub-millisecond semantic search without remote egress. |
+| **Architectural Drift & Compliance** | Deterministic Drift Engine (`ether.drift`) | Computes normalized scalar drift scores ($D \in [0.0, 1.0]$) via Jaccard topological distance ($D_{topo} = 1 - \frac{|E \cap O|}{|E \cup O|}$) and strict version auditing. |
 | **System Calls & IPC** | Model Context Protocol & SDK | Headless interfaces for userland consumers (AI agents, operators, CLI, custom applications). |
 | **Audit Subsystem & dmesg** | Append-Only Event Log & Zero-Token Diffs | Cryptographic audit trail and set-theoretic delta computation ($\Delta = S_{t+1} \setminus S_t$) eliminating 98% of LLM context window bloat. |
 
@@ -122,11 +124,13 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
   
 [ 2. ActionGateway & Policy Enforcement ]
   - Evaluates GatePolicy (SAFE vs UNRESTRICTED)
+  - Dynamically inspects manifest.toml target_types contracts ("url", "ip", "cidr", "domain")
   - Validates target against engagement CIDR scope
   - Blocks cloud metadata (169.254.169.254, AWS IMDSv2, GCP, Azure)
   
 [ 3. ToolRegistry & Adapter Resolution ]
   - Locates adapter in tools/nmap/
+  - Out-of-band fuzzer 404 response geometry baseline calibration probe (/.ether_probe_<nonce>)
   - Validates binary installation on PATH
   - Constructs safe argument vector (List[str], zero shell=True)
   
@@ -139,8 +143,8 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
 [ 5. Stream Parsing & Graph Ingestion ]
   - Adapter streamingly yields normalized BaseFinding subclasses
   - Computes deterministic SHA-256 PIK Node IDs
-  - Ingests into GraphStore (idempotent upsert, auto-wires parent/assoc edges)
-  - Synchronizes 384-d vector embeddings in vec_findings
+  - Ingests into GraphStore via Single-Writer Async Queue (batching 50 ops or 25ms window)
+  - Synchronizes 384-d vector embeddings in vec_findings (Tier 1 hashing or Tier 2 ONNX)
   - Emits real-time reactive events to attached callbacks / MCP clients
 ```
 
@@ -156,3 +160,18 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
    - Sensitive session state and encrypted archives are created atomically with `0o600` permissions (`-rw-------`). Application directories enforce `0o700`.
 4. **AI Prompt Injection Boundary**:
    - Untrusted scan outputs passed to AI models are encapsulated inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with breakout neutralization (`</untrusted_scan_output>` replaced with `<\/untrusted_scan_output>`).
+
+---
+
+## 6. Architectural Drift & Continuous Compliance (`ether.drift`)
+
+Ether includes an architectural drift auditing subsystem designed to verify whether observed live attack surfaces conform to expected ground-truth baseline specifications.
+
+1. **Jaccard Topological Distance**:
+   In `topology` mode, Ether compares expected entities $E$ and observed entities $O$ using set-theoretic Jaccard topological distance:
+   $$D_{topo} = 1.0 - \frac{|E \cap O|}{|E \cup O|}$$
+   Where $D_{topo} = 0.0$ represents exact topological alignment, and $D_{topo} = 1.0$ represents total divergence.
+2. **Strict Mode Attribute & Version Auditing**:
+   In `strict` mode, Ether additionally evaluates matching nodes for attribute divergence—flagging downgraded or modified service versions, software banners, and missing mandatory headers.
+3. **Normalized Discrepancy Findings (`audit.drift`)**:
+   Divergences are recorded directly into the session graph as typed `audit.drift` findings (`missing_host`, `missing_service`, `rogue_service`, `version_divergence`) linked to target entities, allowing operators and autonomous agents to review structural discrepancies via CLI or MCP.

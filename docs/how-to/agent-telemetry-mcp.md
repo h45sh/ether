@@ -67,7 +67,7 @@ ether mcp --transport sse --port 8000
 
 ## 3. Authoritative MCP Tool Catalog
 
-The Ether MCP server exposes **13 high-leverage tools** organized across 5 core operational domains:
+The Ether MCP server exposes **15 high-leverage tools** organized across 6 core operational domains:
 
 ### Execution & Process Supervision
 
@@ -188,7 +188,59 @@ Unified interface to create, list, or inspect investigation workspaces and sessi
 
 ---
 
-## 4. Programmatic Agent Loop Example (Python)
+### Active Defense & Deception Intelligence
+
+#### 14. `get_deception_report`
+Evaluate and retrieve the deception, honeypot, and tarpit report for a session. Identifies active honeypots, delay-tarpits, and low-confidence findings using a 3-factor Bayesian belief engine over port entropy sprawl and banner signatures.
+* **Arguments:**
+  * `session_id` (str, optional): Target session ID (defaults to active session).
+* **Returns:** JSON payload listing `flagged_honeypots`, `active_tarpits`, and `low_confidence_findings`.
+
+---
+
+### Architectural Compliance & Drift Auditing
+
+#### 15. `audit_drift`
+Audit an observed session entity graph against an architectural baseline specification (file path or inline JSON string). Calculates normalized Jaccard topological distance $D_{topo} \in [0.0, 1.0]$ and identifies unexpected rogue services or missing required nodes.
+* **Arguments:**
+  * `baseline` (str): Baseline specification file path or JSON string.
+  * `session_id` (str, optional): Target session ID (defaults to active session).
+  * `mode` (str, default: `"topology"`): Audit mode (`"topology"` or `"strict"`).
+  * `record_findings` (bool, default: `false`): Whether to record `audit.drift` findings into the session graph.
+* **Returns:** Structured JSON `DriftReport` with `drift_score`, `mode`, `summary`, and detailed `discrepancies`.
+
+---
+
+## 4. High-Fidelity Execution Error Diagnostics & Autonomous Self-Healing
+
+When tools fail during execution (e.g., host unreachable, binary missing, or command timeout), traditional MCP implementations crash the JSON-RPC channel or return opaque empty findings.
+
+Ether surfaces granular execution telemetry payloads with a standardized `ExecutionErrorCategory` taxonomy without disconnecting the client session:
+
+```json
+{
+  "is_error": true,
+  "error_category": "TARGET_UNREACHABLE",
+  "exit_code": 1,
+  "stderr_snippet": "Connection refused by remote host 10.254.254.1:80",
+  "error": "ConnectionRefusedError",
+  "message": "Connection refused by remote host 10.254.254.1:80",
+  "remediation": "Verify target host routing and port accessibility."
+}
+```
+
+### Standardized Error Taxonomy (`ExecutionErrorCategory`):
+| Category | Exit Code | Diagnostic Trigger | Agent Self-Healing Action |
+| :--- | :--- | :--- | :--- |
+| `TARGET_UNREACHABLE` | `1` | Connection refused, host unreachable, no route to host, DNS lookup failure. | Verify target routing, switch to ping/ARP probe, or update target address. |
+| `COMMAND_TIMEOUT` | `124` | Execution deadline exceeded configured `timeout_seconds`. | Increase `timeout_seconds` or narrow scan scope (e.g., specific ports instead of `-p-`). |
+| `BINARY_MISSING` | `127` | Tool is unregistered or binary executable not found on host `$PATH`. | Fall back to an in-process Tier A coroutine tool (e.g. `http_probe`, `dnspython`). |
+| `SCOPE_BLOCKED` | `1` | Preflight gate rejected execution under active `GatePolicy` (SSRF/IMDS). | Refine target scope or switch to `GatePolicy.UNRESTRICTED` if authorized. |
+| `NON_ZERO_EXIT` | `1+` | General tool execution failure or abnormal process exit. | Inspect `stderr_snippet` and adjust custom `arguments` flags. |
+
+---
+
+## 5. Programmatic Agent Loop Example (Python)
 
 Agents can query snapshots and stream deltas directly using the Python SDK:
 
@@ -223,7 +275,7 @@ if __name__ == "__main__":
 
 ---
 
-## 5. Security Invariant: Prompt Injection Defense
+## 6. Security Invariant: Prompt Injection Defense
 
 All untrusted scan output processed by Ether's MCP server and telemetry engine is sanitized via `sanitize_untrusted_output()`:
 1. Wrapped in structural `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags.
@@ -232,7 +284,7 @@ All untrusted scan output processed by Ether's MCP server and telemetry engine i
 
 ---
 
-## 6. Multi-Client Setup Reference
+## 7. Multi-Client Setup Reference
 
 ### A. Claude Desktop
 Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
@@ -277,7 +329,7 @@ Configure your agent client with the SSE URL: `http://localhost:8000/sse`.
 
 ---
 
-## 7. Practical Agent Prompts & Workflows
+## 8. Practical Agent Prompts & Workflows
 
 Once connected to Ether via MCP, give your agent natural language objectives:
 
@@ -297,7 +349,7 @@ Once connected to Ether via MCP, give your agent natural language objectives:
 
 ---
 
-## 8. Troubleshooting & Verification
+## 9. Troubleshooting & Verification
 
 ### Test Using the Official MCP Inspector
 You can verify your Ether MCP server locally using the Anthropic MCP Inspector:
