@@ -675,6 +675,47 @@ class PreflightVerifier:
                     )
                 )
 
+    def _get_tool_target_types(self, tool_name: str) -> Set[str]:
+        """Dynamically extract supported target types ('url', 'ip', 'cidr', 'domain') for a tool."""
+        if self.registry:
+            tool_data = self.registry.get_tool(tool_name)
+            if tool_data and isinstance(tool_data, dict):
+                manifest = tool_data.get("manifest")
+                if manifest:
+                    input_cfg = getattr(manifest, "input", {})
+                    if isinstance(input_cfg, dict) and "target_types" in input_cfg:
+                        return set(input_cfg["target_types"])
+                    if hasattr(manifest, "target_types") and manifest.target_types:
+                        return set(manifest.target_types)
+
+                    accepts = (
+                        input_cfg.get("accepts", [])
+                        if isinstance(input_cfg, dict)
+                        else getattr(input_cfg, "accepts", [])
+                    )
+                    types = set()
+                    for schema in accepts:
+                        if schema in ("web.endpoint", "web.url"):
+                            types.add("url")
+                        elif schema in ("network.host", "network.service"):
+                            types.update({"ip", "cidr", "domain"})
+                        elif schema in ("domain.info", "dns.record"):
+                            types.update({"domain", "ip"})
+                    if types:
+                        return types
+
+        # Fallback to static sets for backwards compatibility
+        types = set()
+        if tool_name in WEB_TOOLS:
+            types.add("url")
+            if tool_name == "http_probe":
+                types.update({"ip", "domain"})
+        if tool_name in NETWORK_TOOLS:
+            types.update({"ip", "cidr", "domain"})
+        if tool_name in DOMAIN_TOOLS:
+            types.update({"domain", "ip"})
+        return types or {"url", "ip", "cidr", "domain"}
+
     def _check_target(
         self,
         tool_name: str,
@@ -682,7 +723,11 @@ class PreflightVerifier:
         report: PreflightReport,
     ) -> None:
         """Validate target presence, unresolved variable placeholders, and tool scheme alignment."""
-        is_web = tool_name in WEB_TOOLS
+        target_types = self._get_tool_target_types(tool_name)
+        is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
+        is_network_or_domain = (
+            ("ip" in target_types or "domain" in target_types) and "url" not in target_types
+        )
         default_target = DEFAULT_TOOL_TARGETS.get(
             tool_name, "http://127.0.0.1:8888" if is_web else "127.0.0.1"
         )
@@ -723,43 +768,41 @@ class PreflightVerifier:
             )
             return
 
-        # Scheme rules for Web tools
-        if is_web:
-            has_scheme = target.startswith("http://") or target.startswith("https://")
-            if not has_scheme:
-                fixed_target = f"http://{target}"
-                report.issues.append(
-                    PreflightIssue(
-                        category="target",
-                        severity="error",
-                        title=f"Web tool '{tool_name}' requires an HTTP/HTTPS URL",
-                        description=f"Target '{target}' is missing the protocol scheme ('http://' or 'https://').",
-                        remediation_hint=f"Prepend 'http://' to the target URL: '{fixed_target}'.",
-                        can_auto_remedy=True,
-                        remedy_label=f"Set '{fixed_target}'",
-                        remedy_action="fix_target_scheme",
-                        remedy_payload=fixed_target,
-                    )
-                )
+        has_scheme = target.startswith("http://") or target.startswith("https://")
 
-        # Scheme rules for Network and Domain tools (warnings)
-        elif tool_name in NETWORK_TOOLS or tool_name in DOMAIN_TOOLS:
-            has_scheme = target.startswith("http://") or target.startswith("https://")
-            if has_scheme:
-                clean_host = self._extract_clean_hostname(target)
-                report.issues.append(
-                    PreflightIssue(
-                        category="target",
-                        severity="warning",
-                        title=f"Tool '{tool_name}' expects a host or IP, not a URL",
-                        description=f"Target '{target}' contains a URL scheme and/or path which may cause probe errors.",
-                        remediation_hint=f"Strip URL scheme and path to use bare hostname '{clean_host}'.",
-                        can_auto_remedy=True,
-                        remedy_label=f"Strip to '{clean_host}'",
-                        remedy_action="strip_url_scheme",
-                        remedy_payload=clean_host,
-                    )
+        # Scheme rules for tools that ONLY accept Web URL
+        if is_web and not has_scheme:
+            fixed_target = f"http://{target}"
+            report.issues.append(
+                PreflightIssue(
+                    category="target",
+                    severity="error",
+                    title=f"Web tool '{tool_name}' requires an HTTP/HTTPS URL",
+                    description=f"Target '{target}' is missing the protocol scheme ('http://' or 'https://').",
+                    remediation_hint=f"Prepend 'http://' to the target URL: '{fixed_target}'.",
+                    can_auto_remedy=True,
+                    remedy_label=f"Set '{fixed_target}'",
+                    remedy_action="fix_target_scheme",
+                    remedy_payload=fixed_target,
                 )
+            )
+
+        # Scheme rules for Network and Domain tools that do NOT accept URLs (warnings)
+        elif is_network_or_domain and has_scheme:
+            clean_host = self._extract_clean_hostname(target)
+            report.issues.append(
+                PreflightIssue(
+                    category="target",
+                    severity="warning",
+                    title=f"Tool '{tool_name}' expects a host or IP, not a URL",
+                    description=f"Target '{target}' contains a URL scheme and/or path which may cause probe errors.",
+                    remediation_hint=f"Strip URL scheme and path to use bare hostname '{clean_host}'.",
+                    can_auto_remedy=True,
+                    remedy_label=f"Strip to '{clean_host}'",
+                    remedy_action="strip_url_scheme",
+                    remedy_payload=clean_host,
+                )
+            )
 
     def _check_wordlists(
         self,
