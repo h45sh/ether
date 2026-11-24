@@ -4,9 +4,51 @@ import pytest
 
 from ether.cli.commands.telemetry import handle_telemetry_snapshot
 from ether.cli.context import CliContext
-from ether.cli.router import build_parser
+from ether.cli.router import build_parser, normalize_cli_args
 from ether.graph.store import GraphStore
 from ether.schemas.network import NetworkHost
+
+
+@pytest.mark.fast
+def test_cli_positional_keyword_symmetry():
+    parser = build_parser()
+
+    # 1. run command: positional vs keyword
+    argv1 = normalize_cli_args(["run", "nmap", "127.0.0.1"])
+    args1 = parser.parse_args(argv1)
+    argv2 = normalize_cli_args(["run", "--tool", "nmap", "--target", "127.0.0.1"])
+    args2 = parser.parse_args(argv2)
+    assert args1.tool == args2.tool == "nmap"
+    assert args1.target == args2.target == "127.0.0.1"
+
+    # 2. session list: positional vs keyword
+    argv3 = normalize_cli_args(["session", "list", "ws-456"])
+    args3 = parser.parse_args(argv3)
+    argv4 = normalize_cli_args(["session", "list", "--workspace-id", "ws-456"])
+    args4 = parser.parse_args(argv4)
+    assert args3.workspace_id == args4.workspace_id == "ws-456"
+
+    # 3. graph list-nodes: positional vs keyword
+    argv5 = normalize_cli_args(["graph", "list-nodes", "sess-789"])
+    args5 = parser.parse_args(argv5)
+    argv6 = normalize_cli_args(["graph", "list-nodes", "--session-id", "sess-789"])
+    args6 = parser.parse_args(argv6)
+    assert args5.session_id == args6.session_id == "sess-789"
+
+    # 4. graph export: positional vs keyword
+    argv7 = normalize_cli_args(["graph", "export", "sess-101", "out.json"])
+    args7 = parser.parse_args(argv7)
+    argv8 = normalize_cli_args(["graph", "export", "--session-id", "sess-101", "--output", "out.json"])
+    args8 = parser.parse_args(argv8)
+    assert args7.session_id == args8.session_id == "sess-101"
+    assert args7.output == args8.output == "out.json"
+
+    # 5. tool info: positional vs keyword
+    argv9 = normalize_cli_args(["tool", "info", "subfinder"])
+    args9 = parser.parse_args(argv9)
+    argv10 = normalize_cli_args(["tool", "info", "--name", "subfinder"])
+    args10 = parser.parse_args(argv10)
+    assert args9.name == args10.name == "subfinder"
 
 
 @pytest.mark.fast

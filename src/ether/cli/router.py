@@ -335,10 +335,227 @@ def _run_coroutine(coro):
     return asyncio.run(coro)
 
 
+def normalize_cli_args(argv: Optional[List[str]] = None) -> List[str]:
+    """Pre-normalize CLI argument vector for 100% positional and keyword parameter symmetry."""
+    if argv is None:
+        argv = sys.argv[1:]
+    else:
+        argv = list(argv)
+
+    if not argv:
+        return argv
+
+    subcmd_idx = -1
+    subcommands = {
+        "doctor",
+        "tool",
+        "run",
+        "session",
+        "graph",
+        "telemetry",
+        "logs",
+        "mcp",
+        "pipeline",
+        "drift",
+    }
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in subcommands:
+            subcmd_idx = i
+            break
+        if arg in ("--data-dir", "--db", "--tools", "--policy"):
+            i += 2
+            continue
+        i += 1
+
+    if subcmd_idx == -1:
+        return argv
+
+    subcmd = argv[subcmd_idx]
+    prefix = argv[: subcmd_idx + 1]
+    rest = argv[subcmd_idx + 1 :]
+
+    if subcmd == "run":
+        new_rest = []
+        tool_val = None
+        target_val = None
+        idx = 0
+        while idx < len(rest):
+            token = rest[idx]
+            if token == "--flags":
+                new_rest.extend(rest[idx:])
+                break
+            elif token == "--tool":
+                if idx + 1 < len(rest):
+                    tool_val = rest[idx + 1]
+                    idx += 2
+                    continue
+            elif token.startswith("--tool="):
+                tool_val = token.split("=", 1)[1]
+                idx += 1
+                continue
+            elif token == "--target":
+                if idx + 1 < len(rest):
+                    target_val = rest[idx + 1]
+                    idx += 2
+                    continue
+            elif token.startswith("--target="):
+                target_val = token.split("=", 1)[1]
+                idx += 1
+                continue
+            new_rest.append(token)
+            idx += 1
+
+        pos_args = []
+        opt_args = []
+        j = 0
+        while j < len(new_rest):
+            t = new_rest[j]
+            if t.startswith("-"):
+                opt_args.extend(new_rest[j:])
+                break
+            pos_args.append(t)
+            j += 1
+
+        final_pos = list(pos_args)
+        if len(final_pos) == 0 and tool_val:
+            final_pos.append(tool_val)
+        if len(final_pos) == 1 and target_val:
+            final_pos.append(target_val)
+
+        return prefix + final_pos + opt_args
+
+    elif subcmd == "session":
+        if rest and rest[0] == "list":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            if len(sub_rest) == 1 and not sub_rest[0].startswith("-"):
+                return prefix + sub_prefix + ["--workspace-id", sub_rest[0]]
+            return prefix + rest
+        elif rest and rest[0] == "create":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            new_sub_rest = []
+            name_val = None
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token == "--name":
+                    if idx + 1 < len(sub_rest):
+                        name_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--name="):
+                    name_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if name_val:
+                return prefix + sub_prefix + [name_val] + new_sub_rest
+            return prefix + rest
+
+    elif subcmd == "tool":
+        if rest and rest[0] == "info":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            name_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("--name", "--tool"):
+                    if idx + 1 < len(sub_rest):
+                        name_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--name=") or token.startswith("--tool="):
+                    name_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if name_val:
+                return prefix + sub_prefix + [name_val] + new_sub_rest
+            return prefix + rest
+
+    elif subcmd == "graph":
+        if rest and rest[0] in ("list-nodes", "prune", "search"):
+            sub_action = rest[0]
+            sub_prefix = [sub_action]
+            sub_rest = rest[1:]
+            sess_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+        elif rest and rest[0] == "export":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            sess_val = None
+            out_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                elif token in ("-o", "--output"):
+                    if idx + 1 < len(sub_rest):
+                        out_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--output="):
+                    out_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            pos = [t for t in new_sub_rest if not t.startswith("-")]
+            opts = [t for t in new_sub_rest if t.startswith("-")]
+            if sess_val and out_val:
+                return prefix + sub_prefix + [sess_val] + opts + ["-o", out_val]
+            elif sess_val and len(pos) == 1:
+                return prefix + sub_prefix + [sess_val] + opts + ["-o", pos[0]]
+            elif len(pos) == 2 and not out_val:
+                return prefix + sub_prefix + [pos[0]] + opts + ["-o", pos[1]]
+            elif sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+
+    return prefix + rest
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """CLI execution entrypoint."""
+    if argv is None:
+        argv = sys.argv[1:]
+    normalized_argv = normalize_cli_args(argv)
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(normalized_argv)
 
     if not args.subcommand:
         parser.print_help()
