@@ -100,6 +100,8 @@ DEFAULT_TOOL_TARGETS: dict[str, str] = {
     "imds_probe": "127.0.0.1",
     "cloud_enum": "example",
     "stealth_scan": "127.0.0.1",
+    "tls_probe": "127.0.0.1",
+    "sslyze": "127.0.0.1",
 }
 
 TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {

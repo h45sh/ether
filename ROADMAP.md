@@ -188,28 +188,28 @@ Expand Ether pluggable tool adapters (`tools/<name>/`) to cover all standard Kal
 #### 4. Substrate Optimizations, Diagnostic Fidelity & Ergonomic Improvements (From Live Multi-Agent Evaluation & Performance Critique)
 Based on empirical findings, failure modes, and performance telemetry from the 6-subagent dual-posture AWS evaluation documented in `reports/ether_performance_critique_roadmap.html`:
 
-- [ ] **CLI Router Full Symmetry & Flexible Argument Normalization (`ether.cli`):**
+- [x] **CLI Router Full Symmetry & Flexible Argument Normalization (`ether.cli`):**
   - Normalize argument parsing across all subcommands so commands accept both positional arguments and flags interchangeably (e.g. `ether graph search [session_id] [query]` vs `ether graph search --session-id <id> --query <q>`, `ether session create [name]` vs `ether session create --name <name>`).
   - Eliminates syntax invocation failures for autonomous AI agents that vary between positional and keyword argument formulations.
-- [ ] **Dynamic Adapter-Driven Preflight Gate (`ether.gateway.preflight`):**
+- [x] **Dynamic Adapter-Driven Preflight Gate (`ether.gateway.preflight`):**
   - Refactor `preflight.py` to eliminate brittle static lists (such as `WEB_TOOLS` strictly mandating `http://` or `https://` prefixes).
   - Dynamically infer target schema validation rules directly from `ToolAdapter.target_schemas` and `manifest.toml` contracts, allowing hybrid probers (`http_probe`) to seamlessly accept bare IPs, domains, or full URLs.
-- [ ] **Automated Fuzzer Response Baseline Calibration (`FfufAdapter` / `GobusterAdapter`):**
+- [x] **Automated Fuzzer Response Baseline Calibration (`FfufAdapter` / `GobusterAdapter`):**
   - Implement an automated calibration preflight probe in web fuzzers: before launching full wordlist traversal, dispatch a probe against a randomized non-existent endpoint (e.g. `/.ether_probe_404_nonce`).
   - Automatically analyze the response length, word count, and line count, dynamically appending `-fs <size>` or `-fw <words>` to filter out uniform default web server responses (e.g., Nginx static 200s) and prevent false-positive graph bloat.
-- [ ] **Native Architectural Drift Engine & Baseline Comparison (`ether.drift`):**
+- [x] **Native Architectural Drift Engine & Baseline Comparison (`ether.drift`):**
   - Provide a native CLI command `ether drift audit <session_id> --baseline <ground_truth.json>` and an MCP supervisory tool `audit_drift`.
   - Compares observed live graph state against target ground-truth architecture specifications, outputting structured mathematical drift scores, unexpected open ports, missing mandatory security headers, and container restart discrepancies.
-- [ ] **High-Fidelity MCP Error & Execution Diagnostics (`ether.mcp`):**
+- [x] **High-Fidelity MCP Error & Execution Diagnostics (`ether.mcp`):**
   - Enhance MCP tool execution responses to surface granular error diagnostics (`exit_code`, `stderr_snippet`, `error_category`, `is_error`) rather than masking command failures or network timeouts as generic zero-finding completed runs.
   - Enables autonomous AI agents to perform immediate self-healing, flag firewall drops, or modify tool parameters dynamically.
-- [ ] **SQLite High-Concurrency Async Write Serialization & Connection Pooling (`GraphStore`):**
+- [x] **SQLite High-Concurrency Async Write Serialization & Connection Pooling (`GraphStore`):**
   - Implement an asynchronous write queue daemon and connection pool for `GraphStore`.
   - Eliminates SQLite WAL write lock contention and transaction queue latency when 50+ autonomous subagents execute parallel actions against the shared `~/.ether/ether.db` database.
-- [ ] **Hermetic In-Tree Semantic Vector Embeddings (`FastEmbed` / `ONNX`):**
+- [x] **Hermetic In-Tree Semantic Vector Embeddings (`FastEmbed` / `ONNX`):**
   - Package lightweight, zero-dependency quantized embedding models (e.g. FastEmbed / ONNX all-MiniLM-L6-v2) directly inside Ether.
   - Ensures 100% offline, zero-network-egress semantic vector search, MITRE ATT&CK technique mapping, and finding correlation without requiring external API tokens or heavy PyTorch/transformers dependencies.
-- [ ] **Dedicated Cryptographic TLS/Cipher Suite Adapter (`tools/sslyze/` / `tools/testssl/`):**
+- [x] **Dedicated Cryptographic TLS/Cipher Suite Adapter (`tools/sslyze/` / `tools/testssl/`):**
   - Implement a deep protocol adapter auditing SSLv3, TLS 1.0/1.1 deprecation, weak cipher suites (CBC, RC4, 3DES), certificate revocation/expiry, and Heartbleed/ROBOT vulnerabilities.
   - Emits typed `tls.certificate` and `tls.cipher_suite` findings directly into the target graph for automated compliance scoring.
 
