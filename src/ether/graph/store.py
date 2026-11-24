@@ -145,9 +145,14 @@ class GraphStore:
         self._conn: Optional[aiosqlite.Connection] = None
         self._lock: Optional[asyncio.Lock] = None
         self._closed: bool = False
+        self._closing: bool = False
         self._session_bloom: Dict[str, Any] = {}
         self._warmed_sessions: Set[str] = set()
         self.timeline = ActionTimelineRepository(self)
+        self._write_queue: Optional[asyncio.Queue] = None
+        self._writer_task: Optional[asyncio.Task] = None
+        self._read_pool: List[aiosqlite.Connection] = []
+        self._read_pool_lock: Optional[asyncio.Lock] = None
 
     def _get_lock(self) -> asyncio.Lock:
         if self._lock is None:
@@ -250,6 +255,7 @@ class GraphStore:
 
     async def initialize(self):
         """Create tables and indices if they don't exist, applying migrations if needed."""
+        self._ensure_writer_started()
         async with self._get_conn() as db:
             await self._migrate_schema(db)
             await db.executescript(SCHEMA_DDL)
@@ -266,9 +272,174 @@ class GraphStore:
             tables = [r[0] for r in await cursor.fetchall()]
             return integrity_status, tables
 
+    def _get_read_pool_lock(self) -> asyncio.Lock:
+        if self._read_pool_lock is None:
+            self._read_pool_lock = asyncio.Lock()
+        return self._read_pool_lock
+
+    @asynccontextmanager
+    async def _get_read_conn(self):
+        """Acquire a read-only database connection from pool or fallback to primary in memory."""
+        if self._closed:
+            raise ValueError("Cannot operate on a closed database.")
+        if self.db_path == ":memory:":
+            async with self._get_conn() as conn:
+                yield conn
+            return
+
+        conn = None
+        async with self._get_read_pool_lock():
+            if self._read_pool:
+                conn = self._read_pool.pop()
+
+        if conn is None:
+            conn = await aiosqlite.connect(self.db_path)
+            await conn.execute("PRAGMA query_only = ON")
+            await conn.execute("PRAGMA busy_timeout = 5000")
+            if sqlite_vec is not None:
+                try:
+                    await conn.enable_load_extension(True)
+                    await conn.load_extension(sqlite_vec.loadable_path())
+                    await conn.enable_load_extension(False)
+                except Exception:
+                    pass
+
+        try:
+            yield conn
+        finally:
+            if not self._closed and not self._closing:
+                async with self._get_read_pool_lock():
+                    if len(self._read_pool) < 10:
+                        self._read_pool.append(conn)
+                    else:
+                        await conn.close()
+            else:
+                await conn.close()
+
+    def _ensure_writer_started(self) -> None:
+        if self._closed:
+            raise ValueError("Cannot operate on a closed database.")
+        if self._write_queue is None:
+            self._write_queue = asyncio.Queue()
+            self._writer_task = asyncio.create_task(self._writer_loop())
+
+    async def _enqueue_write(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        if self._closed:
+            raise ValueError("Cannot operate on a closed database.")
+        self._ensure_writer_started()
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        await self._write_queue.put((func, args, kwargs, fut))
+        return await fut
+
+    async def _writer_loop(self) -> None:
+        """Dedicated background single-writer worker with adaptive transaction batching."""
+        while True:
+            if self._closed and (self._write_queue is None or self._write_queue.empty()):
+                break
+            try:
+                if self._write_queue is None:
+                    break
+                try:
+                    first_op = await asyncio.wait_for(self._write_queue.get(), timeout=0.05)
+                except asyncio.TimeoutError:
+                    if self._closing and (self._write_queue is None or self._write_queue.empty()):
+                        break
+                    continue
+
+                batch = [first_op]
+                loop = asyncio.get_running_loop()
+                deadline = loop.time() + 0.025  # 25ms batch window
+
+                while len(batch) < 50:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        op = await asyncio.wait_for(self._write_queue.get(), timeout=remaining)
+                        batch.append(op)
+                    except asyncio.TimeoutError:
+                        break
+
+                await self._process_write_batch(batch)
+
+            except asyncio.CancelledError:
+                if self._write_queue:
+                    remaining_ops = []
+                    while not self._write_queue.empty():
+                        try:
+                            remaining_ops.append(self._write_queue.get_nowait())
+                        except Exception:
+                            break
+                    if remaining_ops:
+                        await self._process_write_batch(remaining_ops)
+                break
+            except Exception as e:
+                logger.error(f"Error in GraphStore writer loop: {e}", exc_info=True)
+                await asyncio.sleep(0.01)
+
+    async def _process_write_batch(self, batch: list) -> None:
+        """Execute a batch of write operations in a single transaction."""
+        async with self._get_conn() as db:
+            results = []
+            for func, args, kwargs, fut in batch:
+                if fut.cancelled():
+                    results.append((fut, None, None))
+                    continue
+                try:
+                    res = await func(db, *args, **kwargs)
+                    results.append((fut, res, None))
+                except Exception as ex:
+                    results.append((fut, None, ex))
+
+            try:
+                await db.commit()
+            except Exception as commit_err:
+                for fut, _, _ in results:
+                    if not fut.cancelled() and not fut.done():
+                        fut.set_exception(commit_err)
+                for _ in batch:
+                    self._write_queue.task_done()
+                return
+
+            for fut, res, ex in results:
+                if not fut.cancelled() and not fut.done():
+                    if ex is not None:
+                        fut.set_exception(ex)
+                    else:
+                        fut.set_result(res)
+
+            for _ in batch:
+                self._write_queue.task_done()
+
     async def close(self):
-        """Close the persistent connection if it exists."""
+        """Close the database cleanly, draining all pending operations."""
+        self._closing = True
+
+        # 1. Drain pending write queue operations
+        if self._write_queue is not None:
+            await self._write_queue.join()
+
+        if self._writer_task is not None and not self._writer_task.done():
+            self._writer_task.cancel()
+            try:
+                await self._writer_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._writer_task = None
+
         self._closed = True
+
+        # 2. Close reader pool
+        if self._read_pool:
+            for r_conn in self._read_pool:
+                try:
+                    await r_conn.close()
+                except Exception:
+                    pass
+            self._read_pool.clear()
+
+        # 3. Close primary persistent connection
         if self._conn:
             try:
                 await self._conn.close()
@@ -399,7 +570,7 @@ class GraphStore:
 
     async def get_session(self, session_id: str) -> Optional[Dict]:
         """Get session metadata."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
             row = await cursor.fetchone()
@@ -408,7 +579,7 @@ class GraphStore:
     async def list_sessions(
         self, workspace_id: str, status_filter: Optional[str] = None
     ) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             if status_filter:
                 cursor = await db.execute(
@@ -565,9 +736,52 @@ class GraphStore:
         if not findings:
             return []
 
-        if await self.is_session_closed(session_id):
-            raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
+        node_ids, unique_node_ids, parent_nodes, assoc_nodes = await self._enqueue_write(
+            self._raw_upsert_findings_batch, session_id, findings, action_id
+        )
 
+        bloom = self._get_bloom(session_id)
+        # Update Bloom filter with all newly upserted node IDs and relationship nodes
+        for nid in unique_node_ids:
+            bloom.add(nid)
+        for p_nid in parent_nodes:
+            bloom.add(p_nid)
+        for a_nid in assoc_nodes:
+            bloom.add(a_nid)
+
+        # Trigger reactive callbacks
+        if self._on_batch_callbacks and findings:
+            for cb in self._on_batch_callbacks:
+                try:
+                    await cb(session_id, findings)
+                except Exception as e:
+                    logger.error(
+                        f"Error in reactive batch callback {getattr(cb, '__name__', 'callback')}: {e}"
+                    )
+
+        if self._on_upsert_callbacks and findings:
+            for finding in findings:
+                for upsert_cb in self._on_upsert_callbacks:
+                    try:
+                        await upsert_cb(session_id, finding)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in reactive callback {getattr(upsert_cb, '__name__', 'callback')}: {e}"
+                        )
+
+        return node_ids
+
+    async def _raw_upsert_findings_batch(
+        self,
+        db: aiosqlite.Connection,
+        session_id: str,
+        findings: List[BaseFinding],
+        action_id: Optional[str] = None,
+    ) -> tuple[List[str], List[str], Dict[str, tuple], Dict[str, tuple]]:
+        cursor = await db.execute("SELECT status FROM sessions WHERE id = ? LIMIT 1", (session_id,))
+        row = await cursor.fetchone()
+        if row and row[0] == "CLOSED":
+            raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
         node_ids: List[str] = []
         event_log_params = []
         unique_node_ids: List[str] = []
@@ -670,196 +884,195 @@ class GraphStore:
 
         bloom = self._get_bloom(session_id)
 
-        async with self._get_conn() as db:
-            # Warm up bloom filter for this session if newly accessed
-            if session_id not in self._warmed_sessions:
-                cursor = await db.execute(
-                    "SELECT id FROM nodes WHERE session_id = ?", (session_id,)
-                )
-                rows = await cursor.fetchall()
-                for (nid,) in rows:
-                    bloom.add(nid)
-                self._warmed_sessions.add(session_id)
+        # Warm up bloom filter for this session if newly accessed
+        if session_id not in self._warmed_sessions:
+            cursor = await db.execute(
+                "SELECT id FROM nodes WHERE session_id = ?", (session_id,)
+            )
+            rows = await cursor.fetchall()
+            for (nid,) in rows:
+                bloom.add(nid)
+            self._warmed_sessions.add(session_id)
 
-            # 1. Log the events in a single batch
+        # 1. Log the events in a single batch
+        await db.executemany(
+            """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            event_log_params,
+        )
+
+        # 2. Fetch existing data only for candidate node IDs that might exist in this session (via Bloom filter)
+        candidate_ids = [nid for nid in unique_node_ids if nid in bloom]
+        if candidate_ids:
+            for i in range(0, len(candidate_ids), 500):
+                chunk = candidate_ids[i : i + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                query_parts = (
+                    "SELECT id, data_json FROM nodes WHERE session_id = ? AND id IN (",
+                    placeholders,
+                    ")",
+                )
+                select_sql = "".join(query_parts)
+                cursor = await db.execute(select_sql, [session_id, *chunk])
+                rows = await cursor.fetchall()
+                for r_id, r_data in rows:
+                    if r_data:
+                        merged = json.loads(r_data)
+                        merged.update(node_metadata[r_id]["data"])
+                        node_metadata[r_id]["data"] = merged
+
+        # 3. Batch upsert the nodes
+        nodes_params = [
+            (
+                session_id,
+                nid,
+                meta["schema_type"],
+                json.dumps(meta["pik"]),
+                json.dumps(meta["data"]),
+                meta["status"],
+                action_id,
+                action_id,
+                meta["ttl_seconds"],
+                meta["anchor_hash"],
+            )
+            for nid, meta in node_metadata.items()
+        ]
+        await db.executemany(
+            """INSERT INTO nodes (
+                   session_id, id, schema_type, pik_json, data_json, status,
+                   action_id, created_action_id, ttl_seconds, anchor_hash,
+                   observation_count, last_seen_at
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+               ON CONFLICT(session_id, id) DO UPDATE SET
+                   data_json = excluded.data_json,
+                   status = excluded.status,
+                   action_id = COALESCE(excluded.action_id, nodes.action_id),
+                   observation_count = nodes.observation_count + 1,
+                   ttl_seconds = excluded.ttl_seconds,
+                   anchor_hash = COALESCE(excluded.anchor_hash, nodes.anchor_hash),
+                   last_seen_at = CURRENT_TIMESTAMP,
+                   updated_at = CURRENT_TIMESTAMP""",
+            nodes_params,
+        )
+
+        # 4. Handle Parent and Association Relations (Auto-wiring in consolidated batches)
+        rel_nodes = list(parent_nodes.values())
+        if assoc_nodes:
+            rel_nodes.extend(assoc_nodes.values())
+        if rel_nodes:
+            await db.executemany(
+                """INSERT OR IGNORE INTO nodes (
+                       session_id, id, schema_type, pik_json, data_json,
+                       action_id, created_action_id, observation_count, ttl_seconds, last_seen_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3600, CURRENT_TIMESTAMP)""",
+                [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
+            )
+
+        # 4.5 Invariant Identity Anchoring & Cross-IP Migration
+        migration_edges: set = set()
+        stale_migrated_node_ids: set = set()
+        migration_event_params = []
+
+        for nid, meta in node_metadata.items():
+            anchor = meta.get("anchor_hash")
+            if not anchor:
+                continue
+            cursor = await db.execute(
+                """
+                SELECT n.id, n.status,
+                       (SELECT 1 FROM edges e
+                        WHERE e.session_id = n.session_id
+                          AND e.source_id = n.id
+                          AND e.target_id = ?
+                          AND e.relation_type = 'anchored_identity') as has_edge
+                FROM nodes n
+                WHERE n.session_id = ? AND n.anchor_hash = ? AND n.id != ?
+                ORDER BY n.updated_at DESC
+                """,
+                (nid, session_id, anchor, nid),
+            )
+            matching_nodes = await cursor.fetchall()
+            for old_id, old_status, has_edge in matching_nodes:
+                migration_edges.add((session_id, old_id, nid, "anchored_identity"))
+                if old_status != "stale":
+                    stale_migrated_node_ids.add(old_id)
+                if not has_edge:
+                    migration_event_params.append(
+                        (
+                            session_id,
+                            "identity.migration",
+                            json.dumps(
+                                {
+                                    "anchor_hash": anchor,
+                                    "from_node_id": old_id,
+                                    "to_node_id": nid,
+                                }
+                            ),
+                            f"Anchored identity migration: {old_id} -> {nid} ({anchor})",
+                            json.dumps({"action_id": action_id} if action_id else {}),
+                            "{}",
+                        )
+                    )
+
+        if stale_migrated_node_ids:
+            placeholders = ",".join("?" for _ in stale_migrated_node_ids)
+            await db.execute(
+                f"UPDATE nodes SET status = 'stale', updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id IN ({placeholders})",
+                [session_id, *stale_migrated_node_ids],
+            )
+
+        if migration_event_params:
             await db.executemany(
                 """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                event_log_params,
+                migration_event_params,
             )
 
-            # 2. Fetch existing data only for candidate node IDs that might exist in this session (via Bloom filter)
-            candidate_ids = [nid for nid in unique_node_ids if nid in bloom]
-            if candidate_ids:
-                for i in range(0, len(candidate_ids), 500):
-                    chunk = candidate_ids[i : i + 500]
-                    placeholders = ",".join("?" for _ in chunk)
-                    query_parts = (
-                        "SELECT id, data_json FROM nodes WHERE session_id = ? AND id IN (",
-                        placeholders,
-                        ")",
-                    )
-                    select_sql = "".join(query_parts)
-                    cursor = await db.execute(select_sql, [session_id, *chunk])
-                    rows = await cursor.fetchall()
-                    for r_id, r_data in rows:
-                        if r_data:
-                            merged = json.loads(r_data)
-                            merged.update(node_metadata[r_id]["data"])
-                            node_metadata[r_id]["data"] = merged
-
-            # 3. Batch upsert the nodes
-            nodes_params = [
-                (
-                    session_id,
-                    nid,
-                    meta["schema_type"],
-                    json.dumps(meta["pik"]),
-                    json.dumps(meta["data"]),
-                    meta["status"],
-                    action_id,
-                    action_id,
-                    meta["ttl_seconds"],
-                    meta["anchor_hash"],
-                )
-                for nid, meta in node_metadata.items()
-            ]
+        rel_edges = list(parent_edges | assoc_edges | migration_edges)
+        if rel_edges:
             await db.executemany(
-                """INSERT INTO nodes (
-                       session_id, id, schema_type, pik_json, data_json, status,
-                       action_id, created_action_id, ttl_seconds, anchor_hash,
-                       observation_count, last_seen_at
-                   )
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-                   ON CONFLICT(session_id, id) DO UPDATE SET
-                       data_json = excluded.data_json,
-                       status = excluded.status,
-                       action_id = COALESCE(excluded.action_id, nodes.action_id),
-                       observation_count = nodes.observation_count + 1,
-                       ttl_seconds = excluded.ttl_seconds,
-                       anchor_hash = COALESCE(excluded.anchor_hash, nodes.anchor_hash),
-                       last_seen_at = CURRENT_TIMESTAMP,
+                """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
+                       action_id = COALESCE(excluded.action_id, edges.action_id),
                        updated_at = CURRENT_TIMESTAMP""",
-                nodes_params,
+                [(r[0], r[1], r[2], r[3], action_id) for r in rel_edges],
             )
 
-            # 4. Handle Parent and Association Relations (Auto-wiring in consolidated batches)
-            rel_nodes = list(parent_nodes.values())
-            if assoc_nodes:
-                rel_nodes.extend(assoc_nodes.values())
-            if rel_nodes:
-                await db.executemany(
-                    """INSERT OR IGNORE INTO nodes (
-                           session_id, id, schema_type, pik_json, data_json,
-                           action_id, created_action_id, observation_count, ttl_seconds, last_seen_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3600, CURRENT_TIMESTAMP)""",
-                    [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
-                )
-
-            # 4.5 Invariant Identity Anchoring & Cross-IP Migration
-            migration_edges: set = set()
-            stale_migrated_node_ids: set = set()
-            migration_event_params = []
-
-            for nid, meta in node_metadata.items():
-                anchor = meta.get("anchor_hash")
-                if not anchor:
+        # 5. Vector Indexing in vec_findings (sqlite-vec)
+        if sqlite_vec is not None:
+            engine = get_embedding_engine()
+            vector_delete_ids = []
+            vector_params = []
+            seen_vec = set()
+            for finding in findings:
+                nid = self.generate_node_id(finding.schema_type, finding.pik)
+                if nid in seen_vec:
                     continue
-                cursor = await db.execute(
-                    """
-                    SELECT n.id, n.status,
-                           (SELECT 1 FROM edges e
-                            WHERE e.session_id = n.session_id
-                              AND e.source_id = n.id
-                              AND e.target_id = ?
-                              AND e.relation_type = 'anchored_identity') as has_edge
-                    FROM nodes n
-                    WHERE n.session_id = ? AND n.anchor_hash = ? AND n.id != ?
-                    ORDER BY n.updated_at DESC
-                    """,
-                    (nid, session_id, anchor, nid),
-                )
-                matching_nodes = await cursor.fetchall()
-                for old_id, old_status, has_edge in matching_nodes:
-                    migration_edges.add((session_id, old_id, nid, "anchored_identity"))
-                    if old_status != "stale":
-                        stale_migrated_node_ids.add(old_id)
-                    if not has_edge:
-                        migration_event_params.append(
-                            (
-                                session_id,
-                                "identity.migration",
-                                json.dumps(
-                                    {
-                                        "anchor_hash": anchor,
-                                        "from_node_id": old_id,
-                                        "to_node_id": nid,
-                                    }
-                                ),
-                                f"Anchored identity migration: {old_id} -> {nid} ({anchor})",
-                                json.dumps({"action_id": action_id} if action_id else {}),
-                                "{}",
-                            )
-                        )
+                seen_vec.add(nid)
+                try:
+                    semantic_text = finding.to_semantic_text()
+                    vec = engine.embed_text(semantic_text)
+                    serialized = sqlite_vec.serialize_float32(vec)
+                    vector_delete_ids.append((nid,))
+                    vector_params.append((nid, serialized))
+                except Exception as e:
+                    logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
 
-            if stale_migrated_node_ids:
-                placeholders = ",".join("?" for _ in stale_migrated_node_ids)
-                await db.execute(
-                    f"UPDATE nodes SET status = 'stale', updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id IN ({placeholders})",
-                    [session_id, *stale_migrated_node_ids],
-                )
+            if vector_params:
+                try:
+                    await db.executemany(
+                        "DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids
+                    )
+                    await db.executemany(
+                        "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)",
+                        vector_params,
+                    )
+                except Exception as e:
+                    logger.warning(f"Error syncing vectors to vec_findings: {e}")
 
-            if migration_event_params:
-                await db.executemany(
-                    """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    migration_event_params,
-                )
-
-            rel_edges = list(parent_edges | assoc_edges | migration_edges)
-            if rel_edges:
-                await db.executemany(
-                    """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
-                           action_id = COALESCE(excluded.action_id, edges.action_id),
-                           updated_at = CURRENT_TIMESTAMP""",
-                    [(r[0], r[1], r[2], r[3], action_id) for r in rel_edges],
-                )
-
-            # 5. Vector Indexing in vec_findings (sqlite-vec)
-            if sqlite_vec is not None:
-                engine = get_embedding_engine()
-                vector_delete_ids = []
-                vector_params = []
-                seen_vec = set()
-                for finding in findings:
-                    nid = self.generate_node_id(finding.schema_type, finding.pik)
-                    if nid in seen_vec:
-                        continue
-                    seen_vec.add(nid)
-                    try:
-                        semantic_text = finding.to_semantic_text()
-                        vec = engine.embed_text(semantic_text)
-                        serialized = sqlite_vec.serialize_float32(vec)
-                        vector_delete_ids.append((nid,))
-                        vector_params.append((nid, serialized))
-                    except Exception as e:
-                        logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
-
-                if vector_params:
-                    try:
-                        await db.executemany(
-                            "DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids
-                        )
-                        await db.executemany(
-                            "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)",
-                            vector_params,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Error syncing vectors to vec_findings: {e}")
-
-            await db.commit()
+        return node_ids, unique_node_ids, parent_nodes, assoc_nodes
 
         # Update Bloom filter with all newly upserted node IDs and relationship nodes
         for nid in unique_node_ids:
@@ -905,7 +1118,7 @@ class GraphStore:
         include_stale: bool = False,
     ) -> List[Dict]:
         """Fetch all nodes of a specific schema type."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             conditions = ["schema_type = ?"]
             params: list[Any] = [schema_type]
@@ -934,7 +1147,7 @@ class GraphStore:
     async def get_all_nodes(
         self, session_id: str, schema_type: Optional[str] = None, include_stale: bool = False
     ) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM nodes WHERE session_id = ?"
             params: List[Any] = [session_id]
