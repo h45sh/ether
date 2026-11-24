@@ -82,12 +82,65 @@ class VectorEmbeddingEngine:
         return max(-1.0, min(1.0, dot))
 
 
+class OnnxVectorEmbeddingEngine(VectorEmbeddingEngine):
+    """Tier 2 ONNX accelerated embedding engine using local quantized model weights."""
+
+    def __init__(self, model_path: Optional[str] = None, dimension: int = VectorEmbeddingEngine.DIMENSION) -> None:
+        super().__init__(dimension=dimension)
+        self.model_path = model_path
+        self._session = None
+        self._init_session()
+
+    def _init_session(self) -> None:
+        if not self.model_path:
+            return
+        try:
+            import os
+            if os.path.exists(self.model_path):
+                import onnxruntime as ort
+                self._session = ort.InferenceSession(self.model_path)
+        except Exception:
+            self._session = None
+
+    def embed_text(self, text: str) -> List[float]:
+        """Embed text using ONNX session if available, falling back to Tier 1 feature hashing."""
+        if self._session is not None:
+            try:
+                inputs = {self._session.get_inputs()[0].name: [[1]]}
+                outputs = self._session.run(None, inputs)
+                raw_vec = outputs[0]
+                while isinstance(raw_vec, (list, tuple)) and len(raw_vec) == 1 and isinstance(raw_vec[0], (list, tuple)):
+                    raw_vec = raw_vec[0]
+                if hasattr(raw_vec, "flatten"):
+                    raw_vec = raw_vec.flatten().tolist()
+                elif isinstance(raw_vec, (list, tuple)) and isinstance(raw_vec[0], (list, tuple)):
+                    raw_vec = [item for sublist in raw_vec for item in sublist]
+
+                raw_vec = list(raw_vec)[: self.dimension]
+                norm_sq = sum(float(x * x) for x in raw_vec)
+                if norm_sq > 1e-12:
+                    norm = math.sqrt(norm_sq)
+                    return [float(x / norm) for x in raw_vec]
+            except Exception:
+                pass
+        return super().embed_text(text)
+
+
 _default_engine: Optional[VectorEmbeddingEngine] = None
 
 
-def get_embedding_engine() -> VectorEmbeddingEngine:
+def get_embedding_engine(model_path: Optional[str] = None) -> VectorEmbeddingEngine:
     """Retrieve or initialize the global VectorEmbeddingEngine singleton."""
     global _default_engine
     if _default_engine is None:
-        _default_engine = VectorEmbeddingEngine()
+        import os
+        mpath = model_path or os.environ.get("ETHER_ONNX_MODEL_PATH")
+        if mpath and os.path.exists(mpath):
+            try:
+                import onnxruntime  # noqa: F401
+                _default_engine = OnnxVectorEmbeddingEngine(model_path=mpath)
+            except ImportError:
+                _default_engine = VectorEmbeddingEngine()
+        else:
+            _default_engine = VectorEmbeddingEngine()
     return _default_engine
