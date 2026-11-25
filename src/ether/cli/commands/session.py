@@ -14,14 +14,7 @@ async def handle_session_list(args: Any, context: CliContext) -> int:
         if workspace_id:
             sessions = await store.list_sessions(workspace_id)
         else:
-            # Query all sessions across all workspaces
-            async with store.connection() as db:
-                import aiosqlite
-
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute("SELECT * FROM sessions ORDER BY created_at DESC")
-                rows = await cursor.fetchall()
-                sessions = [dict(r) for r in rows]
+            sessions = await store.list_all_sessions()
 
     if context.is_json:
         print_json(sessions)

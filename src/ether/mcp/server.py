@@ -729,11 +729,7 @@ def create_mcp_server(
             session_id: Target session ID (for 'info').
         """
         if action == "list":
-            workspaces = await store.list_workspaces()
-            all_sessions = []
-            for ws in workspaces:
-                ws_sessions = await store.list_sessions(ws["id"])
-                all_sessions.extend(ws_sessions)
+            all_sessions = await store.list_all_sessions()
             return json.dumps(
                 {
                     "total": len(all_sessions),

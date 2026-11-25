@@ -22,7 +22,7 @@ async def test_reconcile_state_decay_basic():
     node_id = await store.upsert_finding(sess_id, host)
 
     # Set last_seen_at explicitly to t0
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.execute(
             "UPDATE nodes SET last_seen_at = ? WHERE session_id = ? AND id = ?",
             (t0.strftime("%Y-%m-%d %H:%M:%S"), sess_id, node_id),
@@ -64,7 +64,7 @@ async def test_reconcile_state_decay_flapping():
     host.data["oscillations"] = 2
     node_id = await store.upsert_finding(sess_id, host)
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.execute(
             "UPDATE nodes SET last_seen_at = ? WHERE session_id = ? AND id = ?",
             (t0.strftime("%Y-%m-%d %H:%M:%S"), sess_id, node_id),
@@ -107,7 +107,7 @@ async def test_get_all_nodes_stale_filtering():
     id1 = await store.upsert_finding(sess_id, h1)
     await store.upsert_finding(sess_id, h2)
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.execute(
             "UPDATE nodes SET last_seen_at = ? WHERE session_id = ? AND id = ?",
             (t0.strftime("%Y-%m-%d %H:%M:%S"), sess_id, id1),
@@ -141,7 +141,7 @@ async def test_prune_stale_nodes():
     id1 = await store.upsert_finding(sess_id, h1)
 
     # Set last_seen_at to t0
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.execute(
             "UPDATE nodes SET last_seen_at = ? WHERE session_id = ? AND id = ?",
             (t0.strftime("%Y-%m-%d %H:%M:%S"), sess_id, id1),

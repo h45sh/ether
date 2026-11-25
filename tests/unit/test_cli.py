@@ -247,7 +247,7 @@ async def test_cli_graph_list_nodes_include_stale_and_prune(tmp_path, capsys):
     await store.upsert_finding(sess_id, h2)
 
     # Decay h1 to stale with an old last_seen_at
-    async with store.connection() as db:
+    async with store._get_conn() as db:
         await db.execute(
             "UPDATE nodes SET status = 'stale', last_seen_at = '2020-01-01 00:00:00' WHERE id = ?",
             (h1_id,),

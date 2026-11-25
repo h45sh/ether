@@ -123,7 +123,8 @@ CREATE INDEX IF NOT EXISTS idx_nodes_session_updated ON nodes(session_id, update
 CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id);
 CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_findings USING vec0(
-    node_id text primary key,
+    session_id text partition key,
+    node_id text,
     embedding float[384] distance_metric=cosine
 );
 """
@@ -134,6 +135,22 @@ def _cached_node_id(schema_type: str, pik_items: tuple) -> str:
     """Compute and cache deterministic SHA-256 node ID from sorted PIK items."""
     pik_str = json.dumps(dict(pik_items), sort_keys=True)
     return hashlib.sha256(f"{schema_type}:{pik_str}".encode()).hexdigest()
+
+
+def _hydrate_node_row(row: Any) -> Dict[str, Any]:
+    """Convert a SQLite node row to a dict with hydrated 'pik' and 'data' dicts."""
+    item = dict(row)
+    for json_col, dict_key in (("pik_json", "pik"), ("data_json", "data")):
+        raw = item.get(json_col)
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                item[dict_key] = parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                item[dict_key] = {}
+        elif dict_key not in item:
+            item[dict_key] = {}
+    return item
 
 
 class GraphStore:
@@ -185,12 +202,6 @@ class GraphStore:
         self._on_batch_callbacks.append(callback)
 
     @asynccontextmanager
-    async def connection(self):
-        """Public context manager for acquiring a database connection."""
-        async with self._get_conn() as conn:
-            yield conn
-
-    @asynccontextmanager
     async def _get_conn(self):
         """Helper to get a connection, supporting persistent connection for all paths."""
         if self._closed:
@@ -220,12 +231,18 @@ class GraphStore:
         """Create tables and indices if they don't exist."""
         self._ensure_writer_started()
         async with self._get_conn() as db:
+            cursor = await db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_findings'"
+            )
+            row = await cursor.fetchone()
+            if row and row[0] and "session_id" not in row[0]:
+                await db.execute("DROP TABLE IF EXISTS vec_findings")
             await db.executescript(SCHEMA_DDL)
             await db.commit()
 
     async def check_integrity(self) -> tuple[str, list[str]]:
         """Run an SQLite integrity check and return status and table list."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             cursor = await db.execute("PRAGMA integrity_check")
             row = await cursor.fetchone()
             integrity_status = row[0] if row else "unknown"
@@ -278,6 +295,31 @@ class GraphStore:
     async def _enqueue_write(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return await self.write_worker.enqueue(func, *args, **kwargs)
 
+    async def _run_write(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        session_id: Optional[str] = None,
+        enforce_open: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Serialize a mutation through WriteQueueWorker with centralized CLOSED-session sealing."""
+
+        async def _guarded(db: aiosqlite.Connection) -> Any:
+            if session_id is not None and enforce_open:
+                cursor = await db.execute(
+                    "SELECT status FROM sessions WHERE id = ? LIMIT 1",
+                    (session_id,),
+                )
+                row = await cursor.fetchone()
+                if row and row[0] == "CLOSED":
+                    raise PermissionError(
+                        f"Session '{session_id}' is forensically sealed and closed."
+                    )
+            return await func(db, *args, **kwargs)
+
+        return await self._enqueue_write(_guarded)
+
     async def close(self):
         """Close the database cleanly, draining all pending operations."""
         self._closing = True
@@ -308,7 +350,8 @@ class GraphStore:
         self, workspace_name: str = "Default Workspace", session_name: str = "Default Session"
     ) -> tuple[str, str]:
         """Ensure a named workspace and session exist and return their IDs (ws_id, sess_id)."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> tuple[str, str]:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT id FROM workspaces WHERE name = ? LIMIT 1",
@@ -338,8 +381,9 @@ class GraphStore:
                     (sess_id, ws_id, session_name, "SYSTEM"),
                 )
 
-            await db.commit()
             return ws_id, sess_id
+
+        return await self._run_write(_op)
 
     async def get_or_create_default_session(self) -> tuple[str, str]:
         """Ensure the default workspace and session exist and return their IDs (ws_id, sess_id)."""
@@ -353,22 +397,25 @@ class GraphStore:
 
     async def create_workspace(self, name: str) -> str:
         workspace_id = str(uuid.uuid4())
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "INSERT INTO workspaces (id, name) VALUES (?, ?)", (workspace_id, name)
             )
-            await db.commit()
+
+        await self._run_write(_op)
         return workspace_id
 
     async def rename_workspace(self, workspace_id: str, new_name: str) -> None:
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE workspaces SET name = ? WHERE id = ?", (new_name, workspace_id)
             )
-            await db.commit()
+
+        await self._run_write(_op)
 
     async def list_workspaces(self, status_filter: Optional[str] = None) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             if status_filter:
                 cursor = await db.execute(
@@ -382,7 +429,7 @@ class GraphStore:
 
     async def get_workspace(self, workspace_id: str) -> Optional[Dict]:
         """Get workspace metadata."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM workspaces WHERE id = ?", (workspace_id,))
             row = await cursor.fetchone()
@@ -390,21 +437,25 @@ class GraphStore:
 
     async def close_workspace(self, workspace_id: str) -> None:
         """Mark workspace as closed/archived."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE workspaces SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (workspace_id,),
             )
-            await db.commit()
+
+        await self._run_write(_op)
 
     async def reopen_workspace(self, workspace_id: str) -> None:
         """Reopen a closed workspace."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE workspaces SET status = 'ACTIVE', closed_at = NULL WHERE id = ?",
                 (workspace_id,),
             )
-            await db.commit()
+
+        await self._run_write(_op)
 
     # --- Session Management ---
 
@@ -412,18 +463,21 @@ class GraphStore:
         self, workspace_id: str, name: str, session_id: Optional[str] = None
     ) -> str:
         actual_session_id = session_id or str(uuid.uuid4())
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "INSERT INTO sessions (id, workspace_id, name) VALUES (?, ?, ?)",
                 (actual_session_id, workspace_id, name),
             )
-            await db.commit()
+
+        await self._run_write(_op)
         return actual_session_id
 
     async def rename_session(self, session_id: str, new_name: str) -> None:
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("UPDATE sessions SET name = ? WHERE id = ?", (new_name, session_id))
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_session(self, session_id: str) -> Optional[Dict]:
         """Get session metadata."""
@@ -451,6 +505,20 @@ class GraphStore:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
+    async def list_all_sessions(self, status_filter: Optional[str] = None) -> List[Dict]:
+        """List all sessions across all workspaces ordered by creation time descending."""
+        async with self._get_read_conn() as db:
+            db.row_factory = aiosqlite.Row
+            if status_filter:
+                cursor = await db.execute(
+                    "SELECT * FROM sessions WHERE status = ? ORDER BY created_at DESC",
+                    (status_filter,),
+                )
+            else:
+                cursor = await db.execute("SELECT * FROM sessions ORDER BY created_at DESC")
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
     async def close_session(self, session_id: str) -> None:
         """Mark session as closed/archived and compress session logs."""
         from ether.common.forensic_log import ForensicLogManager
@@ -460,12 +528,13 @@ class GraphStore:
         except Exception:
             pass
 
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE sessions SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (session_id,),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id, enforce_open=False)
 
     async def is_session_closed(self, session_id: str) -> bool:
         """Check if a session is forensically closed."""
@@ -474,16 +543,19 @@ class GraphStore:
 
     async def reopen_session(self, session_id: str) -> None:
         """Reopen an archived session back to ACTIVE."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE sessions SET status = 'ACTIVE', closed_at = NULL WHERE id = ?",
                 (session_id,),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id, enforce_open=False)
 
     async def delete_workspace(self, workspace_id: str):
         """Delete a workspace and all its sessions/graphs (cascade)."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("PRAGMA foreign_keys = ON")
             await self.vector_index.delete_workspace_vectors(db, workspace_id)
             await db.execute(
@@ -499,11 +571,13 @@ class GraphStore:
                 (workspace_id,),
             )
             await db.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
-            await db.commit()
+
+        await self._run_write(_op)
 
     async def delete_session(self, session_id: str):
         """Delete a single session, its graph data, and its notes."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("PRAGMA foreign_keys = ON")
             await self.vector_index.delete_session_vectors(db, session_id)
             await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
@@ -511,13 +585,14 @@ class GraphStore:
                 "DELETE FROM notes WHERE (scope_type = 'session' AND scope_id = ?) OR (scope_type = 'learning' AND scope_id = ?)",
                 (session_id, session_id),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id, enforce_open=False)
 
     # --- Notes Management ---
 
     async def get_notes(self, scope_type: str, scope_id: str) -> str:
         """Fetch persistent notes for a specific scope (e.g. 'session' or 'learning')."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             cursor = await db.execute(
                 "SELECT content FROM notes WHERE scope_type = ? AND scope_id = ?",
                 (scope_type, str(scope_id)),
@@ -527,7 +602,8 @@ class GraphStore:
 
     async def save_notes(self, scope_type: str, scope_id: str, content: str) -> None:
         """Atomically persist notes for a specific scope in SQLite."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 """
                 INSERT INTO notes (scope_type, scope_id, content, updated_at)
@@ -538,20 +614,24 @@ class GraphStore:
                 """,
                 (scope_type, str(scope_id), content),
             )
-            await db.commit()
+
+        target_session_id = str(scope_id) if scope_type in ("session", "learning") else None
+        await self._run_write(_op, session_id=target_session_id)
 
     async def move_session(self, session_id: str, target_workspace_id: str):
         """Move a session to a different workspace."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE sessions SET workspace_id = ? WHERE id = ?",
                 (target_workspace_id, session_id),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_recent_activity(self, workspace_id: str, limit: int = 5) -> List[Dict]:
         """Fetch latest events across all sessions in a workspace."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             query = """
                 SELECT e.*, s.name as session_name
@@ -582,8 +662,12 @@ class GraphStore:
         if not findings:
             return []
 
-        node_ids, unique_node_ids, parent_nodes, assoc_nodes = await self._enqueue_write(
-            self._raw_upsert_findings_batch, session_id, findings, action_id
+        node_ids, unique_node_ids, parent_nodes, assoc_nodes = await self._run_write(
+            self._raw_upsert_findings_batch,
+            session_id,
+            findings,
+            action_id,
+            session_id=session_id,
         )
 
         bloom = self._get_bloom(session_id)
@@ -654,36 +738,13 @@ class GraphStore:
                 )
             )
 
-            anchor_hash = getattr(finding, "anchor_hash", None)
-            if not anchor_hash and isinstance(finding.data, dict):
-                for key in (
-                    "anchor_hash",
-                    "tls_cert_sha256",
-                    "ssh_hostkey_fingerprint",
-                    "favicon_hash",
-                    "soa_serial",
-                ):
-                    val = finding.data.get(key)
-                    if val:
-                        prefix = (
-                            "tls"
-                            if "tls" in key
-                            else (
-                                "ssh"
-                                if "ssh" in key
-                                else (
-                                    "favicon"
-                                    if "favicon" in key
-                                    else ("soa" if "soa" in key else "")
-                                )
-                            )
-                        )
-                        anchor_hash = (
-                            f"{prefix}:{val}"
-                            if prefix and not str(val).startswith(f"{prefix}:")
-                            else str(val)
-                        )
-                        break
+            resolved = BaseFinding.resolve_anchor_hash(
+                {
+                    "anchor_hash": getattr(finding, "anchor_hash", None),
+                    "data": finding.data,
+                }
+            )
+            anchor_hash = resolved.get("anchor_hash") if isinstance(resolved, dict) else None
 
             ttl_seconds = getattr(finding, "ttl_seconds", 3600) or 3600
 
@@ -894,39 +955,9 @@ class GraphStore:
                 node_texts.append((nid, finding.to_semantic_text()))
             except Exception:
                 pass
-        await self.vector_index.sync_node_embeddings(db, node_texts)
+        await self.vector_index.sync_node_embeddings(db, node_texts, session_id=session_id)
 
         return node_ids, unique_node_ids, parent_nodes, assoc_nodes
-
-        # Update Bloom filter with all newly upserted node IDs and relationship nodes
-        for nid in unique_node_ids:
-            bloom.add(nid)
-        for p_nid in parent_nodes:
-            bloom.add(p_nid)
-        for a_nid in assoc_nodes:
-            bloom.add(a_nid)
-
-        # Trigger reactive callbacks
-        if self._on_batch_callbacks and findings:
-            for cb in self._on_batch_callbacks:
-                try:
-                    await cb(session_id, findings)
-                except Exception as e:
-                    logger.error(
-                        f"Error in reactive batch callback {getattr(cb, '__name__', 'callback')}: {e}"
-                    )
-
-        if self._on_upsert_callbacks and findings:
-            for finding in findings:
-                for upsert_cb in self._on_upsert_callbacks:
-                    try:
-                        await upsert_cb(session_id, finding)
-                    except Exception as e:
-                        logger.error(
-                            f"Error in reactive callback {getattr(upsert_cb, '__name__', 'callback')}: {e}"
-                        )
-
-        return node_ids
 
     async def upsert_finding(
         self, session_id: str, finding: BaseFinding, action_id: Optional[str] = None
@@ -955,7 +986,7 @@ class GraphStore:
             stmt = " ".join(["SELECT * FROM nodes WHERE", where_sql])
             cursor = await db.execute(stmt, params)
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [_hydrate_node_row(r) for r in rows]
 
     async def get_event_log(self, session_id: str) -> List[Dict]:
         """Fetch all events for a session."""
@@ -984,15 +1015,19 @@ class GraphStore:
             query += " ORDER BY updated_at DESC"
             cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [_hydrate_node_row(r) for r in rows]
 
-    async def sync_vectors_batch(self, findings: List[BaseFinding]) -> int:
+    async def sync_vectors_batch(
+        self, findings: List[BaseFinding], session_id: str = ""
+    ) -> int:
         """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
-        async with self._get_conn() as db:
-            count = await self.vector_index.sync_findings_batch(db, findings, self.generate_node_id)
-            if count > 0:
-                await db.commit()
-            return count
+
+        async def _op(db: aiosqlite.Connection) -> int:
+            return await self.vector_index.sync_findings_batch(
+                db, findings, self.generate_node_id, session_id=session_id
+            )
+
+        return await self._run_write(_op, session_id=session_id or None)
 
     async def semantic_search(
         self,
@@ -1017,7 +1052,7 @@ class GraphStore:
             List of matching finding node dictionaries ordered by descending similarity,
             with added 'similarity' and 'distance' fields.
         """
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             return await self.vector_index.semantic_search(
                 db,
                 session_id=session_id,
@@ -1048,7 +1083,7 @@ class GraphStore:
         transitions = []
         updates = []
 
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> Dict[str, Any]:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT id, status, observation_count, ttl_seconds, last_seen_at, data_json FROM nodes WHERE session_id = ?",
@@ -1124,13 +1159,14 @@ class GraphStore:
                     "UPDATE nodes SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id = ?",
                     updates,
                 )
-                await db.commit()
 
-        return {
-            "transitions": transitions,
-            "status_breakdown": status_counts,
-            "reconciled_count": len(transitions),
-        }
+            return {
+                "transitions": transitions,
+                "status_breakdown": status_counts,
+                "reconciled_count": len(transitions),
+            }
+
+        return await self._run_write(_op, session_id=session_id)
 
     async def prune_stale_nodes(
         self, session_id: str, max_age_seconds: int = 604800, now: Optional[datetime] = None
@@ -1143,7 +1179,7 @@ class GraphStore:
 
         cutoff = (now - timedelta(seconds=max_age_seconds)).strftime("%Y-%m-%d %H:%M:%S")
 
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> int:
             await self.vector_index.purge_stale_vectors(db, session_id, cutoff)
             cursor = await db.execute(
                 """DELETE FROM nodes
@@ -1152,8 +1188,9 @@ class GraphStore:
                      AND datetime(last_seen_at) < datetime(?)""",
                 (session_id, cutoff),
             )
-            await db.commit()
             return cursor.rowcount
+
+        return await self._run_write(_op, session_id=session_id)
 
     async def get_anchored_migrations(
         self,
@@ -1161,7 +1198,7 @@ class GraphStore:
         action_id: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """Fetch anchored identity migrations recorded for a session."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             query = """
                 SELECT finding_json, timestamp, action_payload
@@ -1184,14 +1221,14 @@ class GraphStore:
             return migrations
 
     async def get_all_edges(self, session_id: str) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM edges WHERE session_id = ?", (session_id,))
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
     async def get_workspace_nodes(self, workspace_id: str) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """SELECT n.* FROM nodes n
@@ -1200,10 +1237,10 @@ class GraphStore:
                 (workspace_id,),
             )
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [_hydrate_node_row(r) for r in rows]
 
     async def get_workspace_edges(self, workspace_id: str) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """SELECT e.* FROM edges e
@@ -1216,19 +1253,20 @@ class GraphStore:
 
     async def get_node(self, session_id: str, node_id: str) -> Optional[Dict]:
         """Fetch a specific node by ID."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM nodes WHERE session_id = ? AND id = ?", (session_id, node_id)
             )
             row = await cursor.fetchone()
-            return dict(row) if row else None
+            return _hydrate_node_row(row) if row else None
 
     async def update_node_data(
         self, session_id: str, node_id: str, updates: Dict[str, Any]
     ) -> None:
         """Update fields inside a node's data_json (such as custom alias, name, or notes)."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             cursor = await db.execute(
                 "SELECT data_json FROM nodes WHERE session_id = ? AND id = ?", (session_id, node_id)
             )
@@ -1241,12 +1279,13 @@ class GraphStore:
                 "UPDATE nodes SET data_json = ? WHERE session_id = ? AND id = ?",
                 (json.dumps(current_data), session_id, node_id),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_stats(
         self, session_id: Optional[str] = None, workspace_id: Optional[str] = None
     ) -> Dict[str, int]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             if session_id:
                 cursor = await db.execute(
                     "SELECT schema_type, COUNT(*) FROM nodes WHERE session_id = ? GROUP BY schema_type",
@@ -1604,9 +1643,40 @@ class GraphStore:
         indicators: Optional[List[str]] = None,
     ) -> None:
         """Upsert probabilistic belief score and deception indicators for a graph node."""
-        indicators_json = json.dumps(indicators or [])
-        async with self.connection() as db:
-            await db.execute(
+        await self.upsert_node_beliefs_batch(
+            session_id,
+            [
+                {
+                    "node_id": node_id,
+                    "confidence": confidence,
+                    "is_honeypot": is_honeypot,
+                    "is_tarpit": is_tarpit,
+                    "indicators": indicators or [],
+                }
+            ],
+        )
+
+    async def upsert_node_beliefs_batch(
+        self,
+        session_id: str,
+        beliefs: List[Dict[str, Any]],
+    ) -> None:
+        """Batch upsert probabilistic belief scores and deception indicators for a session."""
+        if not beliefs:
+            return
+        rows = [
+            (
+                session_id,
+                b["node_id"],
+                float(b.get("confidence", 1.0)),
+                int(bool(b.get("is_honeypot", 0))),
+                int(bool(b.get("is_tarpit", 0))),
+                json.dumps(b.get("indicators") or []),
+            )
+            for b in beliefs
+        ]
+        async def _op(db: aiosqlite.Connection) -> None:
+            await db.executemany(
                 """
                 INSERT INTO node_beliefs (session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1617,13 +1687,14 @@ class GraphStore:
                     indicators = excluded.indicators,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                (session_id, node_id, float(confidence), int(is_honeypot), int(is_tarpit), indicators_json),
+                rows,
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_node_belief(self, session_id: str, node_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve belief details for a specific node."""
-        async with self.connection() as db:
+        async with self._get_read_conn() as db:
             cursor = await db.execute(
                 """
                 SELECT session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at
@@ -1647,7 +1718,7 @@ class GraphStore:
 
     async def list_node_beliefs(self, session_id: str) -> List[Dict[str, Any]]:
         """Retrieve all node beliefs for a session."""
-        async with self.connection() as db:
+        async with self._get_read_conn() as db:
             cursor = await db.execute(
                 """
                 SELECT session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at

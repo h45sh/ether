@@ -451,26 +451,22 @@ class GraphAnalyticsEngine:
     async def evaluate_and_persist(cls, store: Any, session_id: str) -> List[Dict[str, Any]]:
         """Load session graph from store, evaluate deception, and persist into node_beliefs."""
         nodes = await store.get_all_nodes(session_id)
-        async with store.connection() as db:
-            cursor = await db.execute(
-                "SELECT source_id, target_id, relation_type FROM edges WHERE session_id = ?",
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
-            edges = [{"source_id": r[0], "target_id": r[1], "relation_type": r[2]} for r in rows]
+        edges = await store.get_all_edges(session_id)
 
         engine = cls(nodes, edges)
         beliefs = engine.evaluate_deception()
 
-        for node_id, b in beliefs.items():
-            await store.upsert_node_belief(
-                node_id=node_id,
-                session_id=session_id,
-                confidence=b["confidence"],
-                is_honeypot=1 if b["is_honeypot"] else 0,
-                is_tarpit=1 if b["is_tarpit"] else 0,
-                indicators=b["indicators"],
-            )
+        belief_rows = [
+            {
+                "node_id": node_id,
+                "confidence": b["confidence"],
+                "is_honeypot": 1 if b["is_honeypot"] else 0,
+                "is_tarpit": 1 if b["is_tarpit"] else 0,
+                "indicators": b["indicators"],
+            }
+            for node_id, b in beliefs.items()
+        ]
+        await store.upsert_node_beliefs_batch(session_id, belief_rows)
 
         return await store.list_node_beliefs(session_id)
 
