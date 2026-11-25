@@ -5,7 +5,6 @@ import json
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from ether.common.algorithms import IPRadixTrie
 from ether.common.exceptions import EtherError
 from ether.gateway.network import get_lhost_info
 from ether.gateway.scope import (
@@ -220,14 +219,10 @@ class ActionGateway:
         """Configure declarative CIDR scope boundaries for engagements."""
         if not allowed_cidrs:
             self._allowed_cidrs = None
-            self._allowed_cidrs_trie = None
             self.scope.allowed_cidrs = []
         else:
             cleaned = [c.strip() for c in allowed_cidrs if c.strip()]
             self._allowed_cidrs = [ipaddress.ip_network(c, strict=False) for c in cleaned]
-            self._allowed_cidrs_trie = IPRadixTrie()
-            for net in self._allowed_cidrs:
-                self._allowed_cidrs_trie.insert(net)
             self.scope.allowed_cidrs = cleaned
 
     def validate_target_scope(self, text_or_ip: str) -> bool:

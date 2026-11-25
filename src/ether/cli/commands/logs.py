@@ -7,10 +7,35 @@ from ether import paths
 from ether.cli.context import EXIT_SUCCESS, CliContext
 from ether.cli.formatters import print_json
 from ether.common.logging import get_recent_crash_summary
+from ether.common.storage import StorageLifecycleManager
 
 
 def handle_logs(args: Any, context: CliContext) -> int:
-    """Display system log records or recent crash reports."""
+    """Display system log records, recent crash reports, or enforce log retention."""
+    if getattr(args, "prune", False):
+        logs_dir = paths.get_default_logs_dir(context.data_dir)
+        max_disk_mb = int(getattr(args, "max_disk_mb", 1000))
+        max_age_days = int(getattr(args, "max_age_days", 30))
+        include_forensic = bool(getattr(args, "include_forensic", False))
+
+        report = StorageLifecycleManager.enforce_retention_policy(
+            logs_dir=logs_dir,
+            max_disk_mb=max_disk_mb,
+            max_age_days=max_age_days,
+            include_forensic=include_forensic,
+        )
+        if context.is_json:
+            print_json(report.to_dict())
+        else:
+            print("[+] Log Retention Policy Enforced:")
+            print(f"    Scanned:    {report.total_scanned_bytes / (1024*1024):.2f} MB")
+            print(f"    Compressed: {report.compressed_files} files")
+            print(f"    Pruned:     {report.pruned_files} files")
+            print(f"    Freed:      {report.freed_bytes / (1024*1024):.2f} MB")
+            print(f"    Protected:  {report.skipped_forensic_files} forensic logs preserved")
+            print(f"    Remaining:  {report.remaining_bytes / (1024*1024):.2f} MB")
+        return EXIT_SUCCESS
+
     show_crashes = bool(getattr(args, "crashes", False))
     lines_limit = int(getattr(args, "limit", 50))
 

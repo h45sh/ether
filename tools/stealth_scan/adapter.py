@@ -2,93 +2,18 @@
 
 import asyncio
 import ipaddress
-import socket
-from typing import Any, AsyncIterator, Dict, List, Optional, Set
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.common.context import ExecutionContext
+from ether.common.raw_net import (
+    PORT_SERVICES,
+    RawNetworkGovernor,
+    has_raw_socket_capability,
+    parse_ports_spec,
+)
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.network import NetworkHost, NetworkService
-
-COMMON_PORTS: List[int] = [
-    21,
-    22,
-    23,
-    25,
-    53,
-    80,
-    110,
-    139,
-    443,
-    445,
-    1433,
-    3306,
-    3389,
-    5432,
-    6379,
-    8080,
-    8443,
-]
-
-PORT_SERVICES: Dict[int, str] = {
-    21: "ftp",
-    22: "ssh",
-    23: "telnet",
-    25: "smtp",
-    53: "dns",
-    80: "http",
-    110: "pop3",
-    139: "netbios-ssn",
-    443: "https",
-    445: "microsoft-ds",
-    1433: "ms-sql-s",
-    3306: "mysql",
-    3389: "ms-wbt-server",
-    5432: "postgresql",
-    6379: "redis",
-    8080: "http-proxy",
-    8443: "https-alt",
-}
-
-
-def has_raw_socket_capability() -> bool:
-    """Test whether the current process environment permits raw socket allocation."""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-        s.close()
-        return True
-    except (PermissionError, OSError):
-        return False
-
-
-def parse_ports_spec(ports_val: Any) -> List[int]:
-    """Parse comma-separated or dash-ranged port specifications into sorted unique ints."""
-    if not ports_val:
-        return list(COMMON_PORTS)
-    if isinstance(ports_val, list):
-        return [int(p) for p in ports_val]
-
-    ports: Set[int] = set()
-    for chunk in str(ports_val).split(","):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        if "-" in chunk:
-            try:
-                start_s, end_s = chunk.split("-", 1)
-                start, end = int(start_s.strip()), int(end_s.strip())
-                for p in range(max(1, start), min(65536, end + 1)):
-                    ports.add(p)
-            except ValueError:
-                continue
-        else:
-            try:
-                p = int(chunk)
-                if 1 <= p <= 65535:
-                    ports.add(p)
-            except ValueError:
-                continue
-    return sorted(ports) if ports else list(COMMON_PORTS)
 
 
 class StealthScanAdapter(ToolAdapter):
@@ -215,20 +140,28 @@ class StealthScanAdapter(ToolAdapter):
                 yield finding
         else:
             # Default: TCP SYN scan
-            if is_privileged:
-                async for finding in self._execute_scapy_syn(
-                    host, ports, rate_limit, timeout, context
-                ):
-                    yield finding
-            else:
+            if not is_privileged:
                 await context.spool_line(
                     "Raw socket capability absent or unprivileged; falling back to non-blocking asyncio TCP connect sweep.",
                     is_error=False,
                 )
-                async for finding in self._execute_asyncio_connect(
-                    host, ports, rate_limit, timeout, context
-                ):
-                    yield finding
+            async for probe in RawNetworkGovernor.fast_syn_sweep(
+                target=host,
+                ports=ports,
+                timeout_sec=timeout,
+                rate_limit=rate_limit,
+                force_unprivileged=force_unprivileged,
+            ):
+                tag = "SYN port" if is_privileged else "port"
+                await context.spool_line(
+                    f"Discovered open {tag} {probe.port}/tcp ({probe.service_name}) on {host}"
+                )
+                yield NetworkService.create(
+                    host_ip=host,
+                    port=probe.port,
+                    protocol=probe.protocol,
+                    service_name=probe.service_name,
+                )
 
     async def _execute_arp(
         self,

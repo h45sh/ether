@@ -251,7 +251,7 @@ Restructure gateway, execution, and sanitization boundaries to follow deep modul
 #### 6. Empirical Hardening & Operational Resilience (Resolving Run 1 Deficiencies)
 Directly addressing the empirical bottlenecks, tool dropouts, and latency anomalies identified in the live multi-agent AWS benchmark (`reports/run_1/`):
 
-- [ ] **Hermetic Container Tool Execution & Automated Binary Provisioning (`ether.core.container`):**
+- [x] **Hermetic Container Tool Execution & Automated Binary Provisioning (`ether.core.container`):**
   - *Problem from Run 1*: Autonomous agents failed to discover client-side Single-Page Application (SPA) routes on OWASP Juice Shop (`/#/login`, `/#/score-board`) and hidden API query parameters because `katana`, `arjun`, `sqlmap`, and `naabu` were missing from the host system environment.
   - *Deep Module Design*: Create a deep `ContainerizedToolRunner` placed at the execution supervisor seam.
   - *Seam Placement*: Execution supervisor seam (`ether.core.container.ContainerizedToolRunner`).
@@ -263,7 +263,7 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
   - *Leverage & Locality*: Resolves the "missing tool" operational blind spot for any tool adapter across all host operating systems without polluting the host environment or requiring manual apt/brew installations.
   - *The Deletion Test*: Deleting this module would require human operators or deployment scripts to pre-install 37+ disparate binary dependencies manually on every agent machine.
 
-- [ ] **Ambient Raw Socket Acceleration & Stealth SYN Scanner (`ether.core.raw_net`):**
+- [x] **Ambient Raw Socket Acceleration & Stealth SYN Scanner (`ether.core.raw_net`):**
   - *Problem from Run 1*: Without root privileges, Nmap defaulted to unprivileged TCP Connect handshakes (`-sT`), ballooning scan latency to ~26.3 seconds per target host (5× slower than raw SYN scans).
   - *Deep Module Design*: Create a deep `RawNetworkGovernor` module placed at the network execution seam.
   - *Seam Placement*: Packet crafting and socket seam (`ether.core.raw_net.RawNetworkGovernor`).
@@ -275,7 +275,7 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
   - *Leverage & Locality*: All network reconnaissance adapters (`nmap`, `naabu`, `masscan`) query port state through a single optimized driver, reducing host discovery latency from 26 seconds to <1.5 seconds.
   - *The Deletion Test*: Deleting this module forces all network tools to either run as full root or suffer massive latency penalties from unprivileged OS TCP handshake handoffs.
 
-- [ ] **Resilient Heuristic Stream Chunk Recovery (`ether.core.recovery`):**
+- [x] **Resilient Heuristic Stream Chunk Recovery (`ether.core.recovery`):**
   - *Problem from Run 1*: When long-running external scanners (`nuclei`, `ffuf`) hit execution timeouts (e.g. Nuclei timing out at 35 seconds) or were terminated prematurely, trailing JSON streams were discarded, losing valuable in-flight findings discovered before process termination.
   - *Deep Module Design*: Deep `HeuristicStreamRecovery` module placed at the parser pipeline seam.
   - *Seam Placement*: Stream chunk normalization seam (`ether.core.recovery.StreamRecoveryEngine`).
@@ -287,7 +287,7 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
   - *Leverage & Locality*: Tool adapters retain 100% of partial findings even when commands time out or are cancelled, preventing lost intelligence during autonomous agent loops.
   - *The Deletion Test*: Deleting this module causes any interrupted or timed-out tool run to lose 100% of its findings, forcing redundant re-scans.
 
-- [ ] **Automated Storage Quota & Background Log Lifecycle (`ether.common.storage`):**
+- [x] **Automated Storage Quota & Background Log Lifecycle (`ether.common.storage`):**
   - *Problem from Run 1*: High-throughput stress tests generated 26.5MB of uncompressed raw console logs in a single run. Continuous operations will exhaust host disk space over time.
   - *Deep Module Design*: Deep `StorageLifecycleManager` placed at the filesystem persistence seam.
   - *Seam Placement*: Spooling and storage persistence seam (`ether.common.storage.StorageLifecycleManager`).
@@ -299,7 +299,7 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
   - *Leverage & Locality*: Host machines maintain bounded disk usage indefinitely during 24/7 autonomous monitoring without requiring manual cron logrotate configurations.
   - *The Deletion Test*: Deleting this module leads to inevitable disk exhaustion during continuous fuzzing or large-scale network surveys.
 
-- [ ] **Adaptive Volatility Scoring & Rapid State Decay for High-Churn Cloud Targets (`GraphStore`):**
+- [x] **Adaptive Volatility Scoring & Rapid State Decay for High-Churn Cloud Targets (`GraphStore`):**
   - *Problem from Run 1*: The static 3600-second TTL decay was too coarse to capture containerized services mutating or restarting on 10-minute cycles (such as the vulnerable AWS container stack).
   - *Deep Module Design*: Implement adaptive volatility decay calculations directly inside `GraphStore`.
   - *Seam Placement*: Entity state machine seam (`ether.graph.store.GraphStore.apply_temporal_decay`).

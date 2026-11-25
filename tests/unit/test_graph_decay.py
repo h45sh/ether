@@ -50,6 +50,45 @@ async def test_reconcile_state_decay_basic():
 
 
 @pytest.mark.asyncio
+async def test_reconcile_state_decay_adaptive_volatility():
+    """Verify adaptive volatility accelerates decay for ephemeral/oscillating targets."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    t0 = datetime(2026, 11, 22, 12, 0, 0, tzinfo=UTC)
+
+    # Ephemeral container with oscillations
+    host = NetworkHost.create(ip="10.0.0.99")
+    host.ttl_seconds = 1000
+    host.data["oscillations"] = 3
+    host.data["ephemeral"] = True
+    node_id = await store.upsert_finding(sess_id, host)
+
+    # Volatility should be 0.1 + 0.6 + 0.3 = 1.0 -> effective_ttl = max(300, 1000 * 0.25) = 300s
+    async with store._get_conn() as conn:
+        await conn.execute(
+            "UPDATE nodes SET last_seen_at = ? WHERE session_id = ? AND id = ?",
+            (t0.strftime("%Y-%m-%d %H:%M:%S"), sess_id, node_id),
+        )
+        await conn.commit()
+
+    # Reconcile at t0 + 200s (< 300s) -> still confirmed, volatility recorded in data_json
+    res_within = await store.reconcile_state_decay(sess_id, now=t0 + timedelta(seconds=200))
+    node = await store.get_node(sess_id, node_id)
+    assert node["status"] == "confirmed"
+    assert node["data"]["volatility"] == 1.0
+
+    # Reconcile at t0 + 350s (> 300s effective_ttl, but < 1000s base ttl) -> transitions to flapping/stale
+    res_beyond = await store.reconcile_state_decay(sess_id, now=t0 + timedelta(seconds=350))
+    assert res_beyond["reconciled_count"] == 1
+    node_decayed = await store.get_node(sess_id, node_id)
+    assert node_decayed["status"] in ("flapping", "stale")
+
+    await store.close()
+
+
+@pytest.mark.asyncio
 async def test_reconcile_state_decay_flapping():
     """Verify that nodes with oscillating observations transition to flapping."""
     store = GraphStore(":memory:")
@@ -86,6 +125,45 @@ async def test_reconcile_state_decay_flapping():
 
     node = await store.get_node(sess_id, node_id)
     assert node["status"] == "stale"
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_state_decay_adaptive_volatility():
+    """Verify adaptive volatility accelerates decay for ephemeral/oscillating targets."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id, sess_id = await store.get_or_create_default_session()
+
+    t0 = datetime(2026, 11, 22, 12, 0, 0, tzinfo=UTC)
+
+    # Ephemeral container with oscillations
+    host = NetworkHost.create(ip="10.0.0.99")
+    host.ttl_seconds = 1000
+    host.data["oscillations"] = 3
+    host.data["ephemeral"] = True
+    node_id = await store.upsert_finding(sess_id, host)
+
+    # Volatility should be 0.1 + 0.6 + 0.3 = 1.0 -> effective_ttl = max(300, 1000 * 0.25) = 300s
+    async with store._get_conn() as conn:
+        await conn.execute(
+            "UPDATE nodes SET last_seen_at = ? WHERE session_id = ? AND id = ?",
+            (t0.strftime("%Y-%m-%d %H:%M:%S"), sess_id, node_id),
+        )
+        await conn.commit()
+
+    # Reconcile at t0 + 200s (< 300s) -> still confirmed, volatility recorded in data_json
+    res_within = await store.reconcile_state_decay(sess_id, now=t0 + timedelta(seconds=200))
+    node = await store.get_node(sess_id, node_id)
+    assert node["status"] == "confirmed"
+    assert node["data"]["volatility"] == 1.0
+
+    # Reconcile at t0 + 350s (> 300s effective_ttl, but < 1000s base ttl) -> transitions to flapping/stale
+    res_beyond = await store.reconcile_state_decay(sess_id, now=t0 + timedelta(seconds=350))
+    assert res_beyond["reconciled_count"] == 1
+    node_decayed = await store.get_node(sess_id, node_id)
+    assert node_decayed["status"] in ("flapping", "stale")
 
     await store.close()
 

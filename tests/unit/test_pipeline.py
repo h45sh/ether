@@ -237,3 +237,46 @@ async def test_pipeline_engine_executes_tier_b_via_command_runner_and_infers_dom
     assert len(nodes) == 1
     assert nodes[0]["schema_type"] == "network.host"
     await store.close()
+
+
+@pytest.mark.fast
+@pytest.mark.asyncio
+async def test_supervised_execution_service_execute_pipeline(tmp_path):
+    from ether.gateway.gate import ActionGateway, GatePolicy
+    from ether.services.execution import SupervisedExecutionService
+
+    reg = ToolRegistry(tools_dir=None)
+    reg.tools["mock_recon"] = {"adapter": MockReconAdapter(), "manifest": None}
+    reg.tools["mock_port"] = {"adapter": MockPortAdapter(), "manifest": None}
+
+    store = GraphStore(str(tmp_path / "svc_pipe.db"))
+    await store.initialize()
+    ws_id = await store.create_workspace("WS")
+    sess_id = await store.create_session(ws_id, "Sess")
+
+    safe_service = SupervisedExecutionService(
+        gateway=ActionGateway(registry=reg, store=store, policy=GatePolicy.SAFE),
+        store=store,
+    )
+
+    invalid_res = await safe_service.execute_pipeline("unknown_tool", session_id=sess_id)
+    assert invalid_res["is_error"] is True
+    assert invalid_res["error"] == "InvalidPipeline"
+
+    blocked_res = await safe_service.execute_pipeline(
+        "mock_recon(target=169.254.169.254)", session_id=sess_id
+    )
+    assert blocked_res["is_error"] is True
+    assert blocked_res["error"] == "PreflightGateRejected"
+
+    unrestricted_service = SupervisedExecutionService(
+        gateway=ActionGateway(registry=reg, store=store, policy=GatePolicy.UNRESTRICTED),
+        store=store,
+    )
+    ok_res = await unrestricted_service.execute_pipeline(
+        "mock_recon | mock_port", session_id=sess_id
+    )
+    assert ok_res["is_error"] is False
+    assert ok_res["stages"] == ["mock_recon", "mock_port"]
+    assert ok_res["total_findings"] == 3
+    await store.close()

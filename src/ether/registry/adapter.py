@@ -1,5 +1,6 @@
 """Abstract base class for all tool plugins."""
 
+import asyncio
 import functools
 import shutil
 from abc import ABC, abstractmethod
@@ -51,26 +52,41 @@ class ToolAdapter(ABC):
                 f"Cannot execute subprocess tool '{self.name or self.__class__.__name__}' without a CommandRunner in ExecutionContext."
             )
 
+        stdout_lines: List[str] = []
+
         async def _on_stdout(chunk: str) -> None:
+            stdout_lines.append(chunk)
             await context.spool_line(chunk, is_error=False)
 
         async def _on_stderr(chunk: str) -> None:
             await context.spool_line(chunk, is_error=True)
 
-        async for finding in context.runner.run(
-            adapter=self,
-            target=target,
-            params=params,
-            task_id=context.action_id,
-            cwd=context.cwd,
-            env=context.env,
-            use_shell=context.use_shell,
-            shell_path=context.shell_path,
-            on_output=_on_stdout,
-            on_error_output=_on_stderr,
-            timeout_seconds=context.timeout_seconds,
-        ):
-            yield finding
+        try:
+            async for finding in context.runner.run(
+                adapter=self,
+                target=target,
+                params=params,
+                task_id=context.action_id,
+                cwd=context.cwd,
+                env=context.env,
+                use_shell=context.use_shell,
+                shell_path=context.shell_path,
+                on_output=_on_stdout,
+                on_error_output=_on_stderr,
+                timeout_seconds=context.timeout_seconds,
+            ):
+                yield finding
+        except (TimeoutError, asyncio.TimeoutError):
+            raw_history = "".join(stdout_lines).strip()
+            if raw_history:
+                try:
+                    async for finding in self.parse_output(
+                        raw_history, target, context={"params": params, "is_partial": True}
+                    ):
+                        yield finding
+                except Exception:
+                    pass
+            raise
 
     @abstractmethod
     def validate_install(self) -> bool:

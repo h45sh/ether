@@ -9,6 +9,7 @@ from uuid import UUID
 
 from ether.common import sanitize_untrusted_output
 from ether.common.exceptions import ExecutionErrorCategory
+from ether.core.pipeline import PipelineEngine, PipelineParser
 from ether.core.session import (
     ExecutionChunk,
     ExecutionCompleted,
@@ -88,32 +89,10 @@ class SupervisedExecutionService:
         # 4. Preflight verification gate
         report = self.gateway.preflight_verify(tool_name=tool_name, target=target, flags=flags_str)
         if not report.is_valid:
-            error_list = [
-                {
-                    "title": e.title,
-                    "description": e.description,
-                    "remediation": e.remediation_hint,
-                    "category": e.category,
-                }
-                for e in report.errors
-            ]
-            snippet = "; ".join(e["description"] for e in error_list)
-            return {
-                "is_error": True,
-                "error_category": ExecutionErrorCategory.SCOPE_BLOCKED.value,
-                "exit_code": 1,
-                "stderr_snippet": snippet,
-                "error": "PreflightGateRejected",
-                "message": f"Execution of '{tool_name}' against '{target}' rejected by policy {self.gateway.policy.value}.",
-                "errors": error_list,
-                "warnings": [
-                    {"category": w.category, "title": w.title, "description": w.description}
-                    for w in report.warnings
-                ],
-                "remediation": error_list[0]["remediation"]
-                if error_list
-                else "Adjust target scope or policy.",
-            }
+            return self._format_preflight_rejection(
+                report=report,
+                message=f"Execution of '{tool_name}' against '{target}' rejected by policy {self.gateway.policy.value}.",
+            )
 
         warnings_list = [
             {"category": w.category, "title": w.title, "description": w.description}
@@ -276,3 +255,95 @@ class SupervisedExecutionService:
                 "message": f"Execution exceeded {timeout_seconds}s deadline and is continuing in background. Use get_diff(action_id='{action_id}') to inspect findings.",
                 "tokens_consumed": 0,
             }
+
+    def _format_preflight_rejection(self, report: Any, message: str) -> Dict[str, Any]:
+        """Format a failed PreflightReport into a structured error dictionary."""
+        error_list = [
+            {
+                "title": e.title,
+                "description": e.description,
+                "remediation": e.remediation_hint,
+                "category": e.category,
+            }
+            for e in report.errors
+        ]
+        return {
+            "is_error": True,
+            "error_category": ExecutionErrorCategory.SCOPE_BLOCKED.value,
+            "exit_code": 1,
+            "stderr_snippet": "; ".join(e["description"] for e in error_list),
+            "error": "PreflightGateRejected",
+            "message": message,
+            "errors": error_list,
+            "warnings": [
+                {"category": w.category, "title": w.title, "description": w.description}
+                for w in report.warnings
+            ],
+            "remediation": error_list[0]["remediation"]
+            if error_list
+            else "Adjust target scope or policy.",
+        }
+
+    async def execute_pipeline(
+        self,
+        expression: str,
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Parse, preflight-verify, and execute a declarative tool pipeline expression."""
+        if not session_id:
+            _, sess_id = await self.store.get_or_create_default_session()
+            session_id = sess_id
+
+        try:
+            stages = PipelineParser.parse(expression, self.gateway.registry)
+        except ValueError as e:
+            return {"is_error": True, "error": "InvalidPipeline", "message": str(e)}
+
+        if not stages:
+            return {
+                "is_error": True,
+                "error": "EmptyPipeline",
+                "message": "No pipeline stages found.",
+            }
+
+        first_stage = stages[0]
+        raw_target = first_stage.params.get("target") or "127.0.0.1"
+        report = self.gateway.preflight_verify(
+            tool_name=first_stage.tool_name, target=raw_target, flags=""
+        )
+        if not report.is_valid:
+            return self._format_preflight_rejection(
+                report=report,
+                message=f"Pipeline stage '{first_stage.tool_name}' against '{raw_target}' rejected by policy {self.gateway.policy.value}.",
+            )
+
+        engine = PipelineEngine(self.gateway.registry, store=self.store)
+        collected: List[Dict[str, Any]] = []
+        try:
+            async for finding in engine.execute_pipeline(
+                expression=expression,
+                session_id=session_id,
+                policy=self.gateway.policy.value,
+            ):
+                collected.append(
+                    {
+                        "schema_type": finding.schema_type,
+                        "pik": finding.pik,
+                        "data": finding.data,
+                    }
+                )
+        except Exception as e:
+            return {
+                "is_error": True,
+                "error": type(e).__name__,
+                "message": f"Pipeline execution failed: {e}",
+            }
+
+        return {
+            "is_error": False,
+            "session_id": session_id,
+            "expression": expression,
+            "stages": [s.tool_name for s in stages],
+            "total_findings": len(collected),
+            "findings": collected,
+        }
