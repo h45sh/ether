@@ -95,7 +95,7 @@ def test_preflight_empty_target_and_remedy():
         target_errors[0], target="", flags="-sV"
     )
     assert new_target == "scanme.nmap.org"
-    assert "scanme.nmap.org" in feedback
+    assert new_target in feedback
 
 
 def test_preflight_unexpanded_placeholder_variable():

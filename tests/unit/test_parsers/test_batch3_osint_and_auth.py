@@ -58,7 +58,7 @@ def test_crtsh_adapter_contract():
     target = DomainInfo.create(domain="example.com")
     cmd = adapter.build_command(target, {})
     assert "crtsh" in cmd
-    assert "example.com" in cmd
+    assert any(arg == target.pik["domain"] for arg in cmd)
 
 
 @pytest.mark.asyncio
