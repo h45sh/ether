@@ -44,11 +44,19 @@ async def handle_run(args: Any, context: CliContext) -> int:
 
         if not context.is_json:
             print(f"[*] Dispatching {tool_name} against {target} (Policy: {context.policy.value})")
+        else:
+            print(
+                f"[*] Dispatching {tool_name} against {target} (Policy: {context.policy.value})",
+                file=sys.stderr,
+            )
 
         def _chunk_cb(text: str) -> None:
             if not context.is_json:
                 sys.stdout.write(text)
                 sys.stdout.flush()
+            else:
+                sys.stderr.write(text)
+                sys.stderr.flush()
 
         result = await service.execute_tool(
             tool_name=tool_name,
@@ -60,6 +68,20 @@ async def handle_run(args: Any, context: CliContext) -> int:
         )
 
         if result.get("is_error"):
+            if context.is_json:
+                print_json(
+                    {
+                        "action_id": result.get("action_id"),
+                        "session_id": result.get("session_id"),
+                        "tool_name": tool_name,
+                        "status": "error",
+                        "is_error": True,
+                        "error": result.get("error"),
+                        "errors": result.get("errors", []),
+                        "message": result.get("message") or result.get("stderr_snippet"),
+                        "remediation": result.get("remediation"),
+                    }
+                )
             if result.get("error") == "PreflightGateRejected" and result.get("errors"):
                 print_error(f"Preflight validation failed for '{tool_name}':")
                 for err in result["errors"]:

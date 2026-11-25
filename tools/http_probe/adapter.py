@@ -1,5 +1,6 @@
 """Pure-Python HTTP Probe tool adapter with SSRF defense."""
 
+import asyncio
 import re
 import ssl
 import urllib.parse
@@ -174,13 +175,13 @@ class HTTPProbeAdapter(ToolAdapter):
         async with httpx.AsyncClient(
             transport=transport,
             verify=ssl_ctx,
-            timeout=httpx.Timeout(timeout_sec, connect=5.0),
+            timeout=httpx.Timeout(timeout_sec, connect=min(timeout_sec, 5.0)),
             follow_redirects=True,
             limits=limits,
             event_hooks={"response": [_redirect_hook]},
         ) as client:
             try:
-                response = await client.get(url)
+                response = await asyncio.wait_for(client.get(url), timeout=timeout_sec)
             except PolicyViolationError:
                 raise
             except Exception as exc:
@@ -194,6 +195,8 @@ class HTTPProbeAdapter(ToolAdapter):
             headers = dict(response.headers)
             server = headers.get("server", "").strip()
             x_powered = headers.get("x-powered-by", "").strip()
+            body_preview = response.text[:2048] if response.text else None
+            redirect_location = str(response.url) if response.history else None
 
             await context.spool_line(f"[+] HTTP {status} {response.reason_phrase} - {url}")
             for h_name, h_val in headers.items():
@@ -258,6 +261,8 @@ class HTTPProbeAdapter(ToolAdapter):
                 server=server,
                 favicon_hash=favicon_hash,
                 anchor_hash=endpoint_anchor,
+                body_preview=body_preview,
+                redirect_location=redirect_location,
             )
             yield endpoint
 

@@ -304,9 +304,18 @@ class PreflightVerifier:
         clean_tool = (tool_name or "").strip().lower()
         active_scope = scope if scope is not None else EngagementScope()
 
+        if re.search(r"[|;&$`\n]", clean_flags):
+            return "[!] Shell metacharacters are prohibited in command flags."
+
         if policy == GatePolicy.SAFE:
             if re.search(r"\bsudo\b", clean_flags) or re.search(r"\bsudo\b", clean_target):
                 return "[!] Sudo execution is prohibited under Safe GatePolicy."
+
+            if clean_flags:
+                from ether.gateway.gate import is_blocked_destination
+
+                if is_blocked_destination(clean_flags, allow_loopback=active_scope.allow_loopback):
+                    return "[!] Command flags contain prohibited destination or metadata endpoint."
 
             if clean_target:
                 verdict = ScopeValidator.is_in_scope(
@@ -475,6 +484,20 @@ class PreflightVerifier:
         report: PreflightReport,
     ) -> None:
         """Enforce sandbox security restrictions (sudo ban, SSRF link-local gating under SAFE policy)."""
+        from ether.gateway.gate import is_blocked_destination
+
+        # Metacharacter check under all policies
+        if flags and re.search(r"[|;&$`\n]", flags):
+            report.issues.append(
+                PreflightIssue(
+                    category="security",
+                    severity="error",
+                    title="Shell metacharacters prohibited in flags",
+                    description="Command flags contain shell metacharacters (| ; & $ ` \\n) which are rejected.",
+                    remediation_hint="Remove shell interpolation and pipe metacharacters from arguments.",
+                )
+            )
+
         if self.policy == GatePolicy.SAFE:
             # Sudo ban in Safe Policy
             if re.search(r"\bsudo\b", flags) or re.search(r"\bsudo\b", target):
@@ -489,6 +512,18 @@ class PreflightVerifier:
                         remedy_label="Remove sudo",
                         remedy_action="remove_sudo",
                         remedy_payload=re.sub(r"\bsudo\s*", "", flags).strip(),
+                    )
+                )
+
+            # Flag smuggling checks
+            if flags and is_blocked_destination(flags, allow_loopback=self.scope.allow_loopback):
+                report.issues.append(
+                    PreflightIssue(
+                        category="security",
+                        severity="error",
+                        title="Command flags contain prohibited destination",
+                        description="Extracted host/IP in command parameters violates loopback, cloud metadata, or CIDR scope boundaries.",
+                        remediation_hint="Remove prohibited target arguments from command flags.",
                     )
                 )
 

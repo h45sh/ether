@@ -1,0 +1,32 @@
+[meta]
+name = "tcp_probe"
+description = "Native asynchronous TCP port prober and banner grabber with tarpit timing detection."
+one_line_summary = "zero-fork in-process TCP port prober and banner grabber"
+category = "Network Reconnaissance"
+categories = ["recon", "network", "tcp", "banner"]
+binary = ""
+execution_tier = "coroutine"
+theory = """
+### Native TCP Port Handshake & Service Banner Extraction
+In-process asynchronous TCP probing performs lightweight non-blocking three-way handshakes to verify port states and grab initial service greeting banners (SSH, FTP, SMTP, HTTP) while monitoring packet response latency to detect tarpits.
+"""
+
+[modes]
+learning = true
+power = true
+
+[input]
+accepts = ["network.host", "network.service", "domain.info"]
+target_types = ["ip", "domain"]
+
+[output]
+produces = ["network.host", "network.service"]
+
+[learning]
+enabled = true
+
+[[learning.recipes]]
+name = "TCP Banner & Port Extraction"
+difficulty = "Beginner"
+description = "Execute zero-fork TCP connection to retrieve initial server banners."
+flags = []

@@ -2,6 +2,7 @@
 
 import ipaddress
 import json
+import re
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -50,8 +51,8 @@ def _strip_token_delimiters(token: str) -> str:
     return token.strip("\"'`()<>,;{}[]")
 
 
-def is_blocked_destination(text: str) -> bool:
-    """Check if a string contains known restricted destinations like cloud metadata,
+def is_blocked_destination(text: str, allow_loopback: bool = True) -> bool:
+    """Check if a string contains known restricted destinations like cloud metadata or loopback,
     routing IP/hostname checks through ScopeValidator.
     """
     if not text:
@@ -62,17 +63,32 @@ def is_blocked_destination(text: str) -> bool:
             return True
 
     # Tokenize input to detect embedded IP/host candidates via ScopeValidator
-    tokens = lower_text.replace("=", " ").replace("&", " ").replace(";", " ").split()
-    metadata_scope = EngagementScope(allow_loopback=True)
+    tokens = lower_text.replace("=", " ").replace("&", " ").replace(";", " ").replace(",", " ").split()
+    metadata_scope = EngagementScope(allow_loopback=allow_loopback)
     for raw_tok in tokens:
         tok = _strip_token_delimiters(raw_tok)
         if not tok:
             continue
-        host = ScopeValidator.parse_host_candidate(tok)
-        if ScopeValidator.parse_ip(host) is not None or host in METADATA_HOSTNAMES:
-            verdict = ScopeValidator.is_in_scope(tok, metadata_scope, policy_is_unrestricted=False)
-            if not verdict.allowed:
-                return True
+        for pfx in ("-u", "-t", "-l", "--url", "--target", "--proxy", "--resolve"):
+            if tok.startswith(pfx):
+                tok = tok[len(pfx) :].lstrip("=:")
+                break
+        sub_tokens = tok.split(":") if ":" in tok and not tok.startswith("http") else [tok]
+        for sub_tok in sub_tokens:
+            sub_tok = _strip_token_delimiters(sub_tok)
+            if not sub_tok:
+                continue
+            host = ScopeValidator.parse_host_candidate(sub_tok)
+            if (
+                ScopeValidator.parse_ip(host) is not None
+                or host in METADATA_HOSTNAMES
+                or "nip.io" in host
+                or "localtest.me" in host
+                or not allow_loopback
+            ):
+                verdict = ScopeValidator.is_in_scope(sub_tok, metadata_scope, policy_is_unrestricted=False)
+                if not verdict.allowed:
+                    return True
 
     return False
 
@@ -310,9 +326,14 @@ class ActionGateway:
             action.params["raw_flags"] = action.params["flags"]
         raw_flags = action.params.get("raw_flags", "") if action.params else ""
         if self.policy != GatePolicy.UNRESTRICTED:
-            if is_blocked_destination(raw_flags) or is_blocked_destination(action.tool_name):
+            if re.search(r"[|;&$`\n]", raw_flags):
                 raise ActionValidationError(
-                    "Access to cloud metadata endpoints is strictly prohibited."
+                    "Shell metacharacters are prohibited in command arguments."
+                )
+            allow_loopback = getattr(self.scope, "allow_loopback", False) if hasattr(self, "scope") and self.scope else False
+            if is_blocked_destination(raw_flags, allow_loopback=allow_loopback) or is_blocked_destination(action.tool_name, allow_loopback=allow_loopback):
+                raise ActionValidationError(
+                    "Access to cloud metadata or unauthorized loopback destination is strictly prohibited."
                 )
             if self._allowed_cidrs and not self.validate_target_scope(raw_flags):
                 raise ActionValidationError(

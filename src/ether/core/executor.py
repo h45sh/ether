@@ -37,10 +37,28 @@ def sanitize_subprocess_env(env: Optional[Dict[str, str]] = None) -> Dict[str, s
         "PPLX_",
         "HUGGINGFACE_",
         "HF_",
+        "AWS_",
+        "AZURE_",
+        "GOOGLE_",
+        "SSH_",
+        "DOCKER_",
+        "NPM_",
+    )
+    sensitive_suffixes = (
+        "_KEY",
+        "_SECRET",
+        "_TOKEN",
+        "_PASSWORD",
+        "_PASS",
+        "_AUTH",
     )
     sensitive_exact = {
         "AWS_SECRET_ACCESS_KEY",
         "AWS_ACCESS_KEY_ID",
+        "AWS_SESSION_TOKEN",
+        "AWS_SECURITY_TOKEN",
+        "AWS_PROFILE",
+        "AZURE_CLIENT_SECRET",
         "GITHUB_TOKEN",
         "GH_TOKEN",
         "API_KEY",
@@ -48,11 +66,18 @@ def sanitize_subprocess_env(env: Optional[Dict[str, str]] = None) -> Dict[str, s
         "PRIVATE_KEY",
         "VAULT_TOKEN",
         "SSH_PRIVATE_KEY",
+        "SSH_AUTH_SOCK",
+        "SSH_AGENT_PID",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "DATABASE_URL",
+        "DOCKER_PASSWORD",
+        "NPM_TOKEN",
     }
     return {
         k: v
         for k, v in base_env.items()
         if not any(k.upper().startswith(p) for p in sensitive_prefixes)
+        and not any(k.upper().endswith(s) for s in sensitive_suffixes)
         and k.upper() not in sensitive_exact
     }
 

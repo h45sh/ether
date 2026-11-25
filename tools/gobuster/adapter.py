@@ -101,12 +101,22 @@ class GobusterAdapter(ToolAdapter):
 
         for line in raw_stdout.splitlines():
             clean_line = self.strip_ansi(line)
+            if len(clean_line) > 4096:
+                clean_line = clean_line[:4096]
+            if " (Status:" not in clean_line:
+                continue
 
-            match = self.STATUS_PATTERN.search(clean_line)
-            if match:
-                path = match.group(1)
-                status_code = int(match.group(2))
+            part_path, _, rest = clean_line.partition(" (Status:")
+            path_tokens = part_path.strip().split()
+            if not path_tokens:
+                continue
+            path = path_tokens[-1]
+            status_str, _, _ = rest.partition(")")
+            status_str = status_str.strip()
+            if not status_str.isdigit():
+                continue
 
-                full_url = f"{base_url}{path}" if base_url else path
+            status_code = int(status_str)
+            full_url = f"{base_url}{path}" if base_url else path
 
-                yield WebEndpoint.create(url=full_url, method="GET", status_code=status_code)
+            yield WebEndpoint.create(url=full_url, method="GET", status_code=status_code)

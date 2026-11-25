@@ -149,7 +149,48 @@ class ExecutionFailed(ExecutionEvent):
     duration_seconds: float = 0.0
 
 
-# --- Internal Adapters ---
+# --- Internal Adapters & Buffers ---
+
+
+class ByteBoundedRingBuffer:
+    """Byte-bounded ring buffer that evicts oldest chunks when total bytes exceed max_bytes."""
+
+    def __init__(self, max_bytes: int = 2 * 1024 * 1024):
+        self.max_bytes = max_bytes
+        self._chunks: deque[str] = deque()
+        self._current_bytes: int = 0
+        self.dropped_bytes_count: int = 0
+
+    def append(self, chunk: str) -> None:
+        chunk_bytes = len(chunk.encode("utf-8", errors="replace"))
+        self._chunks.append(chunk)
+        self._current_bytes += chunk_bytes
+        while self._chunks and self._current_bytes > self.max_bytes:
+            oldest = self._chunks.popleft()
+            evicted_bytes = len(oldest.encode("utf-8", errors="replace"))
+            self._current_bytes -= evicted_bytes
+            self.dropped_bytes_count += evicted_bytes
+
+    def pop(self, default: Any = None) -> Optional[str]:
+        if self._chunks:
+            val = self._chunks.pop()
+            self._current_bytes -= len(val.encode("utf-8", errors="replace"))
+            return val
+        return default
+
+    def clear(self) -> None:
+        self._chunks.clear()
+        self._current_bytes = 0
+
+    def __iter__(self):
+        return iter(self._chunks)
+
+    def __len__(self) -> int:
+        return len(self._chunks)
+
+    @property
+    def total_bytes(self) -> int:
+        return self._current_bytes
 
 
 class InternalShellAdapter(ToolAdapter):
@@ -182,24 +223,24 @@ class ExecutionSession:
 
     def __init__(
         self,
-        store: GraphStore,
-        gateway: ActionValidator,
-        registry: ToolRegistry,
-        command_runner: CommandRunner,
+        store: Optional[GraphStore] = None,
+        gateway: Optional[ActionValidator] = None,
+        registry: Optional[ToolRegistry] = None,
+        command_runner: Optional[CommandRunner] = None,
         user_env: Optional[Dict[str, str]] = None,
         user_shell: Optional[str] = None,
         data_dir: Optional[str] = None,
     ):
-        self.store = store
-        self.gateway = gateway
-        self.registry = registry
-        self.runner = command_runner
+        self.store = store if store is not None else GraphStore(":memory:")
+        self.gateway = gateway if gateway is not None else PassthroughActionValidator()
+        self.registry = registry if registry is not None else ToolRegistry()
+        self.runner = command_runner if command_runner is not None else Executor()
         self.user_env = user_env or os.environ.copy()
         self.user_shell = user_shell or "/bin/bash"
         if data_dir is not None:
             self.data_dir: Optional[str] = data_dir
         else:
-            db_path = getattr(store, "db_path", None)
+            db_path = getattr(self.store, "db_path", None)
             if db_path and str(db_path) != ":memory:" and not str(db_path).startswith("file:"):
                 self.data_dir = str(Path(str(db_path)).parent)
             else:
@@ -208,13 +249,14 @@ class ExecutionSession:
         # Action tracking
         self._active_jobs: Dict[UUID, JobStatus] = {}
         self._job_actions: Dict[UUID, ActionRequest] = {}
-        self._job_buffers: Dict[UUID, deque[str]] = {}
+        self._job_buffers: Dict[UUID, ByteBoundedRingBuffer] = {}
         self._event_queues: Dict[UUID, List[asyncio.Queue[Optional[ExecutionEvent]]]] = {}
         self._running_tasks: Dict[UUID, asyncio.Task] = {}
         self._status_listeners: List[Callable[[JobStatus], Any]] = []
         self._session_cwd: Dict[str, str] = {}
         self.closed_job_ids: set[str] = set()
         self._job_spoolers: Dict[UUID, LogSpooler] = {}
+        self.dropped_events_count: int = 0
 
     @classmethod
     def create(
@@ -278,7 +320,7 @@ class ExecutionSession:
 
     def append_job_buffer(self, action_id: UUID, chunk: str) -> None:
         """Append an output chunk to in-memory job buffer."""
-        buf = self._job_buffers.setdefault(action_id, deque(maxlen=5000))
+        buf = self._job_buffers.setdefault(action_id, ByteBoundedRingBuffer())
         buf.append(chunk)
 
     def remove_job(self, action_id: UUID) -> Optional[JobStatus]:
@@ -341,9 +383,34 @@ class ExecutionSession:
         """Get all active/tracked jobs for a session."""
         return [j for j in self._active_jobs.values() if str(j.session_id) == str(session_id)]
 
+    def get_dropped_bytes(self, action_id: Optional[UUID] = None) -> int:
+        """Return dropped bytes count for an action or across all active buffers."""
+        if action_id is not None:
+            buf = self._job_buffers.get(action_id)
+            return buf.dropped_bytes_count if buf else 0
+        return sum(buf.dropped_bytes_count for buf in self._job_buffers.values())
+
+    def get_dropped_events(self) -> int:
+        """Return total dropped events due to subscriber queue backpressure."""
+        return self.dropped_events_count
+
+    def _queue_put_with_backpressure(
+        self, q: asyncio.Queue[Optional[ExecutionEvent]], event: Optional[ExecutionEvent]
+    ) -> None:
+        if q.full():
+            try:
+                q.get_nowait()
+                self.dropped_events_count += 1
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            q.put_nowait(event)
+        except Exception:
+            pass
+
     async def subscribe(self, action_id: UUID) -> AsyncIterator[ExecutionEvent]:
         """Subscribe to live typed execution events for an action with backlog replay."""
-        q: asyncio.Queue[Optional[ExecutionEvent]] = asyncio.Queue()
+        q: asyncio.Queue[Optional[ExecutionEvent]] = asyncio.Queue(maxsize=100)
         if action_id not in self._event_queues:
             self._event_queues[action_id] = []
         self._event_queues[action_id].append(q)
@@ -351,20 +418,25 @@ class ExecutionSession:
         # Replay backlog if already started
         buffer_chunks = self.get_output_history(action_id)
         for chunk in buffer_chunks:
-            await q.put(ExecutionChunk(action_id=action_id, text=chunk))
+            self._queue_put_with_backpressure(
+                q, ExecutionChunk(action_id=action_id, text=chunk)
+            )
 
         job = self.get_job(action_id)
         if job and job.status != JobStatusEnum.RUNNING:
             if job.status == JobStatusEnum.DONE:
-                await q.put(ExecutionCompleted(action_id=action_id, status=job.status))
+                self._queue_put_with_backpressure(
+                    q, ExecutionCompleted(action_id=action_id, status=job.status)
+                )
             else:
-                await q.put(
+                self._queue_put_with_backpressure(
+                    q,
                     ExecutionFailed(
                         action_id=action_id,
                         error=job.error_snippet or "Failed",
-                    )
+                    ),
                 )
-            await q.put(None)
+            self._queue_put_with_backpressure(q, None)
 
         try:
             while True:
@@ -381,10 +453,7 @@ class ExecutionSession:
     async def _emit_event(self, action_id: UUID, event: Optional[ExecutionEvent]) -> None:
         queues = list(self._event_queues.get(action_id, []))
         for q in queues:
-            try:
-                await q.put(event)
-            except Exception:
-                pass
+            self._queue_put_with_backpressure(q, event)
 
     async def dispatch(
         self,
@@ -492,7 +561,7 @@ class ExecutionSession:
         )
         self._active_jobs[job.job_id] = job
         self._job_actions[job.job_id] = action
-        self._job_buffers[job.job_id] = deque(maxlen=5000)
+        self._job_buffers[job.job_id] = ByteBoundedRingBuffer()
         self._notify_status(job)
 
         # 6. Resolve target finding
@@ -546,7 +615,7 @@ class ExecutionSession:
     async def _append_chunk(
         self, action_id: UUID, text: str, log_file_path: str, is_error: bool = False
     ) -> None:
-        buf = self._job_buffers.setdefault(action_id, deque(maxlen=5000))
+        buf = self._job_buffers.setdefault(action_id, ByteBoundedRingBuffer())
         buf.append(text)
 
         spooler = self._job_spoolers.get(action_id)

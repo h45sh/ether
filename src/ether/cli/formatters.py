@@ -15,6 +15,29 @@ def print_error(msg: str) -> None:
     print(f"[!] Error: {msg}", file=sys.stderr)
 
 
+def print_status(msg: str, is_json: bool = False) -> None:
+    """Output status/progress message to stderr if json mode, or stdout if terminal mode."""
+    target = sys.stderr if is_json else sys.stdout
+    print(msg, file=target)
+
+
+class ConsoleProgress:
+    """Progress and diagnostic reporter that routes to stderr in JSON mode to preserve clean stdout JSON."""
+
+    def __init__(self, is_json: bool = False):
+        self.is_json = is_json
+        self.target = sys.stderr if is_json else sys.stdout
+
+    def log(self, message: str) -> None:
+        """Log diagnostic or progress message."""
+        print(message, file=self.target)
+
+    def write(self, text: str) -> None:
+        """Write partial stream text."""
+        self.target.write(text)
+        self.target.flush()
+
+
 def print_table(headers: List[str], rows: List[List[str]]) -> None:
     """Format and print a simple ASCII table to stdout."""
     if not headers:

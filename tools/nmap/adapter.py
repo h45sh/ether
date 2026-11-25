@@ -19,6 +19,9 @@ _XML_PORT_PATTERN = re.compile(
 )
 _XML_STATE_PATTERN = re.compile(r'<state\s+[^>]*state="([^"]+)"(?:\s+[^>]*reason="([^"]+)")?')
 _XML_SERVICE_PATTERN = re.compile(r'<service\s+[^>]*name="([^"]+)"')
+_XML_PRODUCT_PATTERN = re.compile(r'product="([^"]+)"')
+_XML_VERSION_PATTERN = re.compile(r'version="([^"]+)"')
+_XML_EXTRAINFO_PATTERN = re.compile(r'extrainfo="([^"]+)"')
 _XML_EXTRAREASONS_PATTERN = re.compile(r'<extrareasons\s+[^>]*reason="([^"]+)"')
 
 
@@ -125,6 +128,12 @@ class NmapAdapter(ToolAdapter):
                 service_match = _XML_SERVICE_PATTERN.search(clean_line)
                 service_name = service_match.group(1) if service_match else "unknown"
 
+                prod_m = _XML_PRODUCT_PATTERN.search(clean_line)
+                ver_m = _XML_VERSION_PATTERN.search(clean_line)
+                extra_m = _XML_EXTRAINFO_PATTERN.search(clean_line)
+                banner_parts = [m.group(1) for m in (prod_m, ver_m, extra_m) if m]
+                banner = " ".join(banner_parts) if banner_parts else None
+
                 fw_reason = _classify_firewall_reason(state, reason)
 
                 include_all = bool(
@@ -142,6 +151,7 @@ class NmapAdapter(ToolAdapter):
                         protocol=proto or "tcp",
                         service_name=service_name,
                         firewall_reason=fw_reason,
+                        banner=banner,
                     )
                 continue
 
@@ -169,6 +179,8 @@ class NmapAdapter(ToolAdapter):
                     protocol = port_match.group(2)
                     state = port_match.group(3)
                     service = port_match.group(4)
+                    rest_tokens = clean_line.split(None, 4)
+                    banner = rest_tokens[4].strip() if len(rest_tokens) > 4 else None
                     fw_reason = _classify_firewall_reason(state, "")
 
                     include_all = bool(
@@ -188,4 +200,5 @@ class NmapAdapter(ToolAdapter):
                         protocol=protocol,
                         service_name=service,
                         firewall_reason=fw_reason,
+                        banner=banner,
                     )

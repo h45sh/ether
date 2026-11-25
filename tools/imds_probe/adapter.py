@@ -35,11 +35,36 @@ class ImdsProbeAdapter(ToolAdapter):
         params: Dict[str, Any],
         context: ExecutionContext,
     ) -> AsyncIterator[BaseFinding]:
-        # Under SAFE policy, cloud metadata addresses are strictly blocked
+        target_url = None
+        if target:
+            target_url = target.pik.get("url") or target.data.get("url")
+        if not target_url:
+            target_url = params.get("url") or params.get("target")
+
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            if target_url and target_url.startswith(("http://", "https://")):
+                try:
+                    resp = await client.get(target_url, follow_redirects=False)
+                    if resp.is_redirect:
+                        loc = resp.headers.get("Location", "")
+                        if "169.254.169.254" in loc or "metadata" in loc:
+                            yield CloudAsset.create(
+                                provider="redirect",
+                                resource_id="open-redirect-to-imds",
+                                service="metadata",
+                                public_access=True,
+                                url=target_url,
+                            )
+                except Exception:
+                    pass
+
+        # Under SAFE policy, direct cloud metadata IP probing is strictly blocked
         if str(context.policy).lower() in ("safe", "gatepolicy.safe"):
-            raise PolicyViolationError(
-                "Access to cloud metadata IP 169.254.169.254 is forbidden under GatePolicy.SAFE (SSRF defense)."
-            )
+            if not target_url or "169.254." in str(target_url):
+                raise PolicyViolationError(
+                    "Access to cloud metadata IP 169.254.169.254 is forbidden under GatePolicy.SAFE (SSRF defense)."
+                )
+            return
 
         provider = str(params.get("provider", "aws")).lower()
 

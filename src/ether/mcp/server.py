@@ -64,6 +64,13 @@ class EtherMCPServer(MCPServer):
     """Subclass of MCPServer supporting optional Bearer token authentication on SSE endpoints."""
 
     def __init__(self, *args: Any, auth_token: Optional[str] = None, **kwargs: Any) -> None:
+        if "version" not in kwargs:
+            try:
+                import ether
+
+                kwargs["version"] = ether.__version__
+            except Exception:
+                kwargs["version"] = "0.1.3"
         super().__init__(*args, **kwargs)
         self.auth_token = auth_token
 

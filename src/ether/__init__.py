@@ -1,12 +1,15 @@
 """Ether: Reactive process supervisor and graph telemetry engine for security tools."""
 
+from ether.common.context import ExecutionContext
 from ether.common.exceptions import EtherError
+from ether.common.scope import EngagementScope, ScopeValidator
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
 from ether.core.session import ExecutionSession
 from ether.gateway.gate import ActionGateway, ActionValidationError, GatePolicy
 from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
 from ether.graph.timeline import ActionTimelineRepository
+from ether.graph.write_queue import WriteQueue
 from ether.registry.adapter import ToolAdapter
 from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
@@ -23,15 +26,19 @@ __all__ = [
     "ActionTimelineRepository",
     "ActionValidationError",
     "BaseFinding",
+    "EngagementScope",
     "EtherError",
+    "ExecutionContext",
     "ExecutionSession",
     "Executor",
     "GatePolicy",
     "GraphAnalyticsEngine",
     "GraphStore",
     "LogSpooler",
+    "ScopeValidator",
     "ToolAdapter",
     "ToolRegistry",
+    "WriteQueue",
     "__version__",
     "sanitize_subprocess_env",
 ]
