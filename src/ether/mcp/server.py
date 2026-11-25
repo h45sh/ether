@@ -6,7 +6,6 @@ import importlib
 import inspect
 import json
 import logging
-import os
 import shlex
 import shutil
 from pathlib import Path
@@ -29,7 +28,7 @@ from ether.graph.store import GraphStore
 from ether.graph.telemetry import GraphTelemetryCompiler
 from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
-from ether.schemas.power import ActionRequest
+from ether.schemas.power import ActionRequest, JobStatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,7 @@ def create_mcp_server(
     gateway: Optional[ActionGateway] = None,
     registry: Optional[ToolRegistry] = None,
     execution_session: Optional[Any] = None,
+    data_dir: Optional[str] = None,
 ) -> MCPServer:
     """Construct an MCP server instance exposing canonical security tools."""
     instructions = (
@@ -63,7 +63,12 @@ def create_mcp_server(
         reg.load_tools()
     gw = gateway or ActionGateway(registry=reg, store=store, policy=policy)
     gw.store = store
-    exec_sess = execution_session or gw.create_session()
+    if execution_session is not None:
+        exec_sess = execution_session
+    elif "data_dir" in inspect.signature(gw.create_session).parameters:
+        exec_sess = gw.create_session(data_dir=data_dir)
+    else:
+        exec_sess = gw.create_session()
 
     async def _resolve_session(session_id: Optional[str]) -> str:
         """Resolve target session ID from argument, default, or active sandbox."""
@@ -350,7 +355,7 @@ def create_mcp_server(
             session_id=UUID(sess_id),
             tool_name=tool_name,
             target_entity_id=target_node_id,
-            params={"target": target, "flags": flags_list},
+            params={"target": target, "flags": flags_list, "raw_flags": flags_str},
         )
 
         try:
@@ -379,10 +384,18 @@ def create_mcp_server(
             err_msg = None
             async for event in exec_sess.subscribe(action_id):
                 if isinstance(event, ExecutionCompleted):
-                    exit_code = 0
+                    ev_exit = getattr(event, "exit_code", None)
+                    if ev_exit is not None and ev_exit != 0:
+                        exit_code = ev_exit
+                        err_msg = err_msg or f"Process exited with code {ev_exit}"
+                    elif getattr(event, "status", None) == JobStatusEnum.FAILED:
+                        exit_code = 1
+                        err_msg = err_msg or "Execution failed with status FAILED"
+                    else:
+                        exit_code = 0
                 elif isinstance(event, ExecutionFailed):
-                    exit_code = 1
-                    err_msg = event.error
+                    exit_code = getattr(event, "exit_code", None) or 1
+                    err_msg = event.error or f"Process exited with code {exit_code}"
             return exit_code, err_msg
 
         try:
@@ -790,19 +803,40 @@ def create_mcp_server(
                 log_lines = []
 
         if not log_lines:
-            log_dir = paths.get_default_logs_dir()
-            log_file = os.path.join(log_dir, f"{action_id}.log")
-            gz_file = f"{log_file}.gz"
-            if os.path.exists(log_file):
+            read_fn = getattr(ForensicLogManager, "read_action_log", None)
+            if callable(read_fn):
                 try:
-                    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                        log_lines = f.readlines()
+                    content = read_fn(action_id, data_dir=data_dir)
+                    if content:
+                        log_lines = content.splitlines(keepends=True)
                 except Exception:
                     log_lines = []
-            elif os.path.exists(gz_file):
+
+        if not log_lines:
+            log_dir = Path(paths.get_default_logs_dir(data_dir))
+            sessions_root = log_dir / "sessions"
+            short_id = action_id[:8]
+            candidates: List[Path] = []
+            if sessions_root.is_dir():
+                for pattern in (
+                    f"**/*_{short_id}.log",
+                    f"**/*_{short_id}.log.gz",
+                    f"**/{short_id}.log",
+                    f"**/{short_id}.log.gz",
+                    f"**/{action_id}.log",
+                    f"**/{action_id}.log.gz",
+                ):
+                    candidates.extend(sorted(sessions_root.glob(pattern)))
+            for candidate in candidates:
                 try:
-                    with gzip.open(gz_file, "rt", encoding="utf-8", errors="replace") as f:
-                        log_lines = f.readlines()
+                    if candidate.suffix == ".gz":
+                        with gzip.open(candidate, "rt", encoding="utf-8", errors="replace") as f:
+                            log_lines = f.readlines()
+                    else:
+                        with open(candidate, "r", encoding="utf-8", errors="replace") as f:
+                            log_lines = f.readlines()
+                    if log_lines:
+                        break
                 except Exception:
                     log_lines = []
 
@@ -968,8 +1002,6 @@ def create_mcp_server(
         async for finding in engine.execute_pipeline(
             expression, session_id=sess_id, policy=gw.policy.value
         ):
-            if store is not None:
-                await store.upsert_finding(sess_id, finding)
             collected.append(
                 {
                     "schema_type": finding.schema_type,
@@ -997,7 +1029,7 @@ def create_mcp_server(
             session_id: Target session ID (optional, defaults to active session).
         """
         sess_id = await _resolve_session(session_id)
-        is_valid, records = ForensicLogManager.verify_session_audit(sess_id)
+        is_valid, records = ForensicLogManager.verify_session_audit(sess_id, data_dir=data_dir)
         return json.dumps(
             {
                 "session_id": sess_id,
@@ -1052,7 +1084,7 @@ def create_mcp_server(
         return (
             f"Conduct a structured perimeter reconnaissance against '{target}' using Ether:\n"
             "1. Call `list_tools` and `get_tool_info` to verify available tools, target formats, and recommended flags.\n"
-            "2. For multi-stage discovery, use `execute_pipeline` (e.g. `subfinder <domain> | dnspython | http_probe`) "
+            "2. For multi-stage discovery, use `execute_pipeline` (e.g. `subfinder(target=<domain>) | dnspython | http_probe`) "
             "or run individual tools via `execute_tool`.\n"
             "3. Inspect newly discovered entities via `get_diff` (do not set `include_raw=True` unless debugging).\n"
             "4. Summarize critical services, technologies, and attack paths using `get_crown_jewels`."

@@ -15,8 +15,10 @@ from ether.schemas.network import (
     NetworkNetblock,
     NetworkService,
     TLSCertificate,
+    TLSCipherSuite,
 )
 from ether.schemas.vulnerability import (
+    AuditDrift,
     AuditMisconfig,
     ExploitReference,
     VulnerabilityFound,
@@ -30,6 +32,7 @@ from ether.schemas.web import (
 )
 
 __all__ = [
+    "AuditDrift",
     "AuditMisconfig",
     "BaseFinding",
     "CloudAsset",
@@ -47,6 +50,7 @@ __all__ = [
     "Relation",
     "SoftwarePackage",
     "TLSCertificate",
+    "TLSCipherSuite",
     "VulnerabilityFound",
     "WebEndpoint",
     "WebParameter",

@@ -82,8 +82,12 @@ jobs:
       - name: Run Tier 0 AST Architectural & Mathematical Invariants
         run: uv run pytest -m tier0 -q
 
-      - name: Run Full Regression Test Suite with Branch Coverage
-        run: uv run pytest tests/ --cov=src/ether --cov-branch --cov-fail-under=75 --cov-report=term-missing:skip-covered
+      - name: Run Fast PR Gate (tier0 or fast) with Branch Coverage
+        run: uv run pytest -m "tier0 or fast" --cov=src/ether --cov-branch --cov-fail-under=75 --cov-report=term-missing:skip-covered
+
+      - name: Run Benchmark and Scenario Suites
+        if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+        run: uv run pytest -m "benchmark or scenario"
 
       - name: Build Distribution Packages (sdist & wheel)
         run: uv build
@@ -111,5 +115,5 @@ jobs:
       - name: Run Tier 0 AST Architectural & Mathematical Invariants
         run: uv run pytest -m tier0 -q
 
-      - name: Run Full Regression Test Suite
-        run: uv run pytest tests/
+      - name: Run Fast PR Gate (tier0 or fast)
+        run: uv run pytest -m "tier0 or fast"

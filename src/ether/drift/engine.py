@@ -94,9 +94,12 @@ async def export_baseline(
 
 
 def load_baseline(baseline_path_or_dict: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
-    """Load baseline dictionary from a file path or dict."""
+    """Load baseline dictionary from a file path, JSON string, or dict."""
     if isinstance(baseline_path_or_dict, dict):
         return baseline_path_or_dict
+
+    if isinstance(baseline_path_or_dict, str) and baseline_path_or_dict.lstrip().startswith("{"):
+        return json.loads(baseline_path_or_dict)
 
     p = Path(baseline_path_or_dict)
     with open(p, "r", encoding="utf-8") as f:
@@ -248,9 +251,7 @@ async def audit_drift(
 
             host_ip = pik.get("host_ip") or pik.get("ip")
             port = pik.get("port")
-            target_key = (
-                f"{host_ip}:{port}" if (host_ip and port is not None) else (host_ip or nid)
-            )
+            target_key = f"{host_ip}:{port}" if (host_ip and port is not None) else (host_ip or nid)
 
             # Check service name / version divergence
             e_svc = e_data.get("service_name")
@@ -310,6 +311,62 @@ async def audit_drift(
                     )
                 )
 
+            if schema == "web.endpoint":
+                url = pik.get("url") or o_data.get("url") or target_key
+                e_raw_headers = e_data.get("headers") or e_data.get("security_headers")
+                o_raw_headers = o_data.get("headers") or o_data.get("security_headers")
+                e_hdrs = (
+                    {str(k).lower(): v for k, v in e_raw_headers.items()}
+                    if isinstance(e_raw_headers, dict)
+                    else {}
+                )
+                o_hdrs = (
+                    {str(k).lower(): v for k, v in o_raw_headers.items()}
+                    if isinstance(o_raw_headers, dict)
+                    else {}
+                )
+                security_header_names = (
+                    "strict-transport-security",
+                    "content-security-policy",
+                    "x-frame-options",
+                    "x-content-type-options",
+                    "referrer-policy",
+                )
+                missing_hdrs: List[str] = []
+                for hdr in security_header_names:
+                    if hdr in e_hdrs and hdr not in o_hdrs:
+                        missing_hdrs.append(hdr)
+                    elif isinstance(o_raw_headers, dict) and hdr not in o_hdrs:
+                        if hdr == "strict-transport-security" and not str(url).startswith(
+                            "https://"
+                        ):
+                            continue
+                        if hdr in (
+                            "strict-transport-security",
+                            "content-security-policy",
+                            "x-frame-options",
+                            "x-content-type-options",
+                        ):
+                            missing_hdrs.append(hdr)
+
+                for hdr in missing_hdrs:
+                    strict_discrepancies.append(
+                        AuditDrift.create(
+                            discrepancy_type="missing_security_header",
+                            target_key=str(url),
+                            description=(
+                                f"Missing mandatory HTTP security header '{hdr}' on {url}"
+                            ),
+                            expected=e_hdrs.get(hdr, "present"),
+                            observed=None,
+                            severity="medium",
+                            host_ip=o_data.get("host_ip") or host_ip,
+                            port=int(o_data["port"])
+                            if o_data.get("port") is not None
+                            else (int(port) if port is not None else None),
+                        )
+                    )
+
     if mode == "strict" and strict_discrepancies:
         discrepancies.extend(strict_discrepancies)
         attr_divergence_ratio = len(strict_discrepancies) / max(1, len(intersection))
@@ -321,9 +378,8 @@ async def audit_drift(
 
     final_score = round(final_score, 4)
 
-    if record_findings:
-        for finding in discrepancies:
-            await store.upsert_finding(session_id, finding)
+    if record_findings and discrepancies:
+        await store.upsert_findings_batch(session_id, discrepancies)
 
     summary = {
         "expected_count": len(expected_nodes_list),

@@ -55,8 +55,6 @@ async def handle_pipeline_run(args: Any, context: CliContext) -> int:
                 session_id=session_id,
                 policy=policy.value,
             ):
-                if session_id:
-                    await store.upsert_finding(session_id, finding)
                 findings.append(finding.model_dump(mode="json"))
         except Exception as e:
             print_error(f"Pipeline execution failed: {e}")

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -13,115 +14,94 @@ ETHER_CLI_BIN = Path(sys.executable).parent / "ether"
 
 
 async def main():
-    if ETHER_CLI_BIN.exists():
-        server_cmd = str(ETHER_CLI_BIN)
-        server_args = ["mcp"]
-    else:
-        server_cmd = sys.executable
-        server_args = ["-m", "ether.cli.router", "mcp"]
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        db_path = str(Path(tmp_dir) / "mcp_client_test.db")
+        if ETHER_CLI_BIN.exists():
+            server_cmd = str(ETHER_CLI_BIN)
+            server_args = ["mcp", "--db", db_path, "--data-dir", tmp_dir]
+        else:
+            server_cmd = sys.executable
+            server_args = ["-m", "ether.cli.router", "mcp", "--db", db_path, "--data-dir", tmp_dir]
 
-    server_params = StdioServerParameters(
-        command=server_cmd,
-        args=server_args,
-        env=None,
-    )
+        server_params = StdioServerParameters(
+            command=server_cmd,
+            args=server_args,
+            env=None,
+        )
 
-    print("Connecting to Ether MCP Server over stdio...")
-    async with stdio_client(server_params) as (read_stream, write_stream):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            print("[+] Successfully initialized MCP Session with Ether!")
+        async with stdio_client(server_params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
 
-            # 1. List MCP Tools
-            tools_response = await session.list_tools()
-            print(f"[+] Discovered {len(tools_response.tools)} MCP Tools:")
-            for tool in sorted(tools_response.tools, key=lambda t: t.name):
-                summary = tool.description.splitlines()[0] if tool.description else ""
-                print(f"    - {tool.name}: {summary}")
+                # 1. List MCP Tools
+                tools_response = await session.list_tools()
+                tool_names = {t.name for t in tools_response.tools}
+                assert "execute_tool" in tool_names
+                assert "query_graph" in tool_names
 
-            # 2. Manage Session (Create investigation session)
-            print("\n[*] Creating dedicated investigation session via MCP...")
-            sess_res = await session.call_tool(
-                "manage_session",
-                arguments={"action": "create", "name": "MCP Automated Security Assessment"},
-            )
-            sess_data = json.loads(sess_res.content[0].text)
-            session_id = sess_data["session_id"]
-            print(f"[+] Created Session ID: {session_id}")
-
-            # 3. Execute Tool via MCP (Run nmap security task on localhost)
-            print("\n[*] Executing security task: nmap against 127.0.0.1...")
-            exec_res = await session.call_tool(
-                "execute_tool",
-                arguments={
-                    "tool_name": "nmap",
-                    "target": "127.0.0.1",
-                    "session_id": session_id,
-                    "raw_flags": "-p 631,3306",
-                },
-            )
-            exec_data = json.loads(exec_res.content[0].text)
-            print(f"[+] Execution Status: {exec_data.get('status')}")
-            print(f"    Action ID: {exec_data.get('action_id')}")
-            print(f"    Duration: {exec_data.get('duration_ms')}ms")
-            print(f"    Findings Count: {exec_data.get('findings_count')}")
-
-            action_id = exec_data.get("action_id")
-
-            # 4. Zero-Token Telemetry Diff
-            print("\n[*] Fetching Zero-Token Graph Diff (Delta = S_{t+1} \\ S_t)...")
-            diff_res = await session.call_tool(
-                "get_diff", arguments={"action_id": action_id, "session_id": session_id}
-            )
-            diff_data = json.loads(diff_res.content[0].text)
-            added_nodes = diff_data.get("added_nodes", [])
-            print(f"[+] Added Nodes in Delta: {len(added_nodes)}")
-            for node in added_nodes:
-                print(
-                    f"    - [{node.get('schema_type')}] Node ID: {node.get('id')} | PIK: {node.get('pik')}"
+                # 2. Manage Session (Create investigation session)
+                sess_res = await session.call_tool(
+                    "manage_session",
+                    arguments={"action": "create", "name": "MCP Automated Security Assessment"},
                 )
+                assert not sess_res.is_error
+                sess_data = json.loads(sess_res.content[0].text)
+                session_id = sess_data["session_id"]
+                assert session_id
 
-            # 5. Query Graph
-            print("\n[*] Querying Graph Entities...")
-            query_res = await session.call_tool(
-                "query_graph", arguments={"session_id": session_id, "limit": 10}
-            )
-            query_data = json.loads(query_res.content[0].text)
-            print(f"[+] Total Nodes in Graph: {query_data.get('total')}")
-            for node in query_data.get("nodes", []):
-                print(
-                    f"    - {node['schema_type']}: {node.get('pik')} (Status: {node.get('status')})"
+                # 3. Execute Tool via MCP using valid arguments={"flags": ...}
+                exec_res = await session.call_tool(
+                    "execute_tool",
+                    arguments={
+                        "tool_name": "nmap",
+                        "target": "127.0.0.1",
+                        "session_id": session_id,
+                        "arguments": {"flags": ["-p", "631,3306"]},
+                    },
                 )
+                assert not exec_res.is_error
+                exec_data = json.loads(exec_res.content[0].text)
+                assert "status" in exec_data or "is_error" in exec_data
 
-            # 6. Semantic Vector Search
-            print("\n[*] Performing Zero-Egress Semantic Vector Search ('database services')...")
-            search_res = await session.call_tool(
-                "search_findings_semantic",
-                arguments={
-                    "query": "database services or MySQL listening port",
-                    "session_id": session_id,
-                    "limit": 3,
-                },
-            )
-            search_data = json.loads(search_res.content[0].text)
-            matched = search_data.get("findings", [])
-            print(f"[+] Semantic Search Results (Found {len(matched)} matches):")
-            for r in matched:
-                print(
-                    f"    - Similarity: {r.get('similarity'):.4f} | Type: {r.get('schema_type')} | ID: {r.get('id')} | PIK: {r.get('pik')}"
+                action_id = exec_data.get("action_id")
+                if action_id:
+                    # 4. Zero-Token Telemetry Diff
+                    diff_res = await session.call_tool(
+                        "get_diff", arguments={"action_id": action_id, "session_id": session_id}
+                    )
+                    assert not diff_res.is_error
+                    diff_data = json.loads(diff_res.content[0].text)
+                    assert "added_nodes" in diff_data
+
+                # 5. Query Graph
+                query_res = await session.call_tool(
+                    "query_graph", arguments={"session_id": session_id, "limit": 10}
                 )
+                assert not query_res.is_error
+                query_data = json.loads(query_res.content[0].text)
+                assert "total" in query_data
+                assert "nodes" in query_data
 
-            # 7. Crown Jewels & Attack Path Analytics
-            print("\n[*] Running Graph Analytics: Crown Jewels...")
-            cj_res = await session.call_tool(
-                "get_crown_jewels", arguments={"session_id": session_id}
-            )
-            cj_data = json.loads(cj_res.content[0].text)
-            print(
-                f"[+] Crown Jewels Analysis complete. Crown Jewels found: {len(cj_data.get('crown_jewels', []))}"
-            )
+                # 6. Semantic Vector Search
+                search_res = await session.call_tool(
+                    "search_findings_semantic",
+                    arguments={
+                        "query": "database services or MySQL listening port",
+                        "session_id": session_id,
+                        "limit": 3,
+                    },
+                )
+                assert not search_res.is_error
+                search_data = json.loads(search_res.content[0].text)
+                assert "findings" in search_data
 
-            print("\n[✓] All MCP & Security Tasks Completed Successfully!")
+                # 7. Crown Jewels & Attack Path Analytics
+                cj_res = await session.call_tool(
+                    "get_crown_jewels", arguments={"session_id": session_id}
+                )
+                assert not cj_res.is_error
+                cj_data = json.loads(cj_res.content[0].text)
+                assert "crown_jewels" in cj_data
 
 
 @pytest.mark.asyncio

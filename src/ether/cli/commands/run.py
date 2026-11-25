@@ -1,6 +1,5 @@
 """Handler for 'ether run <tool> <target>' command."""
 
-import ipaddress
 import shlex
 import sys
 from typing import Any, List
@@ -15,38 +14,7 @@ from ether.core.session import (
     ExecutionStarted,
 )
 from ether.gateway.gate import ActionGateway
-from ether.schemas.base import BaseFinding
-from ether.schemas.dns import DomainInfo
-from ether.schemas.network import NetworkHost
 from ether.schemas.power import ActionRequest
-from ether.schemas.web import WebEndpoint
-
-
-def _infer_target_finding(target: str) -> BaseFinding:
-    """Infer the typed BaseFinding entity from a raw CLI target string."""
-    # Check IP
-    try:
-        ipaddress.ip_address(target)
-        return NetworkHost.create(ip=target)
-    except ValueError:
-        pass
-
-    # Check Web URL
-    if target.startswith("http://") or target.startswith("https://"):
-        return WebEndpoint.create(url=target)
-
-    # Check CIDR
-    if "/" in target:
-        try:
-            ipaddress.ip_network(target, strict=False)
-            return BaseFinding(
-                schema_type="network.netblock", pik={"cidr": target}, data={"cidr": target}
-            )
-        except ValueError:
-            pass
-
-    # Default to DomainInfo
-    return DomainInfo.create(domain=target)
 
 
 async def handle_run(args: Any, context: CliContext) -> int:
@@ -77,14 +45,17 @@ async def handle_run(args: Any, context: CliContext) -> int:
     if not report.is_valid:
         print_error(f"Preflight validation failed for '{tool_name}':")
         for err in report.errors:
-            print(f"  [-] {err.code}: {err.message}", file=sys.stderr)
-            if err.remedy:
-                print(f"      Remedy: {err.remedy}", file=sys.stderr)
+            print(f"  [-] [{err.category}] {err.title}: {err.description}", file=sys.stderr)
+            if err.remediation_hint:
+                print(f"      Remedy: {err.remediation_hint}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
 
     if report.has_warnings and not context.is_json:
         for warn in report.warnings:
-            print(f"  [!] Warning ({warn.code}): {warn.message}", file=sys.stderr)
+            print(
+                f"  [!] Warning ([{warn.category}] {warn.title}): {warn.description}",
+                file=sys.stderr,
+            )
 
     # 2. Database & Target Finding Setup
     async with context.open_store() as store:
@@ -94,7 +65,7 @@ async def handle_run(args: Any, context: CliContext) -> int:
             _, sess_id = await store.get_or_create_default_session()
             session_id = sess_id
 
-        target_finding = _infer_target_finding(target)
+        target_finding = ActionGateway.infer_target_finding(target)
         target_node_id = await store.upsert_finding(session_id, target_finding)
 
         # 3. Execution Session Setup via Gateway
@@ -104,7 +75,7 @@ async def handle_run(args: Any, context: CliContext) -> int:
             session_id=UUID(session_id),
             tool_name=tool_name,
             target_entity_id=target_node_id,
-            params={"target": target, "flags": flags},
+            params={"target": target, "flags": flags, "raw_flags": flags_str},
         )
 
         if not context.is_json:

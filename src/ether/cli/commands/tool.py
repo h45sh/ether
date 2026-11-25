@@ -7,45 +7,16 @@ from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
 from ether.cli.formatters import print_error, print_json, print_table
 
 
-def handle_tool_list(args: Any, context: CliContext) -> int:
-    """List all available tool adapters in ToolRegistry."""
-    registry = context.get_registry()
-    tools = registry.list_tools()
+def _collect_tool_entries(registry: Any) -> list[dict[str, Any]]:
+    """Collect normalized tool metadata using ToolRegistry summary if present, with safe fallback."""
+    summary_fn = getattr(registry, "summary", None) or getattr(registry, "get_tool_summary", None)
+    if callable(summary_fn):
+        raw_summary = summary_fn()
+        if isinstance(raw_summary, list):
+            return raw_summary
 
-    if context.is_json:
-        result = []
-        for name in sorted(tools):
-            data = registry.get_tool(name)
-            manifest = data.get("manifest") if data else None
-            adapter = data.get("adapter") if data else None
-            meta = getattr(manifest, "meta", None)
-            tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
-            binary = getattr(meta, "binary", name) if meta else name
-
-            if tier == "coroutine":
-                is_installed = adapter.validate_install() if adapter else True
-                display_bin = binary or "native"
-            else:
-                is_installed = shutil.which(binary) is not None if binary else False
-                display_bin = binary or name
-
-            result.append(
-                {
-                    "name": name,
-                    "binary": display_bin,
-                    "tier": tier,
-                    "execution_tier": tier,
-                    "installed": is_installed,
-                    "category": getattr(meta, "category", "general") if meta else "general",
-                    "description": getattr(meta, "description", "") if meta else "",
-                }
-            )
-        print_json(result)
-        return EXIT_SUCCESS
-
-    headers = ["TOOL", "TIER", "BINARY", "INSTALLED", "CATEGORY", "DESCRIPTION"]
-    rows = []
-    for name in sorted(tools):
+    result = []
+    for name in sorted(registry.list_tools()):
         data = registry.get_tool(name)
         manifest = data.get("manifest") if data else None
         adapter = data.get("adapter") if data else None
@@ -54,17 +25,52 @@ def handle_tool_list(args: Any, context: CliContext) -> int:
         binary = getattr(meta, "binary", name) if meta else name
 
         if tier == "coroutine":
-            is_installed = "yes" if (adapter and adapter.validate_install()) else "yes"
+            is_installed = bool(adapter and adapter.validate_install())
             display_bin = binary or "native"
         else:
-            is_installed = "yes" if (binary and shutil.which(binary)) else "no"
+            is_installed = shutil.which(binary) is not None if binary else False
             display_bin = binary or name
 
-        cat = getattr(meta, "category", "general") if meta else "general"
-        desc = getattr(meta, "description", "") if meta else ""
+        result.append(
+            {
+                "name": name,
+                "binary": display_bin,
+                "tier": tier,
+                "execution_tier": tier,
+                "installed": is_installed,
+                "category": getattr(meta, "category", "general") if meta else "general",
+                "description": getattr(meta, "description", "") if meta else "",
+            }
+        )
+    return result
+
+
+def handle_tool_list(args: Any, context: CliContext) -> int:
+    """List all available tool adapters in ToolRegistry."""
+    registry = context.get_registry()
+    entries = _collect_tool_entries(registry)
+
+    if context.is_json:
+        print_json(entries)
+        return EXIT_SUCCESS
+
+    headers = ["TOOL", "TIER", "BINARY", "INSTALLED", "CATEGORY", "DESCRIPTION"]
+    rows = []
+    for entry in entries:
+        desc = entry.get("description", "")
         if len(desc) > 50:
             desc = desc[:47] + "..."
-        rows.append([name, tier, display_bin, is_installed, cat, desc])
+        installed_str = "yes" if entry.get("installed") else "no"
+        rows.append(
+            [
+                entry["name"],
+                entry.get("tier", "subprocess"),
+                entry.get("binary", entry["name"]),
+                installed_str,
+                entry.get("category", "general"),
+                desc,
+            ]
+        )
 
     print_table(headers, rows)
     return EXIT_SUCCESS
