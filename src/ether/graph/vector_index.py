@@ -34,15 +34,18 @@ class VectorIndex:
                 logger.warning(f"Could not load sqlite-vec extension: {e}")
 
     async def sync_node_embeddings(
-        self, db: aiosqlite.Connection, node_texts: List[Tuple[str, str]]
+        self,
+        db: aiosqlite.Connection,
+        node_texts: List[Tuple[str, str]],
+        session_id: str = "",
     ) -> None:
         """Embed and sync text representations for a list of (node_id, semantic_text) tuples."""
         if sqlite_vec is None or not node_texts:
             return
 
         engine = get_embedding_engine()
-        vector_delete_ids: List[Tuple[str]] = []
-        vector_params: List[Tuple[str, bytes]] = []
+        vector_delete_params: List[Tuple[str, str]] = []
+        vector_params: List[Tuple[str, str, bytes]] = []
         seen: set[str] = set()
 
         for nid, text in node_texts:
@@ -52,16 +55,20 @@ class VectorIndex:
             try:
                 vec = engine.embed_text(text)
                 serialized = sqlite_vec.serialize_float32(vec)
-                vector_delete_ids.append((nid,))
-                vector_params.append((nid, serialized))
+                vector_delete_params.append((session_id, nid))
+                vector_params.append((session_id, nid, serialized))
             except Exception as e:
                 logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
 
         if vector_params:
             try:
-                await db.executemany("DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids)
                 await db.executemany(
-                    "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)", vector_params
+                    "DELETE FROM vec_findings WHERE session_id = ? AND node_id = ?",
+                    vector_delete_params,
+                )
+                await db.executemany(
+                    "INSERT INTO vec_findings(session_id, node_id, embedding) VALUES (?, ?, ?)",
+                    vector_params,
                 )
             except Exception as e:
                 logger.warning(f"Error syncing vectors to vec_findings: {e}")
@@ -71,14 +78,15 @@ class VectorIndex:
         db: aiosqlite.Connection,
         findings: List[BaseFinding],
         generate_node_id_func: Callable[[str, Dict[str, Any]], str],
+        session_id: str = "",
     ) -> int:
         """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
         if not findings or sqlite_vec is None:
             return 0
 
         engine = get_embedding_engine()
-        vector_delete_ids = []
-        vector_params = []
+        vector_delete_params: List[Tuple[str, str]] = []
+        vector_params: List[Tuple[str, str, bytes]] = []
         seen = set()
 
         for finding in findings:
@@ -90,17 +98,21 @@ class VectorIndex:
                 semantic_text = finding.to_semantic_text()
                 vec = engine.embed_text(semantic_text)
                 serialized = sqlite_vec.serialize_float32(vec)
-                vector_delete_ids.append((nid,))
-                vector_params.append((nid, serialized))
+                vector_delete_params.append((session_id, nid))
+                vector_params.append((session_id, nid, serialized))
             except Exception as e:
                 logger.warning(f"Could not compute semantic embedding for finding {nid}: {e}")
 
         if not vector_params:
             return 0
 
-        await db.executemany("DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids)
         await db.executemany(
-            "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)", vector_params
+            "DELETE FROM vec_findings WHERE session_id = ? AND node_id = ?",
+            vector_delete_params,
+        )
+        await db.executemany(
+            "INSERT INTO vec_findings(session_id, node_id, embedding) VALUES (?, ?, ?)",
+            vector_params,
         )
         return len(vector_params)
 
@@ -121,7 +133,7 @@ class VectorIndex:
         engine = get_embedding_engine()
         query_vec = engine.embed_text(query)
         serialized_query = sqlite_vec.serialize_float32(query_vec)
-        k_candidates = max(limit * 10, 100)
+        k_candidates = max(limit * 5, 50) if (schema_type or not include_stale) else limit
 
         db.row_factory = aiosqlite.Row
 
@@ -130,12 +142,12 @@ class VectorIndex:
             FROM (
                 SELECT node_id, distance
                 FROM vec_findings
-                WHERE embedding MATCH ? AND k = ?
+                WHERE embedding MATCH ? AND session_id = ? AND k = ?
             ) sub
             JOIN nodes n ON sub.node_id = n.id
             WHERE n.session_id = ?
         """
-        params: List[Any] = [serialized_query, k_candidates, session_id]
+        params: List[Any] = [serialized_query, session_id, k_candidates, session_id]
 
         if not include_stale:
             sql += " AND n.status != 'stale'"
@@ -177,10 +189,8 @@ class VectorIndex:
         if sqlite_vec is not None:
             try:
                 await db.execute(
-                    """DELETE FROM vec_findings WHERE node_id IN (
-                           SELECT n.id FROM nodes n
-                           JOIN sessions s ON n.session_id = s.id
-                           WHERE s.workspace_id = ?
+                    """DELETE FROM vec_findings WHERE session_id IN (
+                           SELECT id FROM sessions WHERE workspace_id = ?
                        )""",
                     (workspace_id,),
                 )
@@ -192,7 +202,7 @@ class VectorIndex:
         if sqlite_vec is not None:
             try:
                 await db.execute(
-                    "DELETE FROM vec_findings WHERE node_id IN (SELECT id FROM nodes WHERE session_id = ?)",
+                    "DELETE FROM vec_findings WHERE session_id = ?",
                     (session_id,),
                 )
             except Exception as e:
@@ -206,13 +216,14 @@ class VectorIndex:
             try:
                 await db.execute(
                     """DELETE FROM vec_findings
-                       WHERE node_id IN (
-                           SELECT id FROM nodes
-                           WHERE session_id = ?
-                             AND status = 'stale'
-                             AND datetime(last_seen_at) < datetime(?)
-                       )""",
-                    (session_id, cutoff),
+                       WHERE session_id = ?
+                         AND node_id IN (
+                             SELECT id FROM nodes
+                             WHERE session_id = ?
+                               AND status = 'stale'
+                               AND datetime(last_seen_at) < datetime(?)
+                         )""",
+                    (session_id, session_id, cutoff),
                 )
             except Exception as e:
                 logger.warning(f"Error purging stale vectors from vec_findings: {e}")

@@ -390,7 +390,7 @@ async def run_evaluation():
     sa_id = await store.upsert_finding(s5_session, srv_api, action_id="act-topo-2")
     sd_id = await store.upsert_finding(s5_session, srv_db, action_id="act-topo-2")
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.executemany(
             """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
                VALUES (?, ?, ?, ?, ?)

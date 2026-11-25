@@ -12,7 +12,7 @@ async def test_sqlite_vec_extension_loaded_and_table_created():
     store = GraphStore(":memory:")
     await store.initialize()
 
-    async with store.connection() as db:
+    async with store._get_conn() as db:
         # Check sqlite-vec version function works
         cursor = await db.execute("SELECT vec_version()")
         row = await cursor.fetchone()
@@ -27,18 +27,18 @@ async def test_sqlite_vec_extension_loaded_and_table_created():
         assert tbl is not None
         assert tbl[0] == "vec_findings"
 
-        # Test insert and k-NN cosine distance query
+        # Test insert and k-NN cosine distance query partitioned by session_id
         test_vec = [0.1] * 384
         serialized = sqlite_vec.serialize_float32(test_vec)
         await db.execute(
-            "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)",
-            ("test-node-1", serialized),
+            "INSERT INTO vec_findings(session_id, node_id, embedding) VALUES (?, ?, ?)",
+            ("test-sess-1", "test-node-1", serialized),
         )
         await db.commit()
 
         cursor = await db.execute(
-            "SELECT node_id, distance FROM vec_findings WHERE embedding MATCH ? ORDER BY distance LIMIT 1",
-            (serialized,),
+            "SELECT node_id, distance FROM vec_findings WHERE embedding MATCH ? AND session_id = ? AND k = 1",
+            (serialized, "test-sess-1"),
         )
         result = await cursor.fetchone()
         assert result is not None

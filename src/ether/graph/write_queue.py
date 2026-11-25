@@ -103,9 +103,21 @@ class WriteQueueWorker:
                 await asyncio.sleep(0.01)
 
     async def _process_write_batch(self, batch: List[WriteTask]) -> None:
-        """Execute a batch of write operations in a single atomic transaction."""
+        """Execute a batch of write operations in a single atomic BEGIN IMMEDIATE transaction."""
         async with self._get_conn_factory() as db:
-            results = []
+            try:
+                if not db.in_transaction:
+                    await db.execute("BEGIN IMMEDIATE")
+            except Exception as begin_err:
+                for _, _, _, fut in batch:
+                    if not fut.cancelled() and not fut.done():
+                        fut.set_exception(begin_err)
+                for _ in batch:
+                    if self._queue:
+                        self._queue.task_done()
+                return
+
+            results: List[Tuple[asyncio.Future[Any], Any, Optional[Exception]]] = []
             for func, args, kwargs, fut in batch:
                 if fut.cancelled():
                     results.append((fut, None, None))
@@ -119,6 +131,11 @@ class WriteQueueWorker:
             try:
                 await db.commit()
             except Exception as commit_err:
+                if db.in_transaction:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                 for fut, _, _ in results:
                     if not fut.cancelled() and not fut.done():
                         fut.set_exception(commit_err)
@@ -127,10 +144,10 @@ class WriteQueueWorker:
                         self._queue.task_done()
                 return
 
-            for fut, res, ex in results:
+            for fut, res, err in results:
                 if not fut.cancelled() and not fut.done():
-                    if ex is not None:
-                        fut.set_exception(ex)
+                    if err is not None:
+                        fut.set_exception(err)
                     else:
                         fut.set_result(res)
 

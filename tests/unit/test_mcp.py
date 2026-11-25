@@ -327,7 +327,7 @@ async def test_mcp_query_graph_include_stale():
     h2_id = await store.upsert_finding(sess_id, h2)
 
     # Manually decay h1 to stale
-    async with store.connection() as db:
+    async with store._get_conn() as db:
         await db.execute("UPDATE nodes SET status = 'stale' WHERE id = ?", (h1_id,))
         await db.commit()
 

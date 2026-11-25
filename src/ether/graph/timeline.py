@@ -30,7 +30,8 @@ class ActionTimelineRepository:
         message: str,
     ) -> None:
         """Append a structured action/result event to the session event log."""
-        async with self.store.connection() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 """INSERT INTO event_log (session_id, action_payload, result_payload, human_readable, schema_type, finding_json)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -43,13 +44,15 @@ class ActionTimelineRepository:
                     "{}",
                 ),
             )
-            await db.commit()
+
+        await self.store._run_write(_op, session_id=session_id)
 
     async def log_audit_event(
         self, session_id: str, action_name: str, message: str, status: str
     ) -> None:
         """Append an audit lifecycle event (e.g. session closed/reopened) to event_log."""
-        async with self.store.connection() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 """INSERT INTO event_log (session_id, action_payload, result_payload, human_readable, schema_type, finding_json)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -62,11 +65,12 @@ class ActionTimelineRepository:
                     "{}",
                 ),
             )
-            await db.commit()
+
+        await self.store._run_write(_op, session_id=session_id, enforce_open=False)
 
     async def get_event_log(self, session_id: str) -> List[Dict[str, Any]]:
         """Fetch all non-closed events for a session in chronological order."""
-        async with self.store.connection() as db:
+        async with self.store._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM event_log WHERE session_id = ? AND (closed IS NULL OR closed = 0) ORDER BY timestamp ASC, id ASC",
@@ -77,7 +81,8 @@ class ActionTimelineRepository:
 
     async def mark_event_closed(self, action_id: str, session_id: Optional[str] = None) -> None:
         """Mark an event log entry as closed/deleted from the active view."""
-        async with self.store.connection() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             if session_id:
                 await db.execute(
                     "UPDATE event_log SET closed = 1 WHERE session_id = ? AND (json_extract(action_payload, '$.action_id') = ? OR action_payload LIKE ?)",
@@ -88,11 +93,12 @@ class ActionTimelineRepository:
                     "UPDATE event_log SET closed = 1 WHERE json_extract(action_payload, '$.action_id') = ? OR action_payload LIKE ?",
                     (action_id, f'%"{action_id}"%'),
                 )
-            await db.commit()
+
+        await self.store._run_write(_op, session_id=session_id)
 
     async def get_closed_events_count(self, session_id: str) -> int:
         """Get the count of closed events/tabs for a session."""
-        async with self.store.connection() as db:
+        async with self.store._get_read_conn() as db:
             cursor = await db.execute(
                 "SELECT COUNT(*) FROM event_log WHERE session_id = ? AND closed = 1",
                 (session_id,),
@@ -102,7 +108,8 @@ class ActionTimelineRepository:
 
     async def compact_timeline(self, session_id: str, keep_closed_events: int = 500) -> int:
         """Prune older closed event logs to prevent unbounded timeline table growth."""
-        async with self.store.connection() as db:
+
+        async def _op(db: aiosqlite.Connection) -> int:
             cursor = await db.execute(
                 "SELECT id FROM event_log WHERE session_id = ? AND closed = 1 ORDER BY timestamp DESC, id DESC",
                 (session_id,),
@@ -120,9 +127,10 @@ class ActionTimelineRepository:
                         "DELETE FROM event_log WHERE session_id = ? AND closed = 1 AND id <= ?",
                         (session_id, cutoff_id),
                     )
-                await db.commit()
                 return cursor_del.rowcount
             return 0
+
+        return await self.store._run_write(_op, session_id=session_id)
 
     async def query_timeline(
         self,
@@ -149,7 +157,7 @@ class ActionTimelineRepository:
         query += " ORDER BY timestamp ASC, id ASC LIMIT ?"
         params.append(limit)
 
-        async with self.store.connection() as db:
+        async with self.store._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(query, tuple(params))
             rows = await cursor.fetchall()

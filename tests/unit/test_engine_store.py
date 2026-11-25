@@ -216,7 +216,7 @@ async def test_default_session_preserves_user_sessions():
     ws_id, sess_id = await store.get_or_create_default_session()
 
     # Manually inject sessions into Default Workspace
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.execute(
             "INSERT INTO sessions (id, workspace_id, name) VALUES ('user-lab-1', ?, 'Custom Lab')",
             (ws_id,),
@@ -253,7 +253,7 @@ async def test_schema_initialization_tables_columns_and_indices(tmp_path):
     store = GraphStore(db_file)
     await store.initialize()
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         cursor = await conn.execute("PRAGMA table_info(nodes)")
         node_cols = {row[1] for row in await cursor.fetchall()}
         assert "action_id" in node_cols
@@ -292,7 +292,7 @@ async def test_upsert_findings_with_action_id():
     node_ids = await store.upsert_findings_batch(sess_id, [service], action_id="act-test-42")
     assert len(node_ids) == 1
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         conn.row_factory = aiosqlite.Row
         # Check node action_id
         cursor = await conn.execute("SELECT * FROM nodes WHERE session_id = ?", (sess_id,))
@@ -319,7 +319,7 @@ async def test_store_temporal_schema_and_indexes():
     store = GraphStore(":memory:")
     await store.initialize()
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         conn.row_factory = aiosqlite.Row
         # Check column names
         cursor = await conn.execute("PRAGMA table_info(nodes)")
