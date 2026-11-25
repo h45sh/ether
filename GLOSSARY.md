@@ -148,6 +148,18 @@ _Avoid_: Action history, command log, tracking file, audit dump
 A high-leverage RadixTrie-backed network boundary engine in `ActionGateway` that enforces strict CIDR containment and permanently neutralizes cloud metadata/IMDS destinations under `GatePolicy.SAFE`.
 _Avoid_: Network filter, IP checker, range checker
 
+**Engagement Scope**:
+The declarative Rules of Engagement boundary (`allowed_cidrs`, `allowed_domains`, and explicit opt-ins for loopback, link-local, or metadata targets) evaluated by `Scope Validator` before tool dispatch or network connection.
+_Avoid_: Target whitelist, scope config, IP allowlist
+
+**Reactive Pipeline**:
+A multi-stage, backpressure-bounded execution chain (`PipelineEngine`) that streams `Finding` entities from upstream `Tool Adapter` stages into downstream stages with single-owner persistence.
+_Avoid_: Command pipe, workflow chain, task runner
+
+**Asset Resolver**:
+The centralized, externalized asset resolution module (`ether.registry.assets`) that resolves wordlist specs and macro tokens across direct paths, `$ETHER_WORDLISTS_DIR`, system SecLists, and the embedded `minimal.txt` fallback.
+_Avoid_: Wordlist loader, dictionary helper, seed script
+
 **Write Queue Worker**:
 A decoupled background serialization worker (`WriteQueueWorker`) managing an async operation queue with adaptive transaction batching (25ms window, up to 50 operations) to ensure deadlock-free SQLite WAL writes.
 _Avoid_: Write thread, database queue, batch runner
