@@ -614,9 +614,11 @@ async def test_mcp_perimeter_recon_prompt_pipeline_syntax():
 
 
 @pytest.mark.asyncio
-async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
+async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed(monkeypatch):
     """Verify execute_tool forwards raw_flags in ActionRequest.params and sets NON_ZERO_EXIT on ExecutionFailed."""
     from ether.core.session import ExecutionFailed
+
+    monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}")
 
     store = GraphStore(":memory:")
     await store.initialize()
