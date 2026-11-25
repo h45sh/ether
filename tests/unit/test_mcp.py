@@ -6,6 +6,7 @@ import pytest
 
 from ether.graph.store import GraphStore
 from ether.mcp.server import create_mcp_server
+from ether.registry.registry import ToolRegistry
 from ether.schemas.network import NetworkHost, NetworkService
 
 
@@ -614,11 +615,9 @@ async def test_mcp_perimeter_recon_prompt_pipeline_syntax():
 
 
 @pytest.mark.asyncio
-async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed(monkeypatch):
+async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
     """Verify execute_tool forwards raw_flags in ActionRequest.params and sets NON_ZERO_EXIT on ExecutionFailed."""
     from ether.core.session import ExecutionFailed
-
-    monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}")
 
     store = GraphStore(":memory:")
     await store.initialize()
@@ -629,7 +628,7 @@ async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed(monkeypatch)
     class FakeExecSession:
         async def dispatch(self, action):
             captured_params.update(action.params)
-            return action.id
+            return action.action_id
 
         async def subscribe(self, action_id):
             yield ExecutionFailed(action_id=action_id, error="exit code 2", duration_seconds=0.1)
@@ -637,9 +636,16 @@ async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed(monkeypatch)
         def get_output_history(self, action_id):
             return ["nmap: invalid option"]
 
+    registry = ToolRegistry()
+    registry.load_tools()
+    nmap_tool = registry.get_tool("nmap")
+    if nmap_tool and nmap_tool.get("adapter"):
+        nmap_tool["adapter"].validate_install = lambda: True
+
     server = create_mcp_server(
         store,
         default_session_id=sess_id,
+        registry=registry,
         execution_session=FakeExecSession(),
     )
     res = await server.call_tool(
