@@ -70,7 +70,7 @@ def is_blocked_destination(text: str) -> bool:
         if not tok:
             continue
         host = ScopeValidator.parse_host_candidate(tok)
-        if ScopeValidator._parse_ip(host) is not None or host in METADATA_HOSTNAMES:
+        if ScopeValidator.parse_ip(host) is not None or host in METADATA_HOSTNAMES:
             verdict = ScopeValidator.is_in_scope(tok, metadata_scope, policy_is_unrestricted=False)
             if not verdict.allowed:
                 return True
@@ -251,7 +251,7 @@ class ActionGateway:
             if not tok:
                 continue
             host = ScopeValidator.parse_host_candidate(tok)
-            if ScopeValidator._parse_ip(host) is not None:
+            if ScopeValidator.parse_ip(host) is not None:
                 verdict = ScopeValidator.is_in_scope(tok, cidr_scope, policy_is_unrestricted=False)
                 if not verdict.allowed:
                     return False

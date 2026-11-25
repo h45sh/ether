@@ -34,7 +34,7 @@ def check_ssrf_safety(target: str) -> None:
         raise PolicyViolationError(f"Target '{target}' blocked by SSRF policy ({verdict.reason}).")
 
     host = verdict.normalized_target or ""
-    if ScopeValidator._parse_ip(host) is not None:
+    if ScopeValidator.parse_ip(host) is not None:
         return
 
     try:

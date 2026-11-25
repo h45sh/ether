@@ -656,3 +656,110 @@ async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
     assert data["error_category"] == "NON_ZERO_EXIT"
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_auth_middleware():
+    """Verify that BearerTokenAuthMiddleware rejects unauthenticated requests and permits valid Bearer tokens."""
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from ether.mcp.server import BearerTokenAuthMiddleware
+
+    async def sample_endpoint(request):
+        return PlainTextResponse("authenticated")
+
+    base_app = Starlette(routes=[Route("/test", sample_endpoint)])
+    auth_app = BearerTokenAuthMiddleware(base_app, token="vault-token-xyz")
+
+    client = TestClient(auth_app)
+
+    # 1. No auth header -> 401 Unauthorized
+    resp_no_auth = client.get("/test")
+    assert resp_no_auth.status_code == 401
+    assert "WWW-Authenticate" in resp_no_auth.headers
+    assert "Unauthorized" in resp_no_auth.text
+
+    # 2. Invalid auth header -> 401 Unauthorized
+    resp_bad_auth = client.get("/test", headers={"Authorization": "Bearer wrong-token"})
+    assert resp_bad_auth.status_code == 401
+
+    # 3. Valid Bearer token -> 200 OK
+    resp_ok = client.get("/test", headers={"Authorization": "Bearer vault-token-xyz"})
+    assert resp_ok.status_code == 200
+    assert resp_ok.text == "authenticated"
+
+
+@pytest.mark.asyncio
+async def test_create_mcp_server_with_auth_token():
+    """Verify create_mcp_server wires BearerTokenAuthMiddleware when auth_token is supplied."""
+    from starlette.testclient import TestClient
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+
+    server = create_mcp_server(store, auth_token="super-secret-mcp-key")
+    app = server.sse_app(host="127.0.0.1")
+
+    client = TestClient(app, base_url="http://localhost")
+
+    # Unauthenticated request to SSE endpoint should be blocked with 401 by auth middleware
+    res_unauth = client.get("/sse", headers={"Host": "localhost"})
+    assert res_unauth.status_code == 401
+    assert "Unauthorized" in res_unauth.text
+
+    # Wrong token
+    res_wrong = client.get(
+        "/sse",
+        headers={"Host": "localhost", "Authorization": "Bearer wrong-key"},
+    )
+    assert res_wrong.status_code == 401
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_handle_mcp_host_binding_gate(tmp_path):
+    """Verify that handle_mcp enforces host binding gate on external interfaces under SAFE policy."""
+    from unittest.mock import AsyncMock, patch
+
+    from ether.cli.commands.mcp import handle_mcp
+    from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
+    from ether.gateway.gate import GatePolicy
+
+    class Args:
+        transport = "sse"
+        session_id = None
+        port = 8000
+        host = "0.0.0.0"
+        policy = "safe"
+        auth_token = None
+
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=str(tmp_path / "test.db"),
+        tools_dir=None,
+        is_json=False,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+
+    # 1. External binding 0.0.0.0 without auth token under SAFE policy -> REJECTED
+    res = await handle_mcp(Args(), ctx)
+    assert res == EXIT_RUNTIME_ERROR
+
+    # 2. External binding 0.0.0.0 with auth token under SAFE policy -> PERMITTED
+    args_with_token = Args()
+    args_with_token.auth_token = "token-12345"
+    with patch("ether.mcp.server.EtherMCPServer.run_sse_async", new_callable=AsyncMock):
+        res2 = await handle_mcp(args_with_token, ctx)
+        assert res2 == EXIT_SUCCESS
+
+    # 3. Localhost binding 127.0.0.1 without auth token under SAFE policy -> PERMITTED
+    args_localhost = Args()
+    args_localhost.host = "127.0.0.1"
+    with patch("ether.mcp.server.EtherMCPServer.run_sse_async", new_callable=AsyncMock):
+        res3 = await handle_mcp(args_localhost, ctx)
+        assert res3 == EXIT_SUCCESS

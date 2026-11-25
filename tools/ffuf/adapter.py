@@ -198,7 +198,19 @@ class FfufAdapter(ToolAdapter):
 
         # 2. Fallback: Parse line-by-line CLI output
         base_url = self.extract_url(target) or ""
+        if not base_url and context:
+            flags_val = context.get("params", {}).get("flags") or context.get("params", {}).get(
+                "raw_flags", ""
+            )
+            if isinstance(flags_val, list):
+                flags_val = " ".join(str(f) for f in flags_val)
+            u_match = re.search(r"-u\s+([^\s]+)", str(flags_val))
+            if u_match:
+                base_url = u_match.group(1).replace("FUZZ", "").rstrip("/")
+
+        matched_any = False
         for match in self.LINE_PATTERN.finditer(cleaned):
+            matched_any = True
             word, status_str, size_str, words_str, lines_str = match.groups()
             endpoint_url = f"{base_url.rstrip('/')}/{word.lstrip('/')}"
             status_code = int(status_str)
@@ -220,6 +232,33 @@ class FfufAdapter(ToolAdapter):
                     severity="high" if status_code == 200 else "medium",
                     host_ip=host_ip,
                 )
+
+        # 3. Fallback: Silent mode (-s) or single-path per line output
+        if not matched_any:
+            ansi_escape = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+            for line in cleaned.splitlines():
+                s = ansi_escape.sub("", line).strip()
+                if not s or s.startswith("::") or "Progress: [" in s or s.startswith("[*]"):
+                    continue
+                if "\t" in s or " " in s:
+                    continue
+                if s.startswith("http://") or s.startswith("https://"):
+                    endpoint_url = s
+                else:
+                    endpoint_url = f"{base_url.rstrip('/')}/{s.lstrip('/')}"
+                yield WebEndpoint.create(
+                    url=endpoint_url,
+                    host_ip=host_ip,
+                    status_code=200,
+                )
+                if self.SENSITIVE_PATTERN.search(s):
+                    yield AuditMisconfig.create(
+                        target=endpoint_url,
+                        check_id="exposed-sensitive-file",
+                        title=f"Exposed Sensitive Resource ({s})",
+                        severity="high",
+                        host_ip=host_ip,
+                    )
 
     def _parse_json(self, text: str) -> Optional[Dict[str, Any]]:
         try:

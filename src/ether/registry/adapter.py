@@ -195,3 +195,41 @@ class ToolAdapter(ABC):
         Default implementation returns raw_stdout untouched.
         """
         return raw_stdout
+
+    def parse_json_lines(self, raw_stdout: str) -> List[Dict[str, Any]]:
+        """Resiliently parse newline-delimited JSON stream, skipping comments and partial chunks."""
+        import json
+
+        results = []
+        clean = self.strip_ansi(raw_stdout)
+        for line in clean.splitlines():
+            line_str = line.strip()
+            if not line_str or line_str.startswith("#"):
+                continue
+            try:
+                results.append(json.loads(line_str))
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return results
+
+    def parse_regex_lines(self, raw_stdout: str, pattern: Any) -> List[Any]:
+        """Match regular expression line-by-line across stripped terminal output."""
+        import re
+
+        clean = self.strip_ansi(raw_stdout)
+        regex = re.compile(pattern) if isinstance(pattern, str) else pattern
+        matches = []
+        for line in clean.splitlines():
+            line_str = line.strip()
+            if not line_str:
+                continue
+            m = regex.search(line_str)
+            if m:
+                matches.append(m)
+        return matches
+
+    def extract_cves(self, text: str) -> List[str]:
+        """Extract all standardized CVE identifiers (e.g. CVE-2021-44228) from text."""
+        import re
+
+        return sorted(set(re.findall(r"CVE-\d{4}-\d{4,7}", text, re.IGNORECASE)))

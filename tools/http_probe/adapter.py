@@ -111,6 +111,24 @@ class HTTPProbeAdapter(ToolAdapter):
         ssl_ctx.verify_mode = ssl.CERT_NONE
         transport = httpx.AsyncHTTPTransport(retries=1, verify=ssl_ctx)
 
+        # Define a response hook to re-validate any redirect location against the SSRF policy
+        async def _redirect_hook(response: httpx.Response) -> None:
+            if response.is_redirect:
+                location = response.headers.get("Location")
+                if location:
+                    redirect_url = urllib.parse.urljoin(str(response.request.url), location)
+                    redirect_verdict = await ScopeValidator.check_destination(
+                        redirect_url,
+                        scope=getattr(context, "scope", None),
+                        policy_is_unrestricted=is_unrestricted,
+                    )
+                    if not redirect_verdict.allowed:
+                        msg = f"Redirect target '{redirect_url}' blocked by SSRF policy ({redirect_verdict.reason})."
+                        await context.spool_line(
+                            f"[!] SSRF Redirect Defense Triggered: {msg}", is_error=True
+                        )
+                        raise PolicyViolationError(msg)
+
         await context.spool_line(f"[*] Probing {url} (timeout={timeout_sec}s)...")
 
         parsed_url = urllib.parse.urlparse(url)
@@ -159,9 +177,12 @@ class HTTPProbeAdapter(ToolAdapter):
             timeout=httpx.Timeout(timeout_sec, connect=5.0),
             follow_redirects=True,
             limits=limits,
+            event_hooks={"response": [_redirect_hook]},
         ) as client:
             try:
                 response = await client.get(url)
+            except PolicyViolationError:
+                raise
             except Exception as exc:
                 await context.spool_line(
                     f"[-] HTTP request to {url} failed: {type(exc).__name__} ({exc})",

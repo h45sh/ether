@@ -48,3 +48,10 @@ class CredentialFound(BaseFinding):
         if host_ip:
             parts.append(f"Host: {host_ip}")
         return ". ".join(parts) + "."
+
+    def get_masked_data(self) -> dict:
+        """Return finding data with sensitive password fields masked for safe display."""
+        d = dict(self.data)
+        if d.get("password"):
+            d["password"] = "********"
+        return d

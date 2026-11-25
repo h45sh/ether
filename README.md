@@ -333,9 +333,26 @@ Ether strictly adheres to the following mechanical engineering contracts:
 
 ---
 
-## Empirical Evaluation & Performance Verification (Run 1 Benchmark)
+## Empirical Performance & Mechanical Invariants
 
-Ether underwent rigorous full-spectrum stress-testing and empirical benchmarking in a real-world multi-agent evaluation ([Run 1 Evaluation Suite](reports/run_1/index.html)), spanning live AWS dual-posture EC2 instances, adversarial security bypass attacks, universal stream fuzzing, and headless user installation:
+Ether is empirically validated across automated mechanical testbeds and multi-scenario cyber-range simulations, verifying concurrency, memory bounds, protocol symmetry, and security isolation:
+
+### Mechanical Invariants & Operational Verification
+
+| Focus Area | Verified Mechanical Guarantee | Target Benchmark / Status |
+| :--- | :--- | :--- |
+| **Packaging & Isolation** | Clean wheel build (`uv build --wheel`), standalone execution outside repository tree, 35 discovered adapters, fallback bundled wordlists. | Standalone isolation verified |
+| **CLI / MCP Symmetry** | 100% feature and schema parity between Headless CLI and native Model Context Protocol (MCP) server. | Full schema parity verified |
+| **Reactive Pipeline DAGs** | Real-time streaming tool chains (`subfinder \| nmap \| nuclei`) with asynchronous queue backpressure and non-blocking propagation. | In-memory stream propagation |
+| **Adversarial Defenses** | Active blocking of HTTP 302 redirects to cloud IMDS (`169.254.169.254`), IP evasion defense, zero leak of host secrets (`ETHER_*`, `OPENAI_*`). | 100% containment |
+| **Graph Intelligence** | Multi-hop pivot graph exploration, crown jewels pathfinding, blast radius analysis, deterministic PIK merging. | Zero duplicated nodes |
+| **Deception Defenses** | TCP banner-loop tarpit detection, Bayesian deception scoring on port sprawl, automated exclusion of canary ports. | Real-time belief updating |
+| **Stealth & Firewall Accuracy** | Accurate preservation of `filtered` firewall states, native SYN scan flags, >98% token reduction via zero-token deltas. | Exact state fidelity |
+| **Identity Anchoring & Drift** | Cryptographic fingerprinting (`tls:`, `ssh:`, `favicon:`), cross-IP migration tracking, temporal confidence decay. | Cryptographic anchoring |
+| **Storage & Memory Limits** | **1,753.2 upserts/sec** WAL write throughput with `WriteQueueWorker` batching, **0.37MB** RSS delta (<10MB ceiling). | Concurrency & RAM bounds met |
+| **Forensic Chain-of-Custody** | Cryptographic SHA-256 block hash chaining, closed session immutability (`PermissionError`), AES-256-GCM encrypted archives. | Tamper-evident verification |
+
+### Empirical Run 1 Benchmark
 
 | Evaluation Metric | Measured Benchmark | Engineering Impact & Real-World Capability |
 | :--- | :--- | :--- |

@@ -126,6 +126,14 @@ class NmapAdapter(ToolAdapter):
                 service_name = service_match.group(1) if service_match else "unknown"
 
                 fw_reason = _classify_firewall_reason(state, reason)
+
+                include_all = bool(
+                    context.get("include_all_states")
+                    or context.get("params", {}).get("include_all_states")
+                )
+                if not include_all and state.lower() in ("closed", "filtered", "closed|filtered"):
+                    continue
+
                 host_ip = context.get("current_host_ip") or target.pik.get("ip")
                 if host_ip and pid:
                     yield NetworkService.create(
@@ -162,6 +170,17 @@ class NmapAdapter(ToolAdapter):
                     state = port_match.group(3)
                     service = port_match.group(4)
                     fw_reason = _classify_firewall_reason(state, "")
+
+                    include_all = bool(
+                        context.get("include_all_states")
+                        or context.get("params", {}).get("include_all_states")
+                    )
+                    if not include_all and state.lower() in (
+                        "closed",
+                        "filtered",
+                        "closed|filtered",
+                    ):
+                        continue
 
                     yield NetworkService.create(
                         host_ip=host_ip,

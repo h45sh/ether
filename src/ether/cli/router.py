@@ -80,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     common_options.add_argument(
         "--policy",
         choices=["safe", "unrestricted"],
-        default="safe",
+        default=argparse.SUPPRESS,
         help="Execution gateway policy mode (default: safe)",
     )
 
@@ -129,8 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("target", help="Target IP, hostname, URL, or CIDR")
     run_parser.add_argument(
         "--flags",
-        nargs=argparse.REMAINDER,
-        default=[],
+        default="",
+        type=str,
         help="Extra flags to pass to the tool binary",
     )
     run_parser.add_argument(
@@ -359,6 +359,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--host",
         default="127.0.0.1",
         help="Host for SSE transport (default: 127.0.0.1)",
+    )
+    mcp_parser.add_argument(
+        "--auth-token",
+        dest="auth_token",
+        default=None,
+        help="Bearer authentication token for MCP SSE endpoints (or ETHER_MCP_AUTH_TOKEN env var)",
     )
 
     # 9. pipeline

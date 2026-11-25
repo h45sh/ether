@@ -38,6 +38,7 @@ class VectorIndex:
         db: aiosqlite.Connection,
         node_texts: List[Tuple[str, str]],
         session_id: str = "",
+        existing_node_ids: Optional[set[str]] = None,
     ) -> None:
         """Embed and sync text representations for a list of (node_id, semantic_text) tuples."""
         if sqlite_vec is None or not node_texts:
@@ -56,17 +57,23 @@ class VectorIndex:
                 vec = engine.embed_text(text)
                 serialized = sqlite_vec.serialize_float32(vec)
                 vec_id = f"{session_id}:{nid}"
-                vector_delete_params.append((vec_id,))
+                if existing_node_ids is None or nid in existing_node_ids:
+                    vector_delete_params.append((vec_id,))
                 vector_params.append((vec_id, session_id, nid, serialized))
             except Exception as e:
                 logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
 
-        if vector_params:
+        if vector_delete_params:
             try:
                 await db.executemany(
                     "DELETE FROM vec_findings WHERE id = ?",
                     vector_delete_params,
                 )
+            except Exception as e:
+                logger.warning(f"Error syncing vectors to vec_findings: {e}")
+
+        if vector_params:
+            try:
                 await db.executemany(
                     "INSERT INTO vec_findings(id, session_id, node_id, embedding) VALUES (?, ?, ?, ?)",
                     vector_params,

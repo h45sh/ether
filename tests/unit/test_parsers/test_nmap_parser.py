@@ -107,8 +107,17 @@ async def test_nmap_parse_xml_with_firewall_reasons(adapter):
 </nmaprun>"""
 
     target = NetworkHost.create(ip="10.0.1.15")
+
+    # 1. By default, closed and filtered ports are excluded from NetworkService findings
+    default_findings = [f async for f in adapter.parse_output(xml_output, target)]
+    default_svcs = [f for f in default_findings if f.schema_type == "network.service"]
+    assert len(default_svcs) == 1
+    assert default_svcs[0].pik["port"] == 22
+    assert default_svcs[0].data["firewall_reason"] == "allowed"
+
+    # 2. When include_all_states=True, all states are extracted for firewall analysis
     findings = []
-    async for f in adapter.parse_output(xml_output, target):
+    async for f in adapter.parse_output(xml_output, target, context={"include_all_states": True}):
         findings.append(f)
 
     hosts = [f for f in findings if f.schema_type == "network.host"]

@@ -64,7 +64,7 @@ def get_tool_target_guidance(tool_name: str) -> str:
 
     # Determine capabilities & target profile dynamically using the loaded registry
     verifier = PreflightVerifier(registry=reg)
-    target_types = verifier._get_tool_target_types(tool_lower)
+    target_types = verifier.get_tool_target_types(tool_lower)
 
     if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
         expected_format = (
@@ -326,7 +326,7 @@ class PreflightVerifier:
         if registry and clean_tool:
             target_types = PreflightVerifier(
                 registry=registry, policy=policy, scope=active_scope
-            )._get_tool_target_types(clean_tool)
+            ).get_tool_target_types(clean_tool)
             is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
             is_network = (
                 "ip" in target_types or "cidr" in target_types
@@ -509,7 +509,7 @@ class PreflightVerifier:
                             )
                         )
 
-    def _get_tool_target_types(self, tool_name: str) -> Set[str]:
+    def get_tool_target_types(self, tool_name: str) -> Set[str]:
         """Dynamically extract supported target types ('url', 'ip', 'cidr', 'domain') from ToolRegistry."""
         if self.registry:
             tool_data = self.registry.get_tool(tool_name)
@@ -540,6 +540,8 @@ class PreflightVerifier:
 
         return {"url", "ip", "cidr", "domain"}
 
+    _get_tool_target_types = get_tool_target_types
+
     def _check_target(
         self,
         tool_name: str,
@@ -547,7 +549,7 @@ class PreflightVerifier:
         report: PreflightReport,
     ) -> None:
         """Validate target presence, unresolved variable placeholders, and tool scheme alignment."""
-        target_types = self._get_tool_target_types(tool_name)
+        target_types = self.get_tool_target_types(tool_name)
         is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
         is_network_or_domain = (
             "ip" in target_types or "domain" in target_types

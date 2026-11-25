@@ -11,8 +11,8 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import aiosqlite
 
@@ -21,6 +21,9 @@ try:
 except ImportError:
     sqlite_vec = None
 
+from ether.graph.decay import TemporalDecayEngine
+from ether.graph.identity import IdentityAnchoringEngine
+from ether.graph.merger import _hydrate_node_row
 from ether.graph.timeline import ActionTimelineRepository
 from ether.graph.vector_index import VectorIndex
 from ether.graph.write_queue import WriteQueueWorker
@@ -166,6 +169,7 @@ class GraphStore:
         self._closed: bool = False
         self._closing: bool = False
         self._session_bloom: Dict[str, Any] = {}
+        self._session_status_cache: Dict[str, str] = {}
         self._warmed_sessions: Set[str] = set()
         self.timeline = ActionTimelineRepository(self)
         self.write_worker = WriteQueueWorker(self._get_conn)
@@ -227,6 +231,23 @@ class GraphStore:
                     except OSError:
                         pass
             yield self._conn
+
+    def get_read_conn(self):
+        """Acquire a read-only database connection context manager from the reader pool."""
+        return self._get_read_conn()
+
+    async def run_write_operation(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        session_id: Optional[str] = None,
+        enforce_open: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Serialize a mutation through WriteQueueWorker with centralized CLOSED-session sealing."""
+        return await self._run_write(
+            func, *args, session_id=session_id, enforce_open=enforce_open, **kwargs
+        )
 
     async def initialize(self):
         """Create tables and indices if they don't exist."""
@@ -312,12 +333,16 @@ class GraphStore:
 
         async def _guarded(db: aiosqlite.Connection) -> Any:
             if session_id is not None and enforce_open:
-                cursor = await db.execute(
-                    "SELECT status FROM sessions WHERE id = ? LIMIT 1",
-                    (session_id,),
-                )
-                row = await cursor.fetchone()
-                if row and row[0] == "CLOSED":
+                st = self._session_status_cache.get(session_id)
+                if st is None:
+                    cursor = await db.execute(
+                        "SELECT status FROM sessions WHERE id = ? LIMIT 1",
+                        (session_id,),
+                    )
+                    row = await cursor.fetchone()
+                    st = row[0] if row else "ACTIVE"
+                    self._session_status_cache[session_id] = st
+                if st == "CLOSED":
                     raise PermissionError(
                         f"Session '{session_id}' is forensically sealed and closed."
                     )
@@ -539,6 +564,7 @@ class GraphStore:
                 (session_id,),
             )
 
+        self._session_status_cache[session_id] = "CLOSED"
         await self._run_write(_op, session_id=session_id, enforce_open=False)
 
     async def is_session_closed(self, session_id: str) -> bool:
@@ -555,6 +581,7 @@ class GraphStore:
                 (session_id,),
             )
 
+        self._session_status_cache[session_id] = "ACTIVE"
         await self._run_write(_op, session_id=session_id, enforce_open=False)
 
     async def delete_workspace(self, workspace_id: str):
@@ -667,12 +694,14 @@ class GraphStore:
         if not findings:
             return []
 
-        node_ids, unique_node_ids, parent_nodes, assoc_nodes = await self._run_write(
+        if self._session_status_cache.get(session_id) == "CLOSED":
+            raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
+
+        node_ids, unique_node_ids, parent_nodes, assoc_nodes = await self._enqueue_write(
             self._raw_upsert_findings_batch,
             session_id,
             findings,
             action_id,
-            session_id=session_id,
         )
 
         bloom = self._get_bloom(session_id)
@@ -713,9 +742,15 @@ class GraphStore:
         findings: List[BaseFinding],
         action_id: Optional[str] = None,
     ) -> tuple[List[str], List[str], Dict[str, tuple], Dict[str, tuple]]:
-        cursor = await db.execute("SELECT status FROM sessions WHERE id = ? LIMIT 1", (session_id,))
-        row = await cursor.fetchone()
-        if row and row[0] == "CLOSED":
+        st = self._session_status_cache.get(session_id)
+        if st is None:
+            cursor = await db.execute(
+                "SELECT status FROM sessions WHERE id = ? LIMIT 1", (session_id,)
+            )
+            row = await cursor.fetchone()
+            st = row[0] if row else "ACTIVE"
+            self._session_status_cache[session_id] = st
+        if st == "CLOSED":
             raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
         node_ids: List[str] = []
         event_log_params = []
@@ -743,33 +778,7 @@ class GraphStore:
                 )
             )
 
-            anchor_hash = getattr(finding, "anchor_hash", None)
-            if not anchor_hash and getattr(finding, "data", None):
-                for key in (
-                    "anchor_hash",
-                    "tls_cert_sha256",
-                    "ssh_hostkey_fingerprint",
-                    "favicon_hash",
-                    "soa_serial",
-                ):
-                    val = finding.data.get(key)
-                    if val:
-                        prefix = (
-                            "tls"
-                            if "tls" in key
-                            else (
-                                "ssh"
-                                if "ssh" in key
-                                else (
-                                    "favicon"
-                                    if "favicon" in key
-                                    else ("soa" if "soa" in key else "")
-                                )
-                            )
-                        )
-                        anchor_hash = f"{prefix}:{val}" if prefix else str(val)
-                        break
-
+            anchor_hash = IdentityAnchoringEngine.extract_anchor_hash(finding)
             ttl_seconds = getattr(finding, "ttl_seconds", 3600) or 3600
 
             if node_id not in seen:
@@ -899,50 +908,13 @@ class GraphStore:
             )
 
         # 4.5 Invariant Identity Anchoring & Cross-IP Migration
-        migration_edges: set = set()
-        stale_migrated_node_ids: set = set()
-        migration_event_params = []
-
-        for nid, meta in node_metadata.items():
-            anchor = meta.get("anchor_hash")
-            if not anchor:
-                continue
-            cursor = await db.execute(
-                """
-                SELECT n.id, n.status,
-                       (SELECT 1 FROM edges e
-                        WHERE e.session_id = n.session_id
-                          AND e.source_id = n.id
-                          AND e.target_id = ?
-                          AND e.relation_type = 'anchored_identity') as has_edge
-                FROM nodes n
-                WHERE n.session_id = ? AND n.anchor_hash = ? AND n.id != ?
-                ORDER BY n.updated_at DESC
-                """,
-                (nid, session_id, anchor, nid),
-            )
-            matching_nodes = await cursor.fetchall()
-            for old_id, old_status, has_edge in matching_nodes:
-                migration_edges.add((session_id, old_id, nid, "anchored_identity"))
-                if old_status != "stale":
-                    stale_migrated_node_ids.add(old_id)
-                if not has_edge:
-                    migration_event_params.append(
-                        (
-                            session_id,
-                            "identity.migration",
-                            json.dumps(
-                                {
-                                    "anchor_hash": anchor,
-                                    "from_node_id": old_id,
-                                    "to_node_id": nid,
-                                }
-                            ),
-                            f"Anchored identity migration: {old_id} -> {nid} ({anchor})",
-                            json.dumps({"action_id": action_id} if action_id else {}),
-                            "{}",
-                        )
-                    )
+        (
+            migration_edges,
+            stale_migrated_node_ids,
+            migration_event_params,
+        ) = await IdentityAnchoringEngine.resolve_migrations(
+            db, session_id, node_metadata, action_id
+        )
 
         if stale_migrated_node_ids:
             placeholders = ",".join("?" for _ in stale_migrated_node_ids)
@@ -977,7 +949,9 @@ class GraphStore:
                 node_texts.append((nid, finding.to_semantic_text()))
             except Exception:
                 pass
-        await self.vector_index.sync_node_embeddings(db, node_texts, session_id=session_id)
+        await self.vector_index.sync_node_embeddings(
+            db, node_texts, session_id=session_id, existing_node_ids=set(candidate_ids)
+        )
 
         return node_ids, unique_node_ids, parent_nodes, assoc_nodes
 
@@ -1086,105 +1060,10 @@ class GraphStore:
     async def reconcile_state_decay(
         self, session_id: str, now: Optional[datetime] = None
     ) -> Dict[str, Any]:
-        """Deterministically evaluate and reconcile temporal state decay for a session.
-
-        Transitions:
-        - confirmed -> stale (if elapsed > ttl and not flapping)
-        - confirmed -> flapping (if elapsed > ttl and oscillations >= 2)
-        - flapping -> stale (if elapsed > 2 * ttl)
-        - proposed -> stale (if elapsed > ttl)
-        - stale -> confirmed (if re-observed within ttl)
-        """
-        if now is None:
-            now = datetime.now(UTC)
-        elif now.tzinfo is None:
-            now = now.replace(tzinfo=UTC)
-
-        transitions = []
-        updates = []
+        """Deterministically evaluate and reconcile temporal state decay for a session."""
 
         async def _op(db: aiosqlite.Connection) -> Dict[str, Any]:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT id, status, observation_count, ttl_seconds, last_seen_at, data_json FROM nodes WHERE session_id = ?",
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
-
-            status_counts = {"confirmed": 0, "flapping": 0, "stale": 0, "proposed": 0}
-
-            for row in rows:
-                nid = row["id"]
-                current_status = row["status"] or "confirmed"
-                ttl = int(row["ttl_seconds"] or 3600)
-                last_seen_val = row["last_seen_at"]
-
-                last_seen_dt = now
-                if last_seen_val:
-                    if isinstance(last_seen_val, str):
-                        dt_str = last_seen_val.replace("Z", "+00:00")
-                        if "T" not in dt_str and " " in dt_str:
-                            dt_str = dt_str.replace(" ", "T")
-                        try:
-                            parsed_dt = datetime.fromisoformat(dt_str)
-                            last_seen_dt = (
-                                parsed_dt.replace(tzinfo=UTC)
-                                if parsed_dt.tzinfo is None
-                                else parsed_dt
-                            )
-                        except Exception:
-                            last_seen_dt = now
-                    elif isinstance(last_seen_val, datetime):
-                        last_seen_dt = (
-                            last_seen_val.replace(tzinfo=UTC)
-                            if last_seen_val.tzinfo is None
-                            else last_seen_val
-                        )
-
-                elapsed = (now - last_seen_dt).total_seconds()
-
-                data = {}
-                if row["data_json"]:
-                    try:
-                        data = json.loads(row["data_json"])
-                    except Exception:
-                        pass
-
-                oscillations = int(data.get("oscillations", 0)) if isinstance(data, dict) else 0
-                is_flapping_indicator = (
-                    bool(data.get("flapping", False)) if isinstance(data, dict) else False
-                )
-                has_flapped = oscillations >= 2 or is_flapping_indicator
-
-                new_status = current_status
-
-                if elapsed > ttl:
-                    if current_status == "confirmed":
-                        new_status = "flapping" if has_flapped else "stale"
-                    elif current_status == "flapping":
-                        if elapsed > 2 * ttl:
-                            new_status = "stale"
-                    elif current_status == "proposed":
-                        new_status = "stale"
-
-                if new_status != current_status:
-                    transitions.append({"id": nid, "from": current_status, "to": new_status})
-                    updates.append((new_status, session_id, nid))
-                    status_counts[new_status] = status_counts.get(new_status, 0) + 1
-                else:
-                    status_counts[current_status] = status_counts.get(current_status, 0) + 1
-
-            if updates:
-                await db.executemany(
-                    "UPDATE nodes SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id = ?",
-                    updates,
-                )
-
-            return {
-                "transitions": transitions,
-                "status_breakdown": status_counts,
-                "reconciled_count": len(transitions),
-            }
+            return await TemporalDecayEngine.reconcile_state_decay(db, session_id, now=now)
 
         return await self._run_write(_op, session_id=session_id)
 
@@ -1192,23 +1071,11 @@ class GraphStore:
         self, session_id: str, max_age_seconds: int = 604800, now: Optional[datetime] = None
     ) -> int:
         """Permanently delete stale nodes and their cascading edges older than max_age_seconds."""
-        if now is None:
-            now = datetime.now(UTC)
-        elif now.tzinfo is None:
-            now = now.replace(tzinfo=UTC)
-
-        cutoff = (now - timedelta(seconds=max_age_seconds)).strftime("%Y-%m-%d %H:%M:%S")
 
         async def _op(db: aiosqlite.Connection) -> int:
-            await self.vector_index.purge_stale_vectors(db, session_id, cutoff)
-            cursor = await db.execute(
-                """DELETE FROM nodes
-                   WHERE session_id = ?
-                     AND status = 'stale'
-                     AND datetime(last_seen_at) < datetime(?)""",
-                (session_id, cutoff),
+            return await TemporalDecayEngine.prune_stale_nodes(
+                db, session_id, self.vector_index, max_age_seconds=max_age_seconds, now=now
             )
-            return cursor.rowcount
 
         return await self._run_write(_op, session_id=session_id)
 
@@ -1219,26 +1086,31 @@ class GraphStore:
     ) -> List[Dict[str, str]]:
         """Fetch anchored identity migrations recorded for a session."""
         async with self._get_read_conn() as db:
-            db.row_factory = aiosqlite.Row
-            query = """
-                SELECT finding_json, timestamp, action_payload
-                FROM event_log
-                WHERE session_id = ? AND schema_type = 'identity.migration'
-                ORDER BY timestamp ASC
-            """
-            cursor = await db.execute(query, (session_id,))
-            rows = await cursor.fetchall()
-            migrations = []
-            for r in rows:
-                try:
-                    payload = json.loads(r["finding_json"])
-                    act_meta = json.loads(r["action_payload"]) if r["action_payload"] else {}
-                    if action_id and act_meta.get("action_id") != action_id:
-                        continue
-                    migrations.append(payload)
-                except Exception:
-                    continue
-            return migrations
+            return await IdentityAnchoringEngine.get_anchored_migrations(
+                db, session_id, action_id=action_id
+            )
+
+    async def add_edges(
+        self,
+        session_id: str,
+        edges: List[Tuple[str, str, str]],
+        action_id: Optional[str] = None,
+    ) -> None:
+        """Insert relational edges (source_id, target_id, relation_type) into the graph for a session."""
+        if not edges:
+            return
+
+        async def _insert_edges_op(db: aiosqlite.Connection) -> None:
+            await db.executemany(
+                """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
+                       action_id = COALESCE(excluded.action_id, edges.action_id),
+                       updated_at = CURRENT_TIMESTAMP""",
+                [(session_id, r[0], r[1], r[2], action_id) for r in edges],
+            )
+
+        await self._run_write(_insert_edges_op, session_id=session_id)
 
     async def get_all_edges(self, session_id: str) -> List[Dict]:
         async with self._get_read_conn() as db:

@@ -57,7 +57,13 @@ def test_layer_dag_schemas_are_pure():
     """Verify that ether.schemas only imports from ether.schemas, ether.common, or stdlib."""
     schemas_dir = SRC_ROOT / "schemas"
     violations = []
-    banned_in_schemas = {"ether.core", "ether.graph", "ether.gateway", "ether.registry"}
+    banned_in_schemas = {
+        "ether.core",
+        "ether.graph",
+        "ether.gateway",
+        "ether.registry",
+        "ether.services",
+    }
 
     for py_file in _get_python_files(schemas_dir):
         with open(py_file, "r", encoding="utf-8") as f:
@@ -134,6 +140,7 @@ def test_complete_unidirectional_layer_dag():
             "ether.core",
             "ether.drift",
             "ether.gateway",
+            "ether.services",
             "ether.cli",
             "ether.mcp",
         ],
@@ -143,6 +150,7 @@ def test_complete_unidirectional_layer_dag():
             "ether.core",
             "ether.drift",
             "ether.gateway",
+            "ether.services",
             "ether.cli",
             "ether.mcp",
         ],
@@ -151,13 +159,22 @@ def test_complete_unidirectional_layer_dag():
             "ether.core",
             "ether.drift",
             "ether.gateway",
+            "ether.services",
             "ether.cli",
             "ether.mcp",
         ],
-        "graph": ["ether.core", "ether.drift", "ether.gateway", "ether.cli", "ether.mcp"],
-        "core": ["ether.drift", "ether.gateway", "ether.cli", "ether.mcp"],
-        "drift": ["ether.core", "ether.gateway", "ether.cli", "ether.mcp"],
-        "gateway": ["ether.drift", "ether.cli", "ether.mcp"],
+        "graph": [
+            "ether.core",
+            "ether.drift",
+            "ether.gateway",
+            "ether.services",
+            "ether.cli",
+            "ether.mcp",
+        ],
+        "core": ["ether.drift", "ether.gateway", "ether.services", "ether.cli", "ether.mcp"],
+        "drift": ["ether.core", "ether.gateway", "ether.services", "ether.cli", "ether.mcp"],
+        "gateway": ["ether.drift", "ether.services", "ether.cli", "ether.mcp"],
+        "services": ["ether.cli", "ether.mcp"],
         "mcp": ["ether.cli"],
         "cli": [],
     }

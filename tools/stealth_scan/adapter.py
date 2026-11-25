@@ -102,7 +102,11 @@ class StealthScanAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         host = self.extract_host(target) or "127.0.0.1"
-        flags_str = str(params.get("flags") or params.get("raw_flags") or "").strip()
+        flags_val = params.get("flags") or params.get("raw_flags") or ""
+        if isinstance(flags_val, list):
+            flags_str = " ".join(str(f) for f in flags_val)
+        else:
+            flags_str = str(flags_val).strip()
         mode = params.get("mode")
         ports = params.get("ports")
 

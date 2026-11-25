@@ -64,3 +64,12 @@ Ether operates as a headless reactive process supervisor, AST validator, and det
 
 7. **Forensic Integrity & Audit Chain of Custody**:
    All executed actions generate cryptographically hash-chained `AuditRecord` entries in `~/.ether/audit/{session_id}.jsonl`. Each record links the previous block hash and verifies raw log file integrity (`SHA-256`), with automatic gzip compaction upon session closure. Tampering with audit logs or manifests is detectable via `ether session verify-audit`.
+
+8. **HTTP Redirect & Rebinding SSRF Defense**:
+   Per ADR 0013, `tools/http_probe` intercepts all 3xx redirect responses using client response hooks. Redirect target URLs are re-evaluated against the scope boundary (`ScopeValidator.check_destination`) before following, preventing SSRF pivot attacks toward cloud IMDS (`169.254.169.254`), loopback, or unauthorized IP ranges under `GatePolicy.SAFE`.
+
+9. **MCP SSE Authentication & Network Exposure Boundary**:
+   Exposing the Model Context Protocol (MCP) server over SSE to non-loopback interfaces (`--host 0.0.0.0`) under `GatePolicy.SAFE` requires an authentication token (`--auth-token` or `ETHER_MCP_AUTH_TOKEN`). All SSE and message endpoints enforce HTTP Bearer token verification with 401 Unauthorized rejection for missing or invalid credentials.
+
+10. **Container Non-Root Isolation & Minimal Capabilities**:
+    The official Ether container runs as an unprivileged user (`ether`, UID/GID 1000) with private persistent volume permissions (`0o700` on `/home/ether/.ether`). Low-level packet scanning capabilities are granted exclusively via file capabilities (`setcap cap_net_raw,cap_net_admin+eip /usr/bin/nmap`), eliminating the requirement for container root execution.

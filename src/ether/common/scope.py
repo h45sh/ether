@@ -71,7 +71,7 @@ class ScopeValidator:
         return clean
 
     @classmethod
-    def _parse_ip(cls, host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
+    def parse_ip(cls, host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
         """Parse standard IP, CIDR network address, or alternate numerical IP (hex/decimal/octal)."""
         ip_obj: Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = None
         try:
@@ -89,6 +89,8 @@ class ScopeValidator:
         if ip_obj is not None and hasattr(ip_obj, "ipv4_mapped") and ip_obj.ipv4_mapped:
             ip_obj = ip_obj.ipv4_mapped
         return ip_obj
+
+    _parse_ip = parse_ip
 
     @classmethod
     def is_in_scope(

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
@@ -23,6 +24,25 @@ async def handle_mcp(args: Any, context: CliContext) -> int:
     )
     policy = GatePolicy.UNRESTRICTED if policy_str == "unrestricted" else GatePolicy.SAFE
 
+    # Read auth token from args or env
+    auth_token = getattr(args, "auth_token", None) or os.getenv("ETHER_MCP_AUTH_TOKEN")
+
+    # Host binding security gate: under SAFE policy with SSE transport, binding to external
+    # non-loopback interfaces (e.g. 0.0.0.0 or public IP) requires an authentication token.
+    is_loopback = host in ("127.0.0.1", "localhost", "::1", "127.0.0.2")
+    if transport == "sse" and not is_loopback and not auth_token:
+        if policy == GatePolicy.SAFE:
+            print_error(
+                f"Binding MCP SSE server to external interface '{host}' under SAFE policy "
+                "requires authentication. Provide --auth-token <TOKEN> or set ETHER_MCP_AUTH_TOKEN."
+            )
+            return EXIT_RUNTIME_ERROR
+        else:
+            logger.warning(
+                "Binding MCP SSE server to external interface '%s' without authentication under UNRESTRICTED policy.",
+                host,
+            )
+
     registry = context.get_registry()
     async with context.open_store() as store:
         server = create_mcp_server(
@@ -30,6 +50,7 @@ async def handle_mcp(args: Any, context: CliContext) -> int:
             default_session_id=session_id,
             policy=policy,
             registry=registry,
+            auth_token=auth_token,
         )
 
         try:

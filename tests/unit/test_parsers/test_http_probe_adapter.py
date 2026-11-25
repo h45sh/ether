@@ -208,3 +208,103 @@ async def test_http_probe_tls_fingerprint_and_favicon_anchoring(adapter):
     endpoint = next(f for f in findings if f.schema_type == "web.endpoint")
     assert endpoint.anchor_hash == "tls:abcd1234ef567890"
     assert "favicon_hash" in endpoint.data
+
+
+@pytest.mark.asyncio
+async def test_http_probe_redirect_to_metadata_blocked(adapter):
+    """Verify that an HTTP 302 redirect to cloud metadata raises PolicyViolationError."""
+    spooled = []
+
+    async def fake_spool(line, is_error=False):
+        spooled.append(line)
+
+    ctx = ExecutionContext(
+        action_id="act-test", session_id="sess-test", policy="safe", spool_fn=fake_spool
+    )
+    target = WebEndpoint.create(url="http://scanme.nmap.org/redirect-meta")
+
+    def mock_handler(request):
+        if "redirect-meta" in str(request.url):
+            return httpx.Response(
+                302,
+                headers={"Location": "http://169.254.169.254/latest/meta-data/"},
+                request=request,
+            )
+        return httpx.Response(200, text="metadata leaked", request=request)
+
+    mock_transport = httpx.MockTransport(mock_handler)
+    with patch("httpx.AsyncHTTPTransport", return_value=mock_transport):
+        with pytest.raises(PolicyViolationError, match="blocked by SSRF policy"):
+            async for _ in adapter.execute_action(target, {}, ctx):
+                pass
+
+    assert any("SSRF Redirect Defense Triggered" in l for l in spooled)
+
+
+@pytest.mark.asyncio
+async def test_http_probe_redirect_to_loopback_blocked(adapter):
+    """Verify that an HTTP 301 redirect to loopback IP raises PolicyViolationError under safe policy."""
+    spooled = []
+
+    async def fake_spool(line, is_error=False):
+        spooled.append(line)
+
+    ctx = ExecutionContext(
+        action_id="act-test", session_id="sess-test", policy="safe", spool_fn=fake_spool
+    )
+    target = WebEndpoint.create(url="http://scanme.nmap.org/redirect-local")
+
+    def mock_handler(request):
+        if "redirect-local" in str(request.url):
+            return httpx.Response(
+                301,
+                headers={"Location": "http://127.0.0.1:8080/internal-status"},
+                request=request,
+            )
+        return httpx.Response(200, text="internal ok", request=request)
+
+    mock_transport = httpx.MockTransport(mock_handler)
+    with patch("httpx.AsyncHTTPTransport", return_value=mock_transport):
+        with pytest.raises(PolicyViolationError, match="blocked by SSRF policy"):
+            async for _ in adapter.execute_action(target, {}, ctx):
+                pass
+
+    assert any("SSRF Redirect Defense Triggered" in l for l in spooled)
+
+
+@pytest.mark.asyncio
+async def test_http_probe_redirect_allowed_unrestricted(adapter):
+    """Verify that under unrestricted policy, redirecting to loopback does not abort."""
+    spooled = []
+
+    async def fake_spool(line, is_error=False):
+        spooled.append(line)
+
+    ctx = ExecutionContext(
+        action_id="act-test",
+        session_id="sess-test",
+        policy="unrestricted",
+        spool_fn=fake_spool,
+    )
+    target = WebEndpoint.create(url="http://scanme.nmap.org/redirect-unrestricted")
+
+    def mock_handler(request):
+        if "redirect-unrestricted" in str(request.url):
+            return httpx.Response(
+                302,
+                headers={"Location": "http://127.0.0.1:8080/dashboard"},
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            headers={"Server": "nginx/1.24"},
+            text="<html><head><title>Dashboard</title></head><body>Welcome</body></html>",
+            request=request,
+        )
+
+    mock_transport = httpx.MockTransport(mock_handler)
+    with patch("httpx.AsyncHTTPTransport", return_value=mock_transport):
+        findings = [f async for f in adapter.execute_action(target, {}, ctx)]
+
+    assert len(findings) > 0
+    assert any(f.schema_type == "web.endpoint" for f in findings)

@@ -1,9 +1,18 @@
 """Deterministic offline vector embedding engine for Ether."""
 
+import functools
 import hashlib
 import math
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+
+@functools.lru_cache(maxsize=8192)
+def _feature_projection(feature: str, dimension: int) -> Tuple[int, float]:
+    digest = hashlib.sha256(feature.encode("utf-8")).digest()
+    bucket = int.from_bytes(digest[:4], byteorder="big") % dimension
+    sign = 1.0 if digest[4] % 2 == 0 else -1.0
+    return bucket, sign
 
 
 class VectorEmbeddingEngine:
@@ -64,9 +73,7 @@ class VectorEmbeddingEngine:
 
     def _hash_feature(self, feature: str, weight: float, vector: List[float]) -> None:
         """Hash feature into dimension bucket with signed projection."""
-        digest = hashlib.sha256(feature.encode("utf-8")).digest()
-        bucket = int.from_bytes(digest[:4], byteorder="big") % self.dimension
-        sign = 1.0 if digest[4] % 2 == 0 else -1.0
+        bucket, sign = _feature_projection(feature, self.dimension)
         vector[bucket] += sign * weight
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:

@@ -45,7 +45,7 @@ class ActionTimelineRepository:
                 ),
             )
 
-        await self.store._run_write(_op, session_id=session_id)
+        await self.store.run_write_operation(_op, session_id=session_id)
 
     async def log_audit_event(
         self, session_id: str, action_name: str, message: str, status: str
@@ -66,11 +66,11 @@ class ActionTimelineRepository:
                 ),
             )
 
-        await self.store._run_write(_op, session_id=session_id, enforce_open=False)
+        await self.store.run_write_operation(_op, session_id=session_id, enforce_open=False)
 
     async def get_event_log(self, session_id: str) -> List[Dict[str, Any]]:
         """Fetch all non-closed events for a session in chronological order."""
-        async with self.store._get_read_conn() as db:
+        async with self.store.get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM event_log WHERE session_id = ? AND (closed IS NULL OR closed = 0) ORDER BY timestamp ASC, id ASC",
@@ -94,11 +94,11 @@ class ActionTimelineRepository:
                     (action_id, f'%"{action_id}"%'),
                 )
 
-        await self.store._run_write(_op, session_id=session_id)
+        await self.store.run_write_operation(_op, session_id=session_id)
 
     async def get_closed_events_count(self, session_id: str) -> int:
         """Get the count of closed events/tabs for a session."""
-        async with self.store._get_read_conn() as db:
+        async with self.store.get_read_conn() as db:
             cursor = await db.execute(
                 "SELECT COUNT(*) FROM event_log WHERE session_id = ? AND closed = 1",
                 (session_id,),
@@ -130,7 +130,7 @@ class ActionTimelineRepository:
                 return cursor_del.rowcount
             return 0
 
-        return await self.store._run_write(_op, session_id=session_id)
+        return await self.store.run_write_operation(_op, session_id=session_id)
 
     async def query_timeline(
         self,
@@ -157,7 +157,7 @@ class ActionTimelineRepository:
         query += " ORDER BY timestamp ASC, id ASC LIMIT ?"
         params.append(limit)
 
-        async with self.store._get_read_conn() as db:
+        async with self.store.get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(query, tuple(params))
             rows = await cursor.fetchall()

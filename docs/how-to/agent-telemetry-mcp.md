@@ -72,7 +72,22 @@ ether mcp --policy unrestricted
 
 ### B. Remote / Docker SSE Transport
 ```bash
+# Launch SSE server on loopback (auth token optional for local dev)
 ether mcp --transport sse --port 8000
+
+# Bind to all interfaces with Bearer token authentication (required under SAFE policy)
+ether mcp --transport sse --host 0.0.0.0 --port 8000 --auth-token "your-secret-token"
+
+# Or configure via environment variable
+export ETHER_MCP_AUTH_TOKEN="your-secret-token"
+ether mcp --transport sse --host 0.0.0.0 --port 8000
+```
+
+When connecting to an authenticated SSE endpoint, clients must pass the Bearer token in the `Authorization` header:
+```http
+GET /sse HTTP/1.1
+Host: 10.0.0.5:8000
+Authorization: Bearer your-secret-token
 ```
 
 ---
