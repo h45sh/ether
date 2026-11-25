@@ -359,7 +359,10 @@ class ExecutionSession:
                 await q.put(ExecutionCompleted(action_id=action_id, status=job.status))
             else:
                 await q.put(
-                    ExecutionFailed(action_id=action_id, error=job.error_snippet or "Failed")
+                    ExecutionFailed(
+                        action_id=action_id,
+                        error=job.error_snippet or "Failed",
+                    )
                 )
             await q.put(None)
 
@@ -579,6 +582,9 @@ class ExecutionSession:
         elif job.exit_code is None:
             job.exit_code = 0 if job.status == JobStatusEnum.DONE else 1
 
+        if err_msg and not job.error_snippet:
+            job.error_snippet = err_msg
+
         spooler = self._job_spoolers.pop(action.action_id, None)
         status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
         if spooler:
@@ -744,9 +750,11 @@ class ExecutionSession:
         except asyncio.CancelledError:
             err_msg = "Job cancelled"
             job.status = JobStatusEnum.FAILED
+            job.error_snippet = err_msg
         except Exception as e:
             job.status = JobStatusEnum.FAILED
             err_msg = str(e)
+            job.error_snippet = err_msg
             await self._append_chunk(
                 action.action_id,
                 f"[Privileged execution error: {e}]\n",
@@ -918,9 +926,11 @@ class ExecutionSession:
         except asyncio.CancelledError:
             err_msg = "Job cancelled"
             job.status = JobStatusEnum.FAILED
+            job.error_snippet = err_msg
         except Exception as e:
             err_msg = str(e)
             job.status = JobStatusEnum.FAILED
+            job.error_snippet = err_msg
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
             job.completed_at = datetime.now(UTC)
