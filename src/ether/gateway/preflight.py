@@ -7,15 +7,16 @@ import re
 import shutil
 import urllib.parse
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, List, Literal, Optional, Set, Tuple
 
-from ether import paths
 from ether.gateway.gate import GatePolicy
 from ether.gateway.scope import EngagementScope, ScopeValidator
-from ether.registry.wordlists import (
+from ether.registry.assets import (
     DEFAULT_WORDLIST_NAME,
     WORDLIST_MACRO_REGEX,
-    seed_bundled_wordlists,
+    AssetNotFoundError,
+    resolve_wordlist,
 )
 
 WORDLIST_FLAG_REGEX = re.compile(
@@ -352,13 +353,7 @@ class PreflightVerifier:
         action = issue.remedy_action
         payload = issue.remedy_payload
 
-        if action == "seed_wordlists":
-            dest_dir = self.wordlists_dir or paths.get_default_wordlists_dir()
-            extracted = seed_bundled_wordlists(dest_dir)
-            msg = f"Extracted {len(extracted)} starter wordlists to {dest_dir}."
-            return target, flags, msg
-
-        elif action == "fix_target_scheme":
+        if action == "fix_target_scheme":
             new_target = payload if payload else f"http://{target.strip()}"
             return new_target, flags, f"Updated target to: {new_target}"
 
@@ -641,9 +636,8 @@ class PreflightVerifier:
         flags: str,
         report: PreflightReport,
     ) -> None:
-        """Inspect command flags for wordlist dependencies and ensure required files exist."""
-        dest_dir = self.wordlists_dir or paths.get_default_wordlists_dir()
-        dest_path = os.path.abspath(dest_dir)
+        """Inspect command flags for wordlist dependencies and verify resolution."""
+        search_roots = [Path(self.wordlists_dir)] if self.wordlists_dir else None
 
         # 1. Macro Tokens: {wordlist:name} or {wordlist}
         macro_matches = WORDLIST_MACRO_REGEX.findall(flags)
@@ -652,19 +646,26 @@ class PreflightVerifier:
             if wl_key.endswith(".txt"):
                 wl_key = wl_key[:-4]
 
-            candidate_path = os.path.join(dest_dir, f"{wl_key}.txt")
-            if not os.path.exists(candidate_path):
+            try:
+                resolve_wordlist(
+                    f"{{wordlist:{wl_key}}}",
+                    search_roots=search_roots,
+                    allow_fallback=False,
+                )
+            except AssetNotFoundError:
                 report.issues.append(
                     PreflightIssue(
                         category="wordlist",
-                        severity="error",
-                        title=f"Wordlist '{wl_key}' is not available on disk",
-                        description=f"The required wordlist asset '{wl_key}.txt' is missing from {dest_dir}.",
-                        remediation_hint=f"Install bundled starter wordlists into {dest_dir}.",
-                        can_auto_remedy=True,
-                        remedy_label="Seed Bundled Wordlists",
-                        remedy_action="seed_wordlists",
-                        remedy_payload=wl_key,
+                        severity="warning",
+                        title=f"Wordlist '{wl_key}' not found; will fall back to minimal.txt",
+                        description=(
+                            f"Wordlist asset '{wl_key}' was not found in $ETHER_WORDLISTS_DIR, "
+                            "user wordlists, or system SecLists; runtime will use minimal.txt."
+                        ),
+                        remediation_hint=(
+                            "Set ETHER_WORDLISTS_DIR or install SecLists at /usr/share/seclists."
+                        ),
+                        can_auto_remedy=False,
                     )
                 )
 
@@ -707,19 +708,26 @@ class PreflightVerifier:
                     wl_name = clean_path[1:]
                     if wl_name.endswith(".txt"):
                         wl_name = wl_name[:-4]
-                    candidate = paths.get_wordlist_path(wl_name, data_dir=self.wordlists_dir)
-                    if not os.path.exists(candidate):
+                    try:
+                        resolve_wordlist(
+                            clean_path,
+                            search_roots=search_roots,
+                            allow_fallback=False,
+                        )
+                    except AssetNotFoundError:
                         report.issues.append(
                             PreflightIssue(
                                 category="wordlist",
                                 severity="warning",
-                                title=f"Wordlist macro '@{wl_name}' is not yet seeded",
-                                description=f"The requested wordlist file does not exist at '{candidate}'.",
-                                remediation_hint="Extract bundled wordlists to initialize local dictionaries.",
-                                can_auto_remedy=True,
-                                remedy_label="Extract Wordlists",
-                                remedy_action="seed_wordlists",
-                                remedy_payload=wl_name,
+                                title=f"Wordlist macro '@{wl_name}' not found; will fall back to minimal.txt",
+                                description=(
+                                    f"Requested wordlist '{wl_name}' was not found; "
+                                    "runtime will fall back to embedded minimal.txt."
+                                ),
+                                remediation_hint=(
+                                    "Set ETHER_WORDLISTS_DIR or install SecLists at /usr/share/seclists."
+                                ),
+                                can_auto_remedy=False,
                             )
                         )
                 else:
@@ -731,11 +739,10 @@ class PreflightVerifier:
                                 severity="error",
                                 title=f"Specified wordlist file not found: '{clean_path}'",
                                 description=f"Path '{expanded}' does not exist on disk.",
-                                remediation_hint="Verify the wordlist path or seed bundled starter dictionaries.",
-                                can_auto_remedy=True,
-                                remedy_label="Seed Bundled Wordlists",
-                                remedy_action="seed_wordlists",
-                                remedy_payload=DEFAULT_WORDLIST_NAME,
+                                remediation_hint=(
+                                    "Verify the wordlist path or set ETHER_WORDLISTS_DIR / install SecLists."
+                                ),
+                                can_auto_remedy=False,
                             )
                         )
 

@@ -30,7 +30,6 @@ from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
 from ether.graph.telemetry import GraphTelemetryCompiler
 from ether.registry.registry import ToolRegistry
-from ether.registry.wordlists import seed_bundled_wordlists
 from ether.schemas.base import BaseFinding
 from ether.schemas.dns import DnsRecord, DomainInfo
 from ether.schemas.network import NetworkHost, NetworkService
@@ -117,7 +116,6 @@ async def run_evaluation():
     await store.initialize()
     registry = ToolRegistry()
     registry.load_tools()
-    seed_bundled_wordlists()
 
     ws_id = await store.create_workspace("Full Evaluation Workspace")
     logger.info(f"Created Workspace ID: {ws_id}")

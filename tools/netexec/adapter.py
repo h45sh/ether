@@ -6,7 +6,7 @@ import shutil
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.registry.adapter import ToolAdapter
-from ether.registry.wordlists import substitute_wordlist_macros
+from ether.registry.assets import substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.credential import CredentialFound
 from ether.schemas.network import NetworkHost, NetworkService
