@@ -307,6 +307,57 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
     - Computes a mathematical volatility coefficient $V_n \in [0.1, 1.0]$ based on historical flapping frequency and container restart intervals.
     - Dynamically scales TTL window: highly stable bare-metal hosts maintain long confidence windows, while dynamic cloud containers accelerate confidence decay (`confirmed` $\rightarrow$ `flapping` $\rightarrow$ `stale`) in sub-15-minute cycles, matching real-world ephemeral cloud architectures.
 
+#### 7. Autonomous Agent Usability, Security Boundary & Memory Hardening (Resolving Run 4 Deficiencies)
+Directly addressing every deficiency, UX friction point, security edge case, and optimization identified during the Run 4 autonomous multi-agent evaluation (`reports/run_4/`):
+
+- [ ] **Full CLI `-j / --json` Symmetry & Un-truncated Graph IDs (`ether.cli`):**
+  - *Problem from Run 4*: Passing `-j / --json` only produces JSON for `telemetry snapshot` and `telemetry diff`. Commands including `session create`, `session list`, `session verify-audit`, `graph list-nodes`, `graph belief`, `graph crown-jewels`, `graph blast-radius`, `graph attack-path`, `telemetry health`, `drift`, and `run` ignore `-j` and emit human-readable Rich text. Additionally, `graph list-nodes` truncates node IDs to 12 characters.
+  - *Fix*: Honor `-j / --json` uniformly across all CLI subcommands and return full 64-character SHA-256 node IDs in JSON output so autonomous agents can chain `graph blast-radius` and `graph attack-path` without parsing ASCII tables.
+
+- [ ] **Byte-Bounded `ExecutionSession` Ring Buffers & Queue Backpressure (`src/ether/core/session.py`):**
+  - *Problem from Run 4*: `_job_buffers` uses `deque(maxlen=5000)` which bounds chunk count rather than byte size. With `Executor` reading 64KB chunks, a 16.11 MB flood kept 258 chunks in `_job_buffers` and duplicated them in `_event_queues` for `subscribe()`, causing a **33.49 MB** peak RSS delta (18.32 MB post-GC) and failing the `<10 MB` memory cap.
+  - *Fix*: Replace chunk-count-only `deque` with a byte-bounded ring buffer (`max_bytes <= 2 MB` per active job) and bounded `subscribe()` queues with drop-oldest backpressure so peak RSS delta remains strictly `<10 MB`.
+
+- [ ] **`GobusterAdapter` Linear-Time Regex Hardening (`tools/gobuster/adapter.py`):**
+  - *Problem from Run 4*: `GobusterAdapter.STATUS_PATTERN = re.compile(r"(\S+)\s+\(Status:\s+(\d+)\)")` suffers from $O(N^2)$ catastrophic backtracking (ReDoS), hitting a 2.0s `SIGALRM` timeout on a 100,000-char whitespace-free line.
+  - *Fix*: Pre-filter lines for `" (Status:"` and cap/slice line length or replace with linear-time `str.split` parsing so hostile streams parse in $O(N)$ time.
+
+- [ ] **Unified SSRF, DNS Resolution, Redirect & `--flags` Smuggling Defense (`ether.gateway` & `ether.common.scope`):**
+  - *Problem from Run 4*:
+    - `is_blocked_destination()` in `src/ether/gateway/gate.py` hardcodes `EngagementScope(allow_loopback=True)` when `allowed_cidrs` is unset, letting loopback/unspecified/302-redirector targets (`127.0.0.1`, `0.0.0.0`, `[::]`, `0177.0.0.1`, `2130706433`, `0`, `0x7f000001`) bypass `ActionGateway.validate_action()`.
+    - `ActionGateway` and `PreflightVerifier` do not invoke `ScopeValidator.check_destination()` DNS resolution, allowing `nip.io` and `localtest.me` to bypass `SAFE` gates.
+    - `PreflightVerifier._check_security()` never inspects `--flags` (12/12 smuggling bypasses); `ActionGateway` missed 6/12 flag-smuggling vectors (joined `-uhttp://...`, colon-delimited `--resolve=host:port:ip`, comma-delimited `--targets=a,b`, `--proxy`, `-L`).
+    - `http_probe` lacks an HTTP redirect-following SSRF guard on `301`/`302`/`307`/`308` `Location` headers.
+  - *Fix*: Default `allow_loopback=False` under `GatePolicy.SAFE` unless explicitly authorized, wire `check_destination()` DNS resolution into both `ActionGateway` and `PreflightVerifier`, tokenize and validate all `--flags` values (including joined/colon/comma forms), and validate redirect `Location` targets against `ScopeValidator` before following.
+
+- [ ] **XML Boundary Whitespace/Attribute Escaping (`src/ether/common/__init__.py`):**
+  - *Problem from Run 4*: `sanitize_untrusted_output()` regex `r"</untrusted_scan_output>"` fails on 5/12 closing-tag variants containing whitespace or attributes (`</untrusted_scan_output >`, `</untrusted_scan_output\t>`, `</untrusted_scan_output\n>`, `</ untrusted_scan_output>`, `</untrusted_scan_output foo="bar">`) and leaves opening `<untrusted_scan_output>` tags unescaped.
+  - *Fix*: Escape any `<(?:/\s*)?untrusted_scan_output\b[^>]*>` (case-insensitive) inside untrusted scanner outputs.
+
+- [ ] **Expanded Subprocess Environment Secret Scrubbing (`src/ether/core/executor.py`):**
+  - *Problem from Run 4*: `sanitize_subprocess_env()` leaked 11/20 tested secrets to child subprocesses: `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN`, `AWS_PROFILE`, `SSH_AUTH_SOCK`, `SSH_AGENT_PID`, `AZURE_CLIENT_SECRET`, `GOOGLE_APPLICATION_CREDENTIALS`, `DOCKER_PASSWORD`, `NPM_TOKEN`, `DATABASE_URL`, and `CUSTOM_API_KEY`.
+  - *Fix*: Expand `sensitive_prefixes` and suffix patterns in `sanitize_subprocess_env()` to strip `AWS_`, `SSH_`, `AZURE_`, `GOOGLE_APPLICATION_CREDENTIALS`, `DOCKER_`, `NPM_`, `DATABASE_URL`, and `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_API_KEY`.
+
+- [ ] **Atomic Overwrite & `GraphStore` Directory Permissions (`src/ether/paths.py`, `src/ether/graph/store.py`):**
+  - *Problem from Run 4*: `atomic_create_file()` leaves a pre-existing `0o644` file at `0o644` on overwrite, and `GraphStore` creates `db_dir` with `os.makedirs(db_dir, exist_ok=True)` without `mode=0o700` (yielding `0o755`) and relies on post-creation `os.chmod(self.db_path, 0o600)`.
+  - *Fix*: Enforce atomic temp-file + `0o600` + `os.replace` in `atomic_create_file()`, create `db_dir` with `mode=0o700`, and pre-create `db_path` atomically with `0o600`.
+
+- [ ] **Deception Detection, Tarpit Timeout & Banner Correlation (`ether.graph.analytics`, `tools/nmap`, `tools/http_probe`):**
+  - *Problem from Run 4*: `ether graph belief --evaluate` marked both the live Cowrie SSH honeypot (`SSH-2.0-Cowrie SSH Honeypot`) and the 66s SSH tarpit as `HONEYPOT: no`, `TARPIT: no`; `nmap` did not record the Cowrie banner in `network.service`; and `http_probe` stalled for 66s on the slow-drip tarpit despite `timeout=10.0s`.
+  - *Fix*: Enforce strict total-request/read deadlines in `http_probe`, record raw service banners in `nmap` and a new lightweight native TCP/SSH banner-grabber coroutine adapter, and feed banner signatures + timing-anomaly telemetry into `GraphAnalyticsEngine.evaluate_deception()`.
+
+- [ ] **`http_probe` Body/Redirect Visibility & `imds_probe` Open-Redirect Detection (`tools/http_probe`, `tools/imds_probe`):**
+  - *Problem from Run 4*: `http_probe` does not surface response body previews (e.g., `robots.txt` Disallow rules, `/api/internal/users` credential JSON) or 302 `Location` headers, and `imds_probe` returned 0 findings on `/redirect-imds`.
+  - *Fix*: Surface sanitized response body snippets and redirect `Location` headers in `http_probe` findings, and teach `imds_probe` to flag open 302 redirects targeting cloud metadata endpoints.
+
+- [ ] **Target Input Classification & Graph Edge Wiring (`tools/tls_probe`, `ether.graph`):**
+  - *Problem from Run 4*: `ether run tls_probe 127.0.0.1:34291` misclassified `IP:PORT` as `domain.info` and rejected it; `graph blast-radius` and `graph attack-path` returned 0 / no path due to missing/unconnected edges.
+  - *Fix*: Parse `IP:PORT` inputs as `network.service` in `tls_probe` and `preflight.py`, and ensure `network.host` $\rightarrow$ `network.service` $\rightarrow$ `web.endpoint` $\rightarrow$ `vulnerability` edges are consistently wired.
+
+- [ ] **SDK Ergonomics, Out-of-Repo Auto-Init & MCP Metadata (`ether/__init__.py`, `ether/core/session.py`, `ether/mcp/server.py`):**
+  - *Problem from Run 4*: `EngagementScope` is not exported from top-level `ether`; `ExecutionSession.__init__` requires explicit `gateway`, `registry`, and `command_runner`; standalone out-of-repo SDK `http_probe` failed with `OperationalError('no such table: sessions')`; and MCP `server_info.version` returned `""` instead of `"0.1.3"`.
+  - *Fix*: Export `EngagementScope` at top level, provide sensible defaults on `ExecutionSession.__init__`, ensure `GraphStore` auto-initializes schema tables on first SDK use, populate MCP `server_info.version` dynamically from package metadata, and document `allow_loopback` / `policy` in MCP `execute_tool` schema.
+
 ### Epoch 4: The Unrestricted Virtual PTY & Enterprise Identity Engine
 *Target: v0.5.0*
 *Focus: POSIX pseudo-terminal virtualization, in-memory VT102 screen emulation, Active Directory & Cloud IAM graph calculus, and autonomous background daemonization.*
