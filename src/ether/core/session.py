@@ -918,9 +918,7 @@ class ExecutionSession:
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
             job.completed_at = datetime.now(UTC)
-            self._finalize_action_spool(
-                action, job, log_file_path, "Execution End", err_msg
-            )
+            self._finalize_action_spool(action, job, log_file_path, "Execution End", err_msg)
 
             # Persist to database event log
             if not getattr(self.store, "_closed", False):

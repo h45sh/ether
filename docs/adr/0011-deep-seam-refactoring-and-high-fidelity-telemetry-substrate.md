@@ -56,6 +56,7 @@ We introduce a deep `ScopeValidator` module at the gateway seam, replacing stati
        reason: str
        normalized_target: Optional[str]
 
+
    class ScopeValidator:
        @classmethod
        def is_in_scope(cls, target: str, scope: EngagementScope) -> ScopeVerdict: ...

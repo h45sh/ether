@@ -236,8 +236,10 @@ class GraphStore:
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_findings'"
             )
             row = await cursor.fetchone()
-            if row and row[0] and (
-                "session_id" not in row[0] or "id text primary key" not in row[0].lower()
+            if (
+                row
+                and row[0]
+                and ("session_id" not in row[0] or "id text primary key" not in row[0].lower())
             ):
                 await db.execute("DROP TABLE IF EXISTS vec_findings")
             await db.executescript(SCHEMA_DDL)
@@ -741,13 +743,32 @@ class GraphStore:
                 )
             )
 
-            resolved = BaseFinding.resolve_anchor_hash(
-                {
-                    "anchor_hash": getattr(finding, "anchor_hash", None),
-                    "data": finding.data,
-                }
-            )
-            anchor_hash = resolved.get("anchor_hash") if isinstance(resolved, dict) else None
+            anchor_hash = getattr(finding, "anchor_hash", None)
+            if not anchor_hash and getattr(finding, "data", None):
+                for key in (
+                    "anchor_hash",
+                    "tls_cert_sha256",
+                    "ssh_hostkey_fingerprint",
+                    "favicon_hash",
+                    "soa_serial",
+                ):
+                    val = finding.data.get(key)
+                    if val:
+                        prefix = (
+                            "tls"
+                            if "tls" in key
+                            else (
+                                "ssh"
+                                if "ssh" in key
+                                else (
+                                    "favicon"
+                                    if "favicon" in key
+                                    else ("soa" if "soa" in key else "")
+                                )
+                            )
+                        )
+                        anchor_hash = f"{prefix}:{val}" if prefix else str(val)
+                        break
 
             ttl_seconds = getattr(finding, "ttl_seconds", 3600) or 3600
 
@@ -796,9 +817,7 @@ class GraphStore:
 
         # Warm up bloom filter for this session if newly accessed
         if session_id not in self._warmed_sessions:
-            cursor = await db.execute(
-                "SELECT id FROM nodes WHERE session_id = ?", (session_id,)
-            )
+            cursor = await db.execute("SELECT id FROM nodes WHERE session_id = ?", (session_id,))
             rows = await cursor.fetchall()
             for (nid,) in rows:
                 bloom.add(nid)
@@ -1020,9 +1039,7 @@ class GraphStore:
             rows = await cursor.fetchall()
             return [_hydrate_node_row(r) for r in rows]
 
-    async def sync_vectors_batch(
-        self, findings: List[BaseFinding], session_id: str = ""
-    ) -> int:
+    async def sync_vectors_batch(self, findings: List[BaseFinding], session_id: str = "") -> int:
         """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
 
         async def _op(db: aiosqlite.Connection) -> int:
@@ -1678,6 +1695,7 @@ class GraphStore:
             )
             for b in beliefs
         ]
+
         async def _op(db: aiosqlite.Connection) -> None:
             await db.executemany(
                 """
@@ -1744,4 +1762,3 @@ class GraphStore:
                 }
                 for r in rows
             ]
-

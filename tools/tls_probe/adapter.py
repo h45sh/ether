@@ -66,7 +66,9 @@ class TlsProbeAdapter(ToolAdapter):
                 timeout=params.get("timeout", 5.0),
             )
         except Exception as e:
-            await context.spool_line(f"TLS probe connection failed to {host}:{port}: {e}", is_error=True)
+            await context.spool_line(
+                f"TLS probe connection failed to {host}:{port}: {e}", is_error=True
+            )
             return
 
         try:

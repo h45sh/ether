@@ -344,8 +344,12 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
     ```python
     class IdentityEngine:
         async def ingest_identity_finding(self, finding: BaseFinding) -> NodeId: ...
-        async def compute_privilege_path(self, session_id: str, source_node: NodeId, target_node: NodeId) -> AttackPath: ...
-        async def calculate_blast_radius(self, session_id: str, compromised_node: NodeId) -> BlastRadius: ...
+        async def compute_privilege_path(
+            self, session_id: str, source_node: NodeId, target_node: NodeId
+        ) -> AttackPath: ...
+        async def calculate_blast_radius(
+            self, session_id: str, compromised_node: NodeId
+        ) -> BlastRadius: ...
     ```
   - *Implementation (Hidden Complexity)*:
     - Pure-Python in-process asynchronous protocol adapters querying LDAP, Kerberos, and SMB using `impacket` and native coroutines (Kerberoasting, AS-REP roasting, domain controller trust enumeration).
@@ -362,8 +366,12 @@ Directly addressing the empirical bottlenecks, tool dropouts, and latency anomal
   - *Minimal Interface Surface*:
     ```python
     class ArtifactAnalyzer:
-        async def inspect_artifact(self, artifact_path: Path, config: AnalysisConfig | None = None) -> ArtifactFinding: ...
-        async def extract_decompilation(self, artifact_path: Path, symbol_or_class: str) -> DecompilationResult: ...
+        async def inspect_artifact(
+            self, artifact_path: Path, config: AnalysisConfig | None = None
+        ) -> ArtifactFinding: ...
+        async def extract_decompilation(
+            self, artifact_path: Path, symbol_or_class: str
+        ) -> DecompilationResult: ...
     ```
   - *Implementation (Hidden Complexity)*:
     - Magic-byte container identification: automatically disambiguates ELF, PE/COFF, Mach-O (thin and universal fat binaries), Android DEX/APK ZIP bundles, and iOS IPA archives.

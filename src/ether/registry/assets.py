@@ -155,10 +155,10 @@ def substitute_wordlist_macros(
     resolved_paths: List[str] = []
 
     def _replace_macro(match: re.Match[str]) -> str:
-        target_spec = user_override.strip() if user_override and user_override.strip() else match.group(0)
-        resolved = str(
-            resolve_wordlist(target_spec, data_dir=data_dir, search_roots=search_roots)
+        target_spec = (
+            user_override.strip() if user_override and user_override.strip() else match.group(0)
         )
+        resolved = str(resolve_wordlist(target_spec, data_dir=data_dir, search_roots=search_roots))
         resolved_paths.append(resolved)
         return resolved
 

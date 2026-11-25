@@ -26,7 +26,9 @@ class MockManifestRegistry:
         return self._tools.get(name)
 
 
-def make_tool_manifest(name: str, accepts: List[str], target_types: Optional[List[str]] = None) -> Manifest:
+def make_tool_manifest(
+    name: str, accepts: List[str], target_types: Optional[List[str]] = None
+) -> Manifest:
     data = {
         "meta": {
             "name": name,
@@ -96,7 +98,9 @@ def test_manifest_driven_network_target_rejects_url():
         target_types=["ip", "cidr", "domain"],
     )
     adapter = MockToolAdapter("custom_port_scanner")
-    registry = MockManifestRegistry({"custom_port_scanner": {"adapter": adapter, "manifest": manifest}})
+    registry = MockManifestRegistry(
+        {"custom_port_scanner": {"adapter": adapter, "manifest": manifest}}
+    )
 
     verifier = PreflightVerifier(registry=registry)
 
@@ -109,7 +113,9 @@ def test_dynamic_fallback_without_static_sets():
     """Verify unknown tool not in static sets derives validation dynamically from accepts schemas."""
     manifest = make_tool_manifest("brand_new_scanner", accepts=["network.host"])
     adapter = MockToolAdapter("brand_new_scanner")
-    registry = MockManifestRegistry({"brand_new_scanner": {"adapter": adapter, "manifest": manifest}})
+    registry = MockManifestRegistry(
+        {"brand_new_scanner": {"adapter": adapter, "manifest": manifest}}
+    )
 
     verifier = PreflightVerifier(registry=registry)
 

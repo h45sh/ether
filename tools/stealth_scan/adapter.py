@@ -11,8 +11,23 @@ from ether.schemas.base import BaseFinding
 from ether.schemas.network import NetworkHost, NetworkService
 
 COMMON_PORTS: List[int] = [
-    21, 22, 23, 25, 53, 80, 110, 139, 443, 445,
-    1433, 3306, 3389, 5432, 6379, 8080, 8443,
+    21,
+    22,
+    23,
+    25,
+    53,
+    80,
+    110,
+    139,
+    443,
+    445,
+    1433,
+    3306,
+    3389,
+    5432,
+    6379,
+    8080,
+    8443,
 ]
 
 PORT_SERVICES: Dict[int, str] = {
@@ -52,7 +67,7 @@ def parse_ports_spec(ports_val: Any) -> List[int]:
         return list(COMMON_PORTS)
     if isinstance(ports_val, list):
         return [int(p) for p in ports_val]
-    
+
     ports: Set[int] = set()
     for chunk in str(ports_val).split(","):
         chunk = chunk.strip()
@@ -146,19 +161,25 @@ class StealthScanAdapter(ToolAdapter):
             async for finding in self._execute_arp(host, params, context, is_privileged, timeout):
                 yield finding
         elif mode == "knock":
-            async for finding in self._execute_knock(host, params, context, is_privileged, ports, timeout):
+            async for finding in self._execute_knock(
+                host, params, context, is_privileged, ports, timeout
+            ):
                 yield finding
         else:
             # Default: TCP SYN scan
             if is_privileged:
-                async for finding in self._execute_scapy_syn(host, ports, rate_limit, timeout, context):
+                async for finding in self._execute_scapy_syn(
+                    host, ports, rate_limit, timeout, context
+                ):
                     yield finding
             else:
                 await context.spool_line(
                     "Raw socket capability absent or unprivileged; falling back to non-blocking asyncio TCP connect sweep.",
                     is_error=False,
                 )
-                async for finding in self._execute_asyncio_connect(host, ports, rate_limit, timeout, context):
+                async for finding in self._execute_asyncio_connect(
+                    host, ports, rate_limit, timeout, context
+                ):
                     yield finding
 
     async def _execute_arp(
@@ -180,7 +201,9 @@ class StealthScanAdapter(ToolAdapter):
                 )
                 return
         except ValueError:
-            await context.spool_line(f"Invalid target network for ARP sweep: {target}", is_error=True)
+            await context.spool_line(
+                f"Invalid target network for ARP sweep: {target}", is_error=True
+            )
             return
 
         if not is_privileged:
@@ -230,9 +253,12 @@ class StealthScanAdapter(ToolAdapter):
         knock_sequence = parse_ports_spec(knock_seq_val)
         delay = float(params.get("knock_delay", 0.05))
 
-        await context.spool_line(f"Transmitting port knock sequence {knock_sequence} against {host}...")
+        await context.spool_line(
+            f"Transmitting port knock sequence {knock_sequence} against {host}..."
+        )
 
         if is_privileged:
+
             def _scapy_knock_sync():
                 import time
 
@@ -262,7 +288,9 @@ class StealthScanAdapter(ToolAdapter):
 
         await context.spool_line(f"Knock complete. Probing target ports {target_ports}...")
         # Now probe destination ports
-        async for finding in self._execute_asyncio_connect(host, target_ports, 100, probe_timeout, context):
+        async for finding in self._execute_asyncio_connect(
+            host, target_ports, 100, probe_timeout, context
+        ):
             yield finding
 
     async def _execute_scapy_syn(
@@ -274,6 +302,7 @@ class StealthScanAdapter(ToolAdapter):
         context: ExecutionContext,
     ) -> AsyncIterator[BaseFinding]:
         """Privileged half-open TCP SYN scan with token-bucket pacing."""
+
         def _scapy_syn_scan_sync() -> List[int]:
             from scapy.all import IP, TCP, conf, send, sr1
 
@@ -305,8 +334,12 @@ class StealthScanAdapter(ToolAdapter):
                     service_name=svc,
                 )
         except Exception as e:
-            await context.spool_line(f"Scapy SYN scan encountered error: {e}. Falling back to asyncio.", is_error=True)
-            async for finding in self._execute_asyncio_connect(host, ports, rate_limit, probe_timeout, context):
+            await context.spool_line(
+                f"Scapy SYN scan encountered error: {e}. Falling back to asyncio.", is_error=True
+            )
+            async for finding in self._execute_asyncio_connect(
+                host, ports, rate_limit, probe_timeout, context
+            ):
                 yield finding
 
     async def _execute_asyncio_connect(

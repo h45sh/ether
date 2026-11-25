@@ -144,9 +144,7 @@ async def test_forensic_sealing_blocks_all_session_mutators():
     sess_id = await store.create_session(ws_id, "SealSess")
 
     host_id = await store.upsert_finding(sess_id, NetworkHost.create(ip="10.20.30.40"))
-    action = ActionRequest(
-        session_id=sess_id, tool_name="nmap", target_entity_id="10.20.30.40"
-    )
+    action = ActionRequest(session_id=sess_id, tool_name="nmap", target_entity_id="10.20.30.40")
     await store.append_event(sess_id, action, {"ok": True}, "scan done")
     await store.save_notes("session", sess_id, "initial note")
 

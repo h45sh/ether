@@ -278,23 +278,23 @@ class ForensicLogManager:
             if not is_valid:
                 overall_valid = False
 
-            results.append({
-                "index": r.index,
-                "action_id": r.action_id,
-                "tool": r.tool,
-                "log_file": r.log_file,
-                "hash_chain_valid": prev_ok and entry_ok,
-                "file_hash_valid": file_ok,
-                "valid": is_valid,
-            })
+            results.append(
+                {
+                    "index": r.index,
+                    "action_id": r.action_id,
+                    "tool": r.tool,
+                    "log_file": r.log_file,
+                    "hash_chain_valid": prev_ok and entry_ok,
+                    "file_hash_valid": file_ok,
+                    "valid": is_valid,
+                }
+            )
             expected_prev = r.entry_sha256
 
         return overall_valid, results
 
     @classmethod
-    def compress_session_logs(
-        cls, session_id: str, data_dir: Optional[str] = None
-    ) -> List[Path]:
+    def compress_session_logs(cls, session_id: str, data_dir: Optional[str] = None) -> List[Path]:
         session_dir = cls.get_session_dir(session_id, data_dir)
         compressed: List[Path] = []
         for file in session_dir.glob("*.log"):

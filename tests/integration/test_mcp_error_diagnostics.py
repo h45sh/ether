@@ -104,6 +104,7 @@ async def test_mcp_binary_missing_diagnostic():
 @pytest.mark.asyncio
 async def test_mcp_target_unreachable_diagnostic():
     """Verify execution failure due to network/host unreachable returns TARGET_UNREACHABLE."""
+
     class ConnectionRefusedRunner(FakeInMemoryRunner):
         async def run(self, *args, **kwargs):
             raise ConnectionRefusedError("Connection refused by remote host 10.254.254.1:80")
@@ -152,6 +153,7 @@ async def test_mcp_target_unreachable_diagnostic():
 @pytest.mark.asyncio
 async def test_mcp_command_timeout_diagnostic():
     """Verify execution failure due to command timeout returns COMMAND_TIMEOUT."""
+
     class TimeoutRunner(FakeInMemoryRunner):
         async def run(self, *args, **kwargs):
             raise TimeoutError("Command timed out after 30 seconds")
@@ -200,6 +202,7 @@ async def test_mcp_command_timeout_diagnostic():
 @pytest.mark.asyncio
 async def test_mcp_non_zero_exit_diagnostic():
     """Verify execution failure with general error returns NON_ZERO_EXIT."""
+
     class GenericErrorRunner(FakeInMemoryRunner):
         async def run(self, *args, **kwargs):
             raise RuntimeError("Fatal internal error in parser syntax")

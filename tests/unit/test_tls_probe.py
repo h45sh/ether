@@ -74,7 +74,9 @@ async def test_native_tls_probe_adapter():
         with patch("ether.common.scope.ScopeValidator.check_destination") as mock_check:
             from ether.common.scope import ScopeVerdict
 
-            mock_check.return_value = ScopeVerdict(allowed=True, reason="ALLOWED", normalized_target="127.0.0.1")
+            mock_check.return_value = ScopeVerdict(
+                allowed=True, reason="ALLOWED", normalized_target="127.0.0.1"
+            )
             findings = []
             async for f in adapter.execute_action(target, {}, mock_context):
                 findings.append(f)

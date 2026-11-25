@@ -379,7 +379,7 @@ async def audit_drift(
     final_score = round(final_score, 4)
 
     if record_findings and discrepancies:
-        await store.upsert_findings_batch(session_id, discrepancies)
+        await store.upsert_findings_batch(session_id, list(discrepancies))
 
     summary = {
         "expected_count": len(expected_nodes_list),

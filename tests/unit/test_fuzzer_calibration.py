@@ -44,20 +44,27 @@ async def test_ffuf_adapter_injects_filter_size():
     adapter = FfufAdapter()
     target = WebEndpoint.create(url="http://target.local")
 
-    with patch("tools.ffuf.adapter.calibrate_fuzzer_baseline", new_callable=AsyncMock) as mock_calib:
+    with patch(
+        "tools.ffuf.adapter.calibrate_fuzzer_baseline", new_callable=AsyncMock
+    ) as mock_calib:
         mock_calib.return_value = {"status_code": 200, "size": 1337, "words": 42, "lines": 10}
 
         # Mock runner in context
         mock_context = AsyncMock()
+
         def fake_run(*args, **kwargs):
             async def _gen():
                 if False:
                     yield
+
             return _gen()
+
         mock_context.runner.run = MagicMock(side_effect=fake_run)
 
         findings = []
-        async for f in adapter.execute_action(target, {"raw_flags": "-u http://target.local/FUZZ"}, mock_context):
+        async for f in adapter.execute_action(
+            target, {"raw_flags": "-u http://target.local/FUZZ"}, mock_context
+        ):
             findings.append(f)
 
         call_kwargs = mock_context.runner.run.call_args[1]
@@ -70,19 +77,26 @@ async def test_gobuster_adapter_injects_exclude_length():
     adapter = GobusterAdapter()
     target = WebEndpoint.create(url="http://target.local")
 
-    with patch("tools.gobuster.adapter.calibrate_fuzzer_baseline", new_callable=AsyncMock) as mock_calib:
+    with patch(
+        "tools.gobuster.adapter.calibrate_fuzzer_baseline", new_callable=AsyncMock
+    ) as mock_calib:
         mock_calib.return_value = {"status_code": 200, "size": 2048, "words": 50, "lines": 12}
 
         mock_context = AsyncMock()
+
         def fake_run(*args, **kwargs):
             async def _gen():
                 if False:
                     yield
+
             return _gen()
+
         mock_context.runner.run = MagicMock(side_effect=fake_run)
 
         findings = []
-        async for f in adapter.execute_action(target, {"raw_flags": "-u http://target.local"}, mock_context):
+        async for f in adapter.execute_action(
+            target, {"raw_flags": "-u http://target.local"}, mock_context
+        ):
             findings.append(f)
 
         call_kwargs = mock_context.runner.run.call_args[1]

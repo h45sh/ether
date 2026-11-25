@@ -35,8 +35,14 @@ def test_resolve_wordlist_env_var(tmp_path, monkeypatch):
 
     monkeypatch.setenv("ETHER_WORDLISTS_DIR", str(env_dir))
 
-    assert resolve_wordlist("custom_dirs", search_roots=[], data_dir=str(tmp_path / "data")) == target_wl
-    assert resolve_wordlist("custom_dirs.txt", search_roots=[], data_dir=str(tmp_path / "data")) == target_wl
+    assert (
+        resolve_wordlist("custom_dirs", search_roots=[], data_dir=str(tmp_path / "data"))
+        == target_wl
+    )
+    assert (
+        resolve_wordlist("custom_dirs.txt", search_roots=[], data_dir=str(tmp_path / "data"))
+        == target_wl
+    )
 
 
 @pytest.mark.fast

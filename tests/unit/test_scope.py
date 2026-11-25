@@ -15,12 +15,16 @@ def test_scope_metadata_blocking():
     assert verdict.reason == "BLOCKED_CLOUD_METADATA"
 
     # Metadata hostname blocked
-    v_host = ScopeValidator.is_in_scope("metadata.google.internal", scope, policy_is_unrestricted=False)
+    v_host = ScopeValidator.is_in_scope(
+        "metadata.google.internal", scope, policy_is_unrestricted=False
+    )
     assert not v_host.allowed
     assert v_host.reason == "BLOCKED_CLOUD_METADATA"
 
     # Allowed with audit warning under UNRESTRICTED policy
-    v_unrestricted = ScopeValidator.is_in_scope("169.254.169.254", scope, policy_is_unrestricted=True)
+    v_unrestricted = ScopeValidator.is_in_scope(
+        "169.254.169.254", scope, policy_is_unrestricted=True
+    )
     assert v_unrestricted.allowed
     assert v_unrestricted.reason == "WARNING_METADATA_ALLOWED_BY_POLICY"
 

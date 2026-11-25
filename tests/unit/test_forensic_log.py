@@ -168,7 +168,9 @@ def test_find_and_read_action_log_uncompressed_and_compressed(tmp_path: Path):
 
     # Compress and verify find_action_log + read_action_log still work on .log.gz
     ForensicLogManager.compress_session_logs(session_id, data_dir=data_dir)
-    found_gz = ForensicLogManager.find_action_log(action_id, session_id=session_id, data_dir=data_dir)
+    found_gz = ForensicLogManager.find_action_log(
+        action_id, session_id=session_id, data_dir=data_dir
+    )
     assert found_gz is not None
     assert found_gz.name.endswith(".log.gz")
 

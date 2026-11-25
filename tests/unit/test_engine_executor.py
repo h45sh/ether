@@ -108,11 +108,17 @@ def test_job_status_has_exit_code_field():
 
     from ether.schemas.power import JobStatus, JobStatusEnum
 
-    j_default = JobStatus(job_id=uuid4(), session_id=uuid4(), tool_name="nmap", status=JobStatusEnum.RUNNING)
+    j_default = JobStatus(
+        job_id=uuid4(), session_id=uuid4(), tool_name="nmap", status=JobStatusEnum.RUNNING
+    )
     assert j_default.exit_code is None
 
     j_with_code = JobStatus(
-        job_id=uuid4(), session_id=uuid4(), tool_name="nmap", status=JobStatusEnum.FAILED, exit_code=2
+        job_id=uuid4(),
+        session_id=uuid4(),
+        tool_name="nmap",
+        status=JobStatusEnum.FAILED,
+        exit_code=2,
     )
     assert j_with_code.exit_code == 2
 

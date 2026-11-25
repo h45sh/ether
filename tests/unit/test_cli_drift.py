@@ -45,5 +45,17 @@ async def test_cli_drift_export_and_audit(tmp_path: Path, capsys):
     assert len(report_dict["discrepancies"]) == 0
 
     # 3. Parameter symmetry: test with --session option instead of positional
-    rc = main(["--db", db_file, "drift", "audit", "--session", sess_id, "--baseline", baseline_file, "--json"])
+    rc = main(
+        [
+            "--db",
+            db_file,
+            "drift",
+            "audit",
+            "--session",
+            sess_id,
+            "--baseline",
+            baseline_file,
+            "--json",
+        ]
+    )
     assert rc == 0

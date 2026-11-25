@@ -61,7 +61,9 @@ def test_wrap_untrusted_output():
 
 def test_wrap_untrusted_output_windowing():
     # Large output exceeding max_chars should be windowed with omission notice
-    large_output = "START_LINE\n" + ("A" * 50_000) + "\nMIDDLE_LINE\n" + ("B" * 60_000) + "\nEND_LINE"
+    large_output = (
+        "START_LINE\n" + ("A" * 50_000) + "\nMIDDLE_LINE\n" + ("B" * 60_000) + "\nEND_LINE"
+    )
     wrapped = PromptInjectionSandbox.wrap_untrusted_output(
         large_output, tool_name="gobuster", max_chars=10_000
     )

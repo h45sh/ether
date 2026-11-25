@@ -65,8 +65,6 @@ def create_mcp_server(
     gw.store = store
     if execution_session is not None:
         exec_sess = execution_session
-    elif "data_dir" in inspect.signature(gw.create_session).parameters:
-        exec_sess = gw.create_session(data_dir=data_dir)
     else:
         exec_sess = gw.create_session()
 

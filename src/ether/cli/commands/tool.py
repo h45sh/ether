@@ -101,7 +101,7 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
 
     from ether.gateway.preflight import get_tool_target_guidance
 
-    recommended_flags = []
+    recommended_flags: list[dict[str, Any]] = []
     power_cfg = getattr(manifest, "power", None)
     if power_cfg and getattr(power_cfg, "suggests", None):
         recommended_flags.extend(dict(s) for s in power_cfg.suggests)

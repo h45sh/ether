@@ -85,7 +85,9 @@ class VectorEmbeddingEngine:
 class OnnxVectorEmbeddingEngine(VectorEmbeddingEngine):
     """Tier 2 ONNX accelerated embedding engine using local quantized model weights."""
 
-    def __init__(self, model_path: Optional[str] = None, dimension: int = VectorEmbeddingEngine.DIMENSION) -> None:
+    def __init__(
+        self, model_path: Optional[str] = None, dimension: int = VectorEmbeddingEngine.DIMENSION
+    ) -> None:
         super().__init__(dimension=dimension)
         self.model_path = model_path
         self._session = None
@@ -96,8 +98,10 @@ class OnnxVectorEmbeddingEngine(VectorEmbeddingEngine):
             return
         try:
             import os
+
             if os.path.exists(self.model_path):
                 import onnxruntime as ort
+
                 self._session = ort.InferenceSession(self.model_path)
         except Exception:
             self._session = None
@@ -109,7 +113,11 @@ class OnnxVectorEmbeddingEngine(VectorEmbeddingEngine):
                 inputs = {self._session.get_inputs()[0].name: [[1]]}
                 outputs = self._session.run(None, inputs)
                 raw_vec = outputs[0]
-                while isinstance(raw_vec, (list, tuple)) and len(raw_vec) == 1 and isinstance(raw_vec[0], (list, tuple)):
+                while (
+                    isinstance(raw_vec, (list, tuple))
+                    and len(raw_vec) == 1
+                    and isinstance(raw_vec[0], (list, tuple))
+                ):
                     raw_vec = raw_vec[0]
                 if hasattr(raw_vec, "flatten"):
                     raw_vec = raw_vec.flatten().tolist()
@@ -134,10 +142,12 @@ def get_embedding_engine(model_path: Optional[str] = None) -> VectorEmbeddingEng
     global _default_engine
     if _default_engine is None:
         import os
+
         mpath = model_path or os.environ.get("ETHER_ONNX_MODEL_PATH")
         if mpath and os.path.exists(mpath):
             try:
                 import onnxruntime  # noqa: F401
+
                 _default_engine = OnnxVectorEmbeddingEngine(model_path=mpath)
             except ImportError:
                 _default_engine = VectorEmbeddingEngine()

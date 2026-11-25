@@ -71,9 +71,7 @@ def is_blocked_destination(text: str) -> bool:
             continue
         host = ScopeValidator.parse_host_candidate(tok)
         if ScopeValidator._parse_ip(host) is not None or host in METADATA_HOSTNAMES:
-            verdict = ScopeValidator.is_in_scope(
-                tok, metadata_scope, policy_is_unrestricted=False
-            )
+            verdict = ScopeValidator.is_in_scope(tok, metadata_scope, policy_is_unrestricted=False)
             if not verdict.allowed:
                 return True
 
@@ -254,9 +252,7 @@ class ActionGateway:
                 continue
             host = ScopeValidator.parse_host_candidate(tok)
             if ScopeValidator._parse_ip(host) is not None:
-                verdict = ScopeValidator.is_in_scope(
-                    tok, cidr_scope, policy_is_unrestricted=False
-                )
+                verdict = ScopeValidator.is_in_scope(tok, cidr_scope, policy_is_unrestricted=False)
                 if not verdict.allowed:
                     return False
         return True

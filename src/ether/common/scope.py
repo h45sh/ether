@@ -71,9 +71,7 @@ class ScopeValidator:
         return clean
 
     @classmethod
-    def _parse_ip(
-        cls, host: str
-    ) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
+    def _parse_ip(cls, host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
         """Parse standard IP, CIDR network address, or alternate numerical IP (hex/decimal/octal)."""
         ip_obj: Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = None
         try:
@@ -208,9 +206,7 @@ class ScopeValidator:
                     allowed=False, reason="OUT_OF_SCOPE_DOMAIN", normalized_target=host
                 )
 
-        return ScopeVerdict(
-            allowed=True, reason="ALLOWED_IN_SCOPE_DOMAIN", normalized_target=host
-        )
+        return ScopeVerdict(allowed=True, reason="ALLOWED_IN_SCOPE_DOMAIN", normalized_target=host)
 
     @classmethod
     async def check_destination(
@@ -241,7 +237,7 @@ class ScopeValidator:
                 addr_info = await loop.getaddrinfo(host, None)
                 seen = set()
                 for entry in addr_info:
-                    ip_str = entry[4][0]
+                    ip_str = str(entry[4][0])
                     if ip_str not in seen:
                         seen.add(ip_str)
                         resolved_ips.append(ip_str)

@@ -17,7 +17,25 @@ def mock_context():
 
 
 def test_parse_ports_spec():
-    assert parse_ports_spec(None) == [21, 22, 23, 25, 53, 80, 110, 139, 443, 445, 1433, 3306, 3389, 5432, 6379, 8080, 8443]
+    assert parse_ports_spec(None) == [
+        21,
+        22,
+        23,
+        25,
+        53,
+        80,
+        110,
+        139,
+        443,
+        445,
+        1433,
+        3306,
+        3389,
+        5432,
+        6379,
+        8080,
+        8443,
+    ]
     assert parse_ports_spec("80,443") == [80, 443]
     assert parse_ports_spec("21-25") == [21, 22, 23, 24, 25]
     assert parse_ports_spec([80, 8080]) == [80, 8080]
@@ -68,7 +86,10 @@ async def test_arp_mode_scope_rejection(mock_context):
 
     assert len(findings) == 0
     mock_context.spool_line.assert_called()
-    assert any("ARP mode rejected for routed public IP" in call.args[0] for call in mock_context.spool_line.call_args_list)
+    assert any(
+        "ARP mode rejected for routed public IP" in call.args[0]
+        for call in mock_context.spool_line.call_args_list
+    )
 
 
 @pytest.mark.asyncio

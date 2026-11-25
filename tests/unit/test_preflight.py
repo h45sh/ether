@@ -126,9 +126,7 @@ def test_preflight_web_tool_missing_http_scheme():
 
 
 def test_preflight_network_tool_with_url_warning():
-    fake_adapter = FakeToolAdapter(
-        "nmap", is_installed=True, target_types=["ip", "cidr", "domain"]
-    )
+    fake_adapter = FakeToolAdapter("nmap", is_installed=True, target_types=["ip", "cidr", "domain"])
     registry = FakeRegistry({"nmap": fake_adapter})
     verifier = PreflightVerifier(registry=registry)
 
@@ -159,7 +157,9 @@ def test_preflight_sudo_policy_seam():
 
     # Apply remedy
     issue = next(i for i in safe_report.errors if "sudo" in i.title.lower())
-    _, new_flags, msg = safe_verifier.apply_remedy(issue, target="scanme.nmap.org", flags="sudo -sS")
+    _, new_flags, msg = safe_verifier.apply_remedy(
+        issue, target="scanme.nmap.org", flags="sudo -sS"
+    )
     assert "sudo" not in new_flags
 
     # Under UNRESTRICTED policy: sudo is allowed
@@ -192,7 +192,9 @@ def test_preflight_wordlist_macro_fallback_warning(tmp_path, monkeypatch):
     dest_dir.mkdir()
     verifier = PreflightVerifier(wordlists_dir=str(dest_dir))
 
-    report = verifier.verify("gobuster", target="http://127.0.0.1:8080", flags="-w @nonexistent_list.txt")
+    report = verifier.verify(
+        "gobuster", target="http://127.0.0.1:8080", flags="-w @nonexistent_list.txt"
+    )
     wordlist_warns = [i for i in report.warnings if i.category == "wordlist"]
     assert len(wordlist_warns) == 1
     assert "minimal.txt" in wordlist_warns[0].title

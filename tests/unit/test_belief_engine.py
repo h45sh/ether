@@ -39,16 +39,20 @@ def test_honeypot_port_sprawl_detection():
 
     for p in range(1, 121):
         svc_id = f"svc_{p}"
-        nodes.append({
-            "id": svc_id,
-            "schema_type": "network.service",
-            "data": {"host_ip": "192.168.1.100", "port": p},
-        })
-        edges.append({
-            "source_id": "host_ghost",
-            "target_id": svc_id,
-            "relation_type": "hosts",
-        })
+        nodes.append(
+            {
+                "id": svc_id,
+                "schema_type": "network.service",
+                "data": {"host_ip": "192.168.1.100", "port": p},
+            }
+        )
+        edges.append(
+            {
+                "source_id": "host_ghost",
+                "target_id": svc_id,
+                "relation_type": "hosts",
+            }
+        )
 
     engine = GraphAnalyticsEngine(nodes, edges)
     beliefs = engine.evaluate_deception()

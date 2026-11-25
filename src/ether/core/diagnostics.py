@@ -300,9 +300,7 @@ class DiagnosticEngine:
             adapter = tool_data.get("adapter") if isinstance(tool_data, dict) else None
             meta = getattr(manifest, "meta", None) if manifest else None
             binary_name = (getattr(meta, "binary", "") or tool_name) if meta else tool_name
-            execution_tier = (
-                getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
-            )
+            execution_tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
 
             if execution_tier == "coroutine":
                 is_ready = bool(adapter.validate_install()) if adapter else True

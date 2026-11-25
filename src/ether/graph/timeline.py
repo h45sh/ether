@@ -114,7 +114,7 @@ class ActionTimelineRepository:
                 "SELECT id FROM event_log WHERE session_id = ? AND closed = 1 ORDER BY timestamp DESC, id DESC",
                 (session_id,),
             )
-            rows = await cursor.fetchall()
+            rows = list(await cursor.fetchall())
             if len(rows) > keep_closed_events:
                 if keep_closed_events == 0:
                     cursor_del = await db.execute(

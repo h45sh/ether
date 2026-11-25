@@ -38,7 +38,9 @@ def test_cli_positional_keyword_symmetry():
     # 4. graph export: positional vs keyword
     argv7 = normalize_cli_args(["graph", "export", "sess-101", "out.json"])
     args7 = parser.parse_args(argv7)
-    argv8 = normalize_cli_args(["graph", "export", "--session-id", "sess-101", "--output", "out.json"])
+    argv8 = normalize_cli_args(
+        ["graph", "export", "--session-id", "sess-101", "--output", "out.json"]
+    )
     args8 = parser.parse_args(argv8)
     assert args7.session_id == args8.session_id == "sess-101"
     assert args7.output == args8.output == "out.json"

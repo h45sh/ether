@@ -218,7 +218,10 @@ def test_diagnostic_engine_check_tools_uses_meta_binary_and_coroutine(tmp_path):
 
     engine = DiagnosticEngine(db_path=str(tmp_path / "d.db"), registry=mock_registry)
     report = DiagnosticReport()
-    with patch("ether.core.diagnostics.shutil.which", side_effect=lambda b: "/usr/bin/nxc" if b == "nxc" else None):
+    with patch(
+        "ether.core.diagnostics.shutil.which",
+        side_effect=lambda b: "/usr/bin/nxc" if b == "nxc" else None,
+    ):
         engine._check_tools(report)
 
     checks_by_name = {c.name: c for c in report.checks}

@@ -69,7 +69,9 @@ class StreamTarpitGuard:
     def record_finding(self, current_time: float) -> None:
         self._last_finding_time = current_time
 
-    def check_chunk(self, chunk_len: int, chunk_bytes: bytes, current_time: float) -> Tuple[bool, str]:
+    def check_chunk(
+        self, chunk_len: int, chunk_bytes: bytes, current_time: float
+    ) -> Tuple[bool, str]:
         """Evaluate incoming stream chunk. Returns (is_tarpit, reason)."""
         if self._first_chunk_time is None:
             self._first_chunk_time = current_time
@@ -89,14 +91,22 @@ class StreamTarpitGuard:
         effective_window = max(1.0, current_time - self._chunks[0][0])
         throughput = total_window_bytes / effective_window
         if throughput < self.min_bytes_per_sec and len(self._chunks) >= 3:
-            return True, f"Delay-tarpit detected: stream throughput {throughput:.1f} B/s over {effective_window:.1f}s"
+            return (
+                True,
+                f"Delay-tarpit detected: stream throughput {throughput:.1f} B/s over {effective_window:.1f}s",
+            )
 
         if len(self._chunks) >= 5:
             hashes = [c[2] for c in self._chunks]
             if len(set(hashes)) == 1:
-                no_finding_elapsed = current_time - (self._last_finding_time or self._first_chunk_time)
+                no_finding_elapsed = current_time - (
+                    self._last_finding_time or self._first_chunk_time
+                )
                 if no_finding_elapsed >= self.window_seconds:
-                    return True, f"Banner loop detected: identical chunk repeating for {no_finding_elapsed:.1f}s with 0 findings"
+                    return (
+                        True,
+                        f"Banner loop detected: identical chunk repeating for {no_finding_elapsed:.1f}s with 0 findings",
+                    )
 
         return False, ""
 

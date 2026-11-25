@@ -38,6 +38,7 @@ INSTALLATION_HINTS: dict[str, str] = {
     "searchsploit": "sudo apt install exploitdb  (or: git clone https://gitlab.com/exploit-database/exploitdb.git)",
 }
 
+
 def get_tool_target_guidance(tool_name: str) -> str:
     """Return formatted Markdown target guidance dynamically generated for a specified security tool."""
     tool_lower = tool_name.lower()
@@ -66,7 +67,9 @@ def get_tool_target_guidance(tool_name: str) -> str:
     target_types = verifier._get_tool_target_types(tool_lower)
 
     if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
-        expected_format = "Complete HTTP or HTTPS URL (https://scanme.nmap.org, http://10.10.10.10:8080)"
+        expected_format = (
+            "Complete HTTP or HTTPS URL (https://scanme.nmap.org, http://10.10.10.10:8080)"
+        )
         safe_sandbox = "http://scanme.nmap.org (or http://127.0.0.1:8080 with allow_loopback=True)"
         permissible = [
             "Official sandbox testbeds (scanme.nmap.org, testphp.vulnweb.com).",
@@ -138,7 +141,9 @@ def get_tool_target_guidance(tool_name: str) -> str:
         ]
     else:
         expected_format = "IPv4 (10.10.10.10), IPv6 (2001:db8::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)"
-        safe_sandbox = "scanme.nmap.org (authorized test server) or 127.0.0.1 with allow_loopback=True"
+        safe_sandbox = (
+            "scanme.nmap.org (authorized test server) or 127.0.0.1 with allow_loopback=True"
+        )
         permissible = [
             "Official project sandbox (scanme.nmap.org) for testing version and script scans.",
             "Local loopback (127.0.0.1, localhost) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
@@ -156,9 +161,7 @@ def get_tool_target_guidance(tool_name: str) -> str:
         ]
 
     mechanics = (
-        theory.strip()
-        or description.strip()
-        or f"Automated security tool adapter for {tool_name}."
+        theory.strip() or description.strip() or f"Automated security tool adapter for {tool_name}."
     )
 
     perm_bullets = "\n".join(f"- {p}" for p in permissible)
@@ -547,8 +550,8 @@ class PreflightVerifier:
         target_types = self._get_tool_target_types(tool_name)
         is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
         is_network_or_domain = (
-            ("ip" in target_types or "domain" in target_types) and "url" not in target_types
-        )
+            "ip" in target_types or "domain" in target_types
+        ) and "url" not in target_types
         if is_web:
             default_target = (
                 "http://127.0.0.1:8888" if self.scope.allow_loopback else "http://scanme.nmap.org"

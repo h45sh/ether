@@ -46,7 +46,9 @@ async def calibrate_fuzzer_baseline(
     nonce = uuid.uuid4().hex[:8]
     probe_url = f"{url.rstrip('/')}/.ether_probe_{nonce}"
     try:
-        async with httpx.AsyncClient(verify=False, timeout=timeout_sec, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            verify=False, timeout=timeout_sec, follow_redirects=True
+        ) as client:
             resp = await client.get(probe_url)
             text = resp.text
             return {

@@ -366,14 +366,30 @@ class GraphAnalyticsEngine:
                 if host_ip:
                     for h_id, h_node in self.nodes_by_id.items():
                         if h_node.get("schema_type") == "network.host":
-                            h_data_raw = h_node.get("data") if "data" in h_node else h_node.get("data_json", "{}")
-                            h_pik_raw = h_node.get("pik") if "pik" in h_node else h_node.get("pik_json", "{}")
+                            h_data_raw = (
+                                h_node.get("data")
+                                if "data" in h_node
+                                else h_node.get("data_json", "{}")
+                            )
+                            h_pik_raw = (
+                                h_node.get("pik")
+                                if "pik" in h_node
+                                else h_node.get("pik_json", "{}")
+                            )
                             try:
-                                h_data = json.loads(h_data_raw) if isinstance(h_data_raw, str) else (h_data_raw or {})
+                                h_data = (
+                                    json.loads(h_data_raw)
+                                    if isinstance(h_data_raw, str)
+                                    else (h_data_raw or {})
+                                )
                             except Exception:
                                 h_data = {}
                             try:
-                                h_pik = json.loads(h_pik_raw) if isinstance(h_pik_raw, str) else (h_pik_raw or {})
+                                h_pik = (
+                                    json.loads(h_pik_raw)
+                                    if isinstance(h_pik_raw, str)
+                                    else (h_pik_raw or {})
+                                )
                             except Exception:
                                 h_pik = {}
 
@@ -404,7 +420,9 @@ class GraphAnalyticsEngine:
                     base_confidence = 0.05 if service_count >= 500 else 0.20
 
             elif schema_type == "network.service":
-                parent_hosts = [src for src, services in services_by_host.items() if node_id in services]
+                parent_hosts = [
+                    src for src, services in services_by_host.items() if node_id in services
+                ]
                 if parent_hosts:
                     parent_svc_count = len(services_by_host[parent_hosts[0]])
                     if parent_svc_count >= 100:

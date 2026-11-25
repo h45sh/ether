@@ -29,13 +29,9 @@ def check_ssrf_safety(target: str) -> None:
     Raises:
         PolicyViolationError: If destination resolves to loopback, link-local, or cloud metadata.
     """
-    verdict = ScopeValidator.is_in_scope(
-        target, EngagementScope(), policy_is_unrestricted=False
-    )
+    verdict = ScopeValidator.is_in_scope(target, EngagementScope(), policy_is_unrestricted=False)
     if not verdict.allowed:
-        raise PolicyViolationError(
-            f"Target '{target}' blocked by SSRF policy ({verdict.reason})."
-        )
+        raise PolicyViolationError(f"Target '{target}' blocked by SSRF policy ({verdict.reason}).")
 
     host = verdict.normalized_target or ""
     if ScopeValidator._parse_ip(host) is not None:
@@ -47,7 +43,7 @@ def check_ssrf_safety(target: str) -> None:
         return
 
     for _, _, _, _, sockaddr in addr_info:
-        resolved_ip_str = sockaddr[0]
+        resolved_ip_str = str(sockaddr[0])
         ip_verdict = ScopeValidator.is_in_scope(
             resolved_ip_str, EngagementScope(), policy_is_unrestricted=False
         )
