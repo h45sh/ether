@@ -410,12 +410,18 @@ class ExecutionSession:
         resolved_vars = self.gateway.resolve_entity_variables(pik)
         if action.params is None:
             action.params = {}
-        if "flags" in action.params and "raw_flags" not in action.params:
+        if "flags" in action.params and not action.params.get("raw_flags"):
             flags_val = action.params["flags"]
             if isinstance(flags_val, list):
                 action.params["raw_flags"] = " ".join(str(x) for x in flags_val)
             elif flags_val is not None:
                 action.params["raw_flags"] = str(flags_val)
+        elif "raw_flags" in action.params and not action.params.get("flags"):
+            rf = action.params["raw_flags"]
+            if isinstance(rf, str) and rf.strip():
+                import shlex
+
+                action.params["flags"] = shlex.split(rf.strip())
 
         raw_flags = action.params.get("raw_flags", "") if action.params else ""
         raw_flags = self.gateway.interpolate_variables(raw_flags, resolved_vars)

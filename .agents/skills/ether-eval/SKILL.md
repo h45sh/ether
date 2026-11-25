@@ -170,3 +170,32 @@ Every sublevel report must possess its own unique identity and technical signifi
 3. **Explicit Flaws & Deficiencies Box:** Every report must explicitly state what went wrong, what was missed, or where the scan/tool showed weaknesses.
 4. **Explicit Strengths & Resilient Behaviors Box:** Every report must state what succeeded, what was accurately parsed, and where Ether provided leverage.
 5. **Dark-Mode Visual Standards:** Modern dark-mode styling (slate `#0a0e17`, card `#162032`, text `#e2e8f0`, accents in cyan, emerald, amber, and red).
+
+
+---
+
+## 5. 100-Point Internal Application Benchmark & Parallel `delegate_task` Protocol
+
+### Architectural Separation (`tests/` vs `reports/`)
+- `tests/` is strictly for codebase CI regression and unit/invariant tests (`pytest tests/`).
+- `reports/` is the **Internal Application & Performance Benchmark Suite** evaluating Ether end-to-end as a shipped product:
+  - `reports/scripts/mock_cyber_range.py`: Hermetic multi-service cyber range (vulnerable web app, 302 IMDS redirector, prompt-injection banner, migrating favicon service, slow-drip/banner-loop tarpit, Cowrie honeypot).
+  - `reports/scripts/ether_100pt_benchmark.py`: Automated 10-scenario × 10-point (`0–100`) binary benchmark capturing real CLI/MCP `p50`/`p95` latencies, `ExecutionSession` RSS delta (`<10MB`), measured token compression, WAL throughput, and a machine-readable `remediation_backlog` in `reports/<run_id>/benchmark_scorecard.json`.
+  - `reports/benchmarks_history.json`: Run-over-run score, latency, and RSS progression across `run_2` → `run_3` → `run_4`.
+  - `reports/scripts/generate_100pt_report.py`: Strictly data-driven HTML generator (zero hardcoded verdicts or percentages).
+
+### 10-Scenario 100-Point Rubric (`10 × 10 = 100`)
+- **S1 (10 pts):** Clean out-of-repo wheel install (`uv build --wheel` → `/tmp` venv, `/tmp` CWD, `ether doctor` coroutine accuracy, `sqlite-vec`, wordlists).
+- **S2 (10 pts):** CLI/MCP `--flags` symmetry, `-s` ordering, full 18+ tool / resource / prompt live `stdio` MCP matrix, async detach + `abort_action`.
+- **S3 (10 pts):** Reactive chained pipeline DAGs (Tier-A + Tier-B subprocess execution, graph persistence, `SAFE` policy).
+- **S4 (10 pts):** Adversarial bypass (302 IMDS redirect, `0.0.0.0`/`[::]`/octal/decimal/hex/`nip.io`, `--flags` SSRF smuggling, real subprocess env secret leak, case-insensitive XML breakout).
+- **S5 (10 pts):** Cyber range pivot chain & graph intelligence (BFS attack path, blast radius, Brandes centrality, crown jewels, `sqlite-vec` RAG).
+- **S6 (10 pts):** Deception, honeypot & tarpit defense (`StreamTarpitGuard`, Bayesian 120-port sprawl / Cowrie flagging, crown-jewel exclusion).
+- **S7 (10 pts):** `NmapAdapter` open vs closed/filtered state accuracy, `stealth_scan` flags, live `ffuf` discovery, real measured token reduction.
+- **S8 (10 pts):** Identity anchoring (`anchored_identity`), TTL state decay (`flapping`/`stale`), strict `ether drift` audit.
+- **S9 (10 pts):** Real `ExecutionSession` 15MB+ flood (`<10MB` RSS), 10-worker WAL concurrency, 35-adapter hostile fuzzing, `PRAGMA integrity_check`.
+- **S10 (10 pts):** Forensic chain-of-custody (`verify-audit` 1-byte tamper detection), `session close` (`.log.gz` + `PermissionError`), encrypted export bit-flip rejection, `SecureBuffer.wipe()`.
+
+### True Parallel Subagent Execution (`delegate_task`)
+- Do **NOT** simulate parallel subagents with a single sequential Python script, and avoid native `invoke_subagent` if child `run_command` triggers 60s approval timeouts.
+- Dispatch true parallel child agents using T3 Code `delegate_task` (`T3_ACP_MCP_NODE` `acp-mcp-call delegate_task` with `"mode": "async"`, `"runtimeMode": "inherit"`, `"target": {"providerInstanceId": "antigravity_777", "model": "gemini-3.8-flash"}`) with strict per-tier information isolation.

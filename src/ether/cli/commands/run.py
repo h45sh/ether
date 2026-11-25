@@ -2,7 +2,7 @@
 
 import shlex
 import sys
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
@@ -21,10 +21,15 @@ async def handle_run(args: Any, context: CliContext) -> int:
     """Execute a tool action through the preflight gate, gateway, and execution session."""
     tool_name = getattr(args, "tool", None)
     target = getattr(args, "target", None)
-    raw_flags = getattr(args, "flags", None) or []
-    flags: List[str] = []
-    for f in raw_flags:
-        flags.extend(shlex.split(f) if isinstance(f, str) else [str(f)])
+    raw_flags = getattr(args, "flags", None) or ""
+    if isinstance(raw_flags, str):
+        flags = shlex.split(raw_flags.strip()) if raw_flags.strip() else []
+        flags_str = raw_flags.strip()
+    else:
+        flags = []
+        for f in raw_flags:
+            flags.extend(shlex.split(f) if isinstance(f, str) else [str(f)])
+        flags_str = " ".join(flags)
 
     if not tool_name or not target:
         print_error(

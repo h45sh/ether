@@ -87,7 +87,10 @@ class FfufAdapter(ToolAdapter):
             calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
             if calib and calib.get("size") is not None:
                 params = dict(params)
-                raw_flags = params.get("raw_flags", "")
+                raw_flags = params.get("flags") or params.get("raw_flags", "")
+                if isinstance(raw_flags, list):
+                    raw_flags = " ".join(str(f) for f in raw_flags)
+                raw_flags = str(raw_flags).strip()
                 if "-fs" not in raw_flags:
                     params["raw_flags"] = f"{raw_flags} -fs {calib['size']}".strip()
 
@@ -104,7 +107,10 @@ class FfufAdapter(ToolAdapter):
         url = self.extract_url(target)
 
         # 2. Process flags and substitute macros
-        raw_flags = params.get("raw_flags", "").strip()
+        raw_flags = params.get("flags") or params.get("raw_flags", "")
+        if isinstance(raw_flags, list):
+            raw_flags = " ".join(str(f) for f in raw_flags)
+        raw_flags = str(raw_flags).strip()
         raw_flags, _ = substitute_wordlist_macros(raw_flags)
         flag_args = shlex.split(raw_flags) if raw_flags else []
 

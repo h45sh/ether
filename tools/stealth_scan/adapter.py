@@ -102,8 +102,31 @@ class StealthScanAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         host = self.extract_host(target) or "127.0.0.1"
-        mode = params.get("mode", "syn")
-        return ["stealth_scan", "--mode", str(mode), host]
+        flags_str = str(params.get("flags") or params.get("raw_flags") or "").strip()
+        mode = params.get("mode")
+        ports = params.get("ports")
+
+        if flags_str:
+            import shlex
+
+            tokens = shlex.split(flags_str)
+            idx = 0
+            while idx < len(tokens):
+                t = tokens[idx]
+                if t in ("--mode", "-m") and idx + 1 < len(tokens):
+                    mode = tokens[idx + 1]
+                    idx += 2
+                elif t in ("--ports", "-p") and idx + 1 < len(tokens):
+                    ports = tokens[idx + 1]
+                    idx += 2
+                else:
+                    idx += 1
+
+        cmd = ["stealth_scan", "--mode", str(mode or "syn")]
+        if ports:
+            cmd.extend(["--ports", str(ports)])
+        cmd.append(host)
+        return cmd
 
     async def parse_output(
         self, raw_stdout: str, target: BaseFinding, context: Optional[Dict[str, Any]] = None
@@ -149,8 +172,29 @@ class StealthScanAdapter(ToolAdapter):
             await context.spool_line("No valid target host or IP provided.", is_error=True)
             return
 
-        mode = str(params.get("mode", "syn")).lower()
-        ports = parse_ports_spec(params.get("ports"))
+        flags_str = str(params.get("flags") or params.get("raw_flags") or "").strip()
+        mode_val = params.get("mode")
+        ports_val = params.get("ports")
+        if flags_str:
+            import shlex
+
+            tokens = shlex.split(flags_str)
+            idx = 0
+            while idx < len(tokens):
+                t = tokens[idx]
+                if t in ("--mode", "-m") and idx + 1 < len(tokens):
+                    if not mode_val:
+                        mode_val = tokens[idx + 1]
+                    idx += 2
+                elif t in ("--ports", "-p") and idx + 1 < len(tokens):
+                    if not ports_val:
+                        ports_val = tokens[idx + 1]
+                    idx += 2
+                else:
+                    idx += 1
+
+        mode = str(mode_val or "syn").lower()
+        ports = parse_ports_spec(ports_val)
         rate_limit = max(1, int(params.get("rate_limit", 500)))
         timeout = max(0.2, float(params.get("timeout", 2.0)))
         force_unprivileged = bool(params.get("force_unprivileged", False))

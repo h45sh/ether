@@ -120,6 +120,7 @@ class ToolRegistry:
             "category": meta.category,
             "categories": list(meta.categories),
             "binary": meta.binary or meta.name,
+            "tier": meta.execution_tier,
             "execution_tier": meta.execution_tier,
             "target_types": list(manifest.input.get("target_types", [])),
             "accepts": list(manifest.input.get("accepts", [])),

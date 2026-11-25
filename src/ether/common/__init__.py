@@ -140,7 +140,12 @@ def sanitize_untrusted_output(raw_text: str) -> str:
     """Wrap untrusted scanner output in protective boundary tags and neutralize breakout attempts."""
     if not raw_text:
         return "<untrusted_scan_output>\n</untrusted_scan_output>"
-    neutralized = raw_text.replace("</untrusted_scan_output>", r"<\/untrusted_scan_output>")
+    neutralized = re.sub(
+        r"</untrusted_scan_output>",
+        r"<\/untrusted_scan_output>",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
     return f"<untrusted_scan_output>\n{neutralized}\n</untrusted_scan_output>"
 
 

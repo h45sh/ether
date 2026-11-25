@@ -9,11 +9,19 @@ from ether.cli.formatters import print_error, print_json, print_table
 
 def _collect_tool_entries(registry: Any) -> list[dict[str, Any]]:
     """Collect normalized tool metadata using ToolRegistry summary if present, with safe fallback."""
-    summary_fn = getattr(registry, "summary", None)
+    summary_fn = getattr(registry, "list_tool_summaries", None) or getattr(
+        registry, "summary", None
+    )
     if callable(summary_fn):
-        raw_summary = summary_fn()
-        if isinstance(raw_summary, list):
-            return raw_summary
+        try:
+            raw_summary = summary_fn()
+            if isinstance(raw_summary, list):
+                for s in raw_summary:
+                    if "tier" not in s and "execution_tier" in s:
+                        s["tier"] = s["execution_tier"]
+                return raw_summary
+        except Exception:
+            pass
 
     result = []
     for name in sorted(registry.list_tools()):

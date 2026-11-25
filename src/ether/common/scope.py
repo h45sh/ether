@@ -135,8 +135,12 @@ class ScopeValidator:
                     allowed=False, reason="BLOCKED_CLOUD_METADATA", normalized_target=str(ip_obj)
                 )
 
-            # Check Loopback
-            if ip_obj.is_loopback and not active_scope.allow_loopback:
+            # Check Loopback and 0.0.0.0/8 / [::] unspecified
+            is_unspecified_or_zero = ip_obj.is_unspecified or (
+                isinstance(ip_obj, ipaddress.IPv4Address)
+                and ip_obj in ipaddress.IPv4Network("0.0.0.0/8")
+            )
+            if (ip_obj.is_loopback or is_unspecified_or_zero) and not active_scope.allow_loopback:
                 if policy_is_unrestricted:
                     return ScopeVerdict(
                         allowed=True,

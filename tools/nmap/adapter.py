@@ -65,9 +65,11 @@ class NmapAdapter(ToolAdapter):
         args = ["nmap", "--noninteractive"]
 
         # Handle manual raw flags from UI
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        raw_flags = params.get("flags") or params.get("raw_flags", "")
+        if isinstance(raw_flags, list):
+            args.extend(str(f) for f in raw_flags)
+        elif isinstance(raw_flags, str) and raw_flags.strip():
+            args.extend(shlex.split(raw_flags.strip()))
 
         # Add streaming XML flag if not explicitly overridden
         if not any(flag in args for flag in ("-oX", "-oN", "-oG", "-oA")):
@@ -75,7 +77,7 @@ class NmapAdapter(ToolAdapter):
 
         if ip and ip not in args:
             args.append(ip)
-        elif not raw_flags:
+        elif not (raw_flags or ip):
             raise ValueError(
                 "Target finding must have an IP address, or provide one in the command flags."
             )

@@ -117,7 +117,7 @@ class GraphAnalyticsEngine:
 
         return reachable
 
-    def identify_critical_assets(self) -> List[Dict[str, Any]]:
+    def identify_critical_assets(self, exclude_honeypots: bool = True) -> List[Dict[str, Any]]:
         """Identify high-value crown-jewel assets from graph intelligence.
 
         Flags:
@@ -128,7 +128,17 @@ class GraphAnalyticsEngine:
         """
         critical_assets: List[Dict[str, Any]] = []
 
+        honeypot_ids = set()
+        if exclude_honeypots:
+            deception = self.evaluate_deception()
+            for nid, dec in deception.items():
+                if dec.get("is_honeypot"):
+                    honeypot_ids.add(nid)
+
         for node in self.nodes_by_id.values():
+            if node.get("id") in honeypot_ids:
+                continue
+
             schema = node.get("schema_type", "")
             data_raw = node.get("data_json", "{}")
             pik_raw = node.get("pik_json", "{}")
@@ -325,6 +335,10 @@ class GraphAnalyticsEngine:
         "artillery",
         "snort",
     ]
+
+    def compute_bayesian_beliefs(self) -> List[Dict[str, Any]]:
+        """Compute and return Bayesian beliefs for all nodes as a list."""
+        return [{"node_id": k, **v} for k, v in self.evaluate_deception().items()]
 
     def evaluate_deception(self) -> Dict[str, Dict[str, Any]]:
         """Evaluate finding legitimacy confidence and detect honeypots/deception.
