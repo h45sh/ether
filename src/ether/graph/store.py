@@ -123,6 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_session_updated ON nodes(session_id, update
 CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id);
 CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_findings USING vec0(
+    id text primary key,
     session_id text partition key,
     node_id text,
     embedding float[384] distance_metric=cosine
@@ -235,7 +236,9 @@ class GraphStore:
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_findings'"
             )
             row = await cursor.fetchone()
-            if row and row[0] and "session_id" not in row[0]:
+            if row and row[0] and (
+                "session_id" not in row[0] or "id text primary key" not in row[0].lower()
+            ):
                 await db.execute("DROP TABLE IF EXISTS vec_findings")
             await db.executescript(SCHEMA_DDL)
             await db.commit()

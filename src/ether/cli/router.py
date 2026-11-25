@@ -681,8 +681,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
     normalized_argv = normalize_cli_args(argv)
+    # Rewrite `--flags <val>` to `--flags=<val>` so argparse never treats `-p 80` or `-v` as a CLI option
+    safe_argv: List[str] = []
+    idx = 0
+    while idx < len(normalized_argv):
+        tok = normalized_argv[idx]
+        if tok == "--flags" and idx + 1 < len(normalized_argv):
+            safe_argv.append(f"--flags={normalized_argv[idx + 1]}")
+            idx += 2
+        else:
+            safe_argv.append(tok)
+            idx += 1
     parser = build_parser()
-    args = parser.parse_args(normalized_argv)
+    args = parser.parse_args(safe_argv)
 
     if not args.subcommand:
         parser.print_help()

@@ -347,7 +347,7 @@ async def test_cli_run_preflight_error_rendering(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Preflight validation failed for 'nmap':" in captured.err
     assert "[security]" in captured.err
-    assert "Metadata" in captured.err or "metadata" in captured.err
+    assert "metadata" in captured.err.lower()
     assert "Remedy:" in captured.err
 
 

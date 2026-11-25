@@ -44,8 +44,8 @@ class VectorIndex:
             return
 
         engine = get_embedding_engine()
-        vector_delete_params: List[Tuple[str, str]] = []
-        vector_params: List[Tuple[str, str, bytes]] = []
+        vector_delete_params: List[Tuple[str]] = []
+        vector_params: List[Tuple[str, str, str, bytes]] = []
         seen: set[str] = set()
 
         for nid, text in node_texts:
@@ -55,19 +55,20 @@ class VectorIndex:
             try:
                 vec = engine.embed_text(text)
                 serialized = sqlite_vec.serialize_float32(vec)
-                vector_delete_params.append((session_id, nid))
-                vector_params.append((session_id, nid, serialized))
+                vec_id = f"{session_id}:{nid}"
+                vector_delete_params.append((vec_id,))
+                vector_params.append((vec_id, session_id, nid, serialized))
             except Exception as e:
                 logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
 
         if vector_params:
             try:
                 await db.executemany(
-                    "DELETE FROM vec_findings WHERE session_id = ? AND node_id = ?",
+                    "DELETE FROM vec_findings WHERE id = ?",
                     vector_delete_params,
                 )
                 await db.executemany(
-                    "INSERT INTO vec_findings(session_id, node_id, embedding) VALUES (?, ?, ?)",
+                    "INSERT INTO vec_findings(id, session_id, node_id, embedding) VALUES (?, ?, ?, ?)",
                     vector_params,
                 )
             except Exception as e:
@@ -85,8 +86,8 @@ class VectorIndex:
             return 0
 
         engine = get_embedding_engine()
-        vector_delete_params: List[Tuple[str, str]] = []
-        vector_params: List[Tuple[str, str, bytes]] = []
+        vector_delete_params: List[Tuple[str]] = []
+        vector_params: List[Tuple[str, str, str, bytes]] = []
         seen = set()
 
         for finding in findings:
@@ -98,8 +99,9 @@ class VectorIndex:
                 semantic_text = finding.to_semantic_text()
                 vec = engine.embed_text(semantic_text)
                 serialized = sqlite_vec.serialize_float32(vec)
-                vector_delete_params.append((session_id, nid))
-                vector_params.append((session_id, nid, serialized))
+                vec_id = f"{session_id}:{nid}"
+                vector_delete_params.append((vec_id,))
+                vector_params.append((vec_id, session_id, nid, serialized))
             except Exception as e:
                 logger.warning(f"Could not compute semantic embedding for finding {nid}: {e}")
 
@@ -107,11 +109,11 @@ class VectorIndex:
             return 0
 
         await db.executemany(
-            "DELETE FROM vec_findings WHERE session_id = ? AND node_id = ?",
+            "DELETE FROM vec_findings WHERE id = ?",
             vector_delete_params,
         )
         await db.executemany(
-            "INSERT INTO vec_findings(session_id, node_id, embedding) VALUES (?, ?, ?)",
+            "INSERT INTO vec_findings(id, session_id, node_id, embedding) VALUES (?, ?, ?, ?)",
             vector_params,
         )
         return len(vector_params)

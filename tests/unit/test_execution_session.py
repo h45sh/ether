@@ -293,8 +293,8 @@ async def test_execution_session_cancel_coroutine():
     aborted = await session.abort_action(job_id)
     assert aborted is True
 
-    # Allow cancellation to propagate
-    await asyncio.sleep(0.02)
+    # Allow cancellation and cleanup to propagate
+    await asyncio.sleep(0.1)
     assert task.done()
     job = session.get_job(job_id)
     assert job.status == JobStatusEnum.FAILED

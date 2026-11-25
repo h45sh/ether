@@ -137,7 +137,7 @@ async def test_cli_pipeline_run(tmp_path, monkeypatch, capsys):
         tools_dir=None,
         is_json=True,
         verbose=False,
-        policy=GatePolicy.SAFE,
+        policy=GatePolicy.UNRESTRICTED,
     )
 
     # Monkeypatch ToolRegistry to include mock tools

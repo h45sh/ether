@@ -31,8 +31,8 @@ async def test_sqlite_vec_extension_loaded_and_table_created():
         test_vec = [0.1] * 384
         serialized = sqlite_vec.serialize_float32(test_vec)
         await db.execute(
-            "INSERT INTO vec_findings(session_id, node_id, embedding) VALUES (?, ?, ?)",
-            ("test-sess-1", "test-node-1", serialized),
+            "INSERT INTO vec_findings(id, session_id, node_id, embedding) VALUES (?, ?, ?, ?)",
+            ("test-sess-1:test-node-1", "test-sess-1", "test-node-1", serialized),
         )
         await db.commit()
 
