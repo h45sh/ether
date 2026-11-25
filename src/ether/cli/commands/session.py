@@ -70,7 +70,9 @@ async def handle_session_verify_audit(args: Any, context: CliContext) -> int:
         print("[!] Missing required session_id.")
         return 1
 
-    is_valid, records = ForensicLogManager.verify_session_audit(session_id)
+    is_valid, records = ForensicLogManager.verify_session_audit(
+        session_id, data_dir=context.data_dir
+    )
     if context.is_json:
         print_json({"session_id": session_id, "valid": is_valid, "entries": records})
         return EXIT_SUCCESS if is_valid else 1
@@ -114,7 +116,8 @@ async def handle_session_close(args: Any, context: CliContext) -> int:
     async with context.open_store() as store:
         await store.close_session(session_id)
 
-    compressed_count = ForensicLogManager.compress_session_logs(session_id)
+    compressed = ForensicLogManager.compress_session_logs(session_id, data_dir=context.data_dir)
+    compressed_count = len(compressed)
 
     if context.is_json:
         print_json(

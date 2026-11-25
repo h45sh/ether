@@ -45,10 +45,16 @@ async def test_drift_score_and_findings_on_divergence(tmp_path: Path):
 
     # Baseline: host 10.0.0.1 (ports 80, 443) and host 10.0.0.2 (port 22)
     await store.upsert_finding(sess_a, NetworkHost.create(ip="10.0.0.1"))
-    await store.upsert_finding(sess_a, NetworkService.create(host_ip="10.0.0.1", port=80, protocol="tcp"))
-    await store.upsert_finding(sess_a, NetworkService.create(host_ip="10.0.0.1", port=443, protocol="tcp"))
+    await store.upsert_finding(
+        sess_a, NetworkService.create(host_ip="10.0.0.1", port=80, protocol="tcp")
+    )
+    await store.upsert_finding(
+        sess_a, NetworkService.create(host_ip="10.0.0.1", port=443, protocol="tcp")
+    )
     await store.upsert_finding(sess_a, NetworkHost.create(ip="10.0.0.2"))
-    await store.upsert_finding(sess_a, NetworkService.create(host_ip="10.0.0.2", port=22, protocol="tcp"))
+    await store.upsert_finding(
+        sess_a, NetworkService.create(host_ip="10.0.0.2", port=22, protocol="tcp")
+    )
 
     baseline = await export_baseline(store, sess_a)
 
@@ -56,8 +62,12 @@ async def test_drift_score_and_findings_on_divergence(tmp_path: Path):
     # 10.0.0.1 is present with port 80 and unexpected rogue port 8080.
     # 10.0.0.2 is missing entirely.
     await store.upsert_finding(sess_b, NetworkHost.create(ip="10.0.0.1"))
-    await store.upsert_finding(sess_b, NetworkService.create(host_ip="10.0.0.1", port=80, protocol="tcp"))
-    await store.upsert_finding(sess_b, NetworkService.create(host_ip="10.0.0.1", port=8080, protocol="tcp"))
+    await store.upsert_finding(
+        sess_b, NetworkService.create(host_ip="10.0.0.1", port=80, protocol="tcp")
+    )
+    await store.upsert_finding(
+        sess_b, NetworkService.create(host_ip="10.0.0.1", port=8080, protocol="tcp")
+    )
 
     report = await audit_drift(store, sess_b, baseline, mode="topology", record_findings=True)
 
@@ -87,14 +97,18 @@ async def test_drift_strict_mode_version_discrepancy(tmp_path: Path):
     # Baseline service version
     await store.upsert_finding(
         sess_base,
-        NetworkService.create(host_ip="10.0.0.5", port=22, protocol="tcp", service_name="OpenSSH 8.9"),
+        NetworkService.create(
+            host_ip="10.0.0.5", port=22, protocol="tcp", service_name="OpenSSH 8.9"
+        ),
     )
     baseline = await export_baseline(store, sess_base)
 
     # Observed service has downgraded version
     await store.upsert_finding(
         sess_obs,
-        NetworkService.create(host_ip="10.0.0.5", port=22, protocol="tcp", service_name="OpenSSH 7.2"),
+        NetworkService.create(
+            host_ip="10.0.0.5", port=22, protocol="tcp", service_name="OpenSSH 7.2"
+        ),
     )
 
     # Topology mode should yield 0 drift (same host & port)
@@ -104,6 +118,77 @@ async def test_drift_strict_mode_version_discrepancy(tmp_path: Path):
     # Strict mode should flag attribute divergence
     strict_report = await audit_drift(store, sess_obs, baseline, mode="strict")
     assert strict_report.drift_score > 0.0
-    assert any("version_divergence" in d.pik["discrepancy_type"] for d in strict_report.discrepancies)
+    assert any(
+        "version_divergence" in d.pik["discrepancy_type"] for d in strict_report.discrepancies
+    )
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_drift_json_string_baseline_and_batch_persist(tmp_path: Path):
+    """Verify audit_drift accepts a JSON-string baseline and batch-persists discrepancies."""
+    import json
+
+    db_file = str(tmp_path / "drift_json_str.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+    _, sess_base = await store.get_or_create_workspace_session("DriftWS", "JsonBase")
+    _, sess_obs = await store.get_or_create_workspace_session("DriftWS", "JsonObs")
+
+    await store.upsert_finding(sess_base, NetworkHost.create(ip="10.0.0.10"))
+    baseline_dict = await export_baseline(store, sess_base)
+    baseline_json_str = json.dumps(baseline_dict)
+
+    await store.upsert_finding(sess_obs, NetworkHost.create(ip="10.0.0.11"))
+    report = await audit_drift(
+        store, sess_obs, baseline_json_str, mode="topology", record_findings=True
+    )
+    assert report.drift_score > 0.0
+    assert len(report.discrepancies) == 2
+
+    saved = await store.get_all_nodes(sess_obs, schema_type="audit.drift")
+    assert len(saved) == 2
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_drift_strict_mode_http_security_headers_and_schema_exports(tmp_path: Path):
+    """Verify strict mode flags missing HTTP security headers and schemas exports AuditDrift & TLSCipherSuite."""
+    from ether.schemas import AuditDrift, TLSCipherSuite, WebEndpoint
+
+    assert AuditDrift is not None
+    assert TLSCipherSuite is not None
+
+    db_file = str(tmp_path / "drift_headers.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+    _, sess_base = await store.get_or_create_workspace_session("DriftWS", "HdrBase")
+    _, sess_obs = await store.get_or_create_workspace_session("DriftWS", "HdrObs")
+
+    await store.upsert_finding(
+        sess_base,
+        WebEndpoint.create(
+            url="https://app.example.com",
+            headers={
+                "Strict-Transport-Security": "max-age=31536000",
+                "Content-Security-Policy": "default-src 'self'",
+            },
+        ),
+    )
+    baseline = await export_baseline(store, sess_base)
+
+    await store.upsert_finding(
+        sess_obs,
+        WebEndpoint.create(
+            url="https://app.example.com",
+            headers={"Content-Security-Policy": "default-src 'self'"},
+        ),
+    )
+
+    report = await audit_drift(store, sess_obs, baseline, mode="strict")
+    assert report.drift_score > 0.0
+    assert any(d.pik["discrepancy_type"] == "missing_security_header" for d in report.discrepancies)
 
     await store.close()

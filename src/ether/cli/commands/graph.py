@@ -10,6 +10,56 @@ from ether.cli.formatters import print_error, print_json, print_table
 from ether.common.crypto import decrypt_bytes, encrypt_bytes
 from ether.schemas.base import BaseFinding
 
+_CREDENTIAL_SECRET_KEYS = frozenset(
+    {
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "hash",
+        "ntlm_hash",
+        "private_key",
+        "passphrase",
+        "credential",
+    }
+)
+
+
+def _mask_secret_dict(mapping: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of mapping with sensitive credential keys masked."""
+    masked = dict(mapping)
+    for key in _CREDENTIAL_SECRET_KEYS:
+        if key in masked and masked[key] not in (None, ""):
+            masked[key] = "********"
+    return masked
+
+
+def _mask_credential_node(node: dict[str, Any], unmask: bool) -> dict[str, Any]:
+    """Hydrate pik/data on a node dict and mask credential secrets unless unmask is True."""
+    item = dict(node)
+    if "pik_json" in item and isinstance(item["pik_json"], str):
+        try:
+            item["pik"] = json.loads(item["pik_json"])
+        except Exception:
+            pass
+    if "data_json" in item and isinstance(item["data_json"], str):
+        try:
+            item["data"] = json.loads(item["data_json"])
+        except Exception:
+            pass
+
+    if not unmask and item.get("schema_type") == "credential.found":
+        if isinstance(item.get("pik"), dict):
+            item["pik"] = _mask_secret_dict(item["pik"])
+            if "pik_json" in item:
+                item["pik_json"] = json.dumps(item["pik"])
+        if isinstance(item.get("data"), dict):
+            item["data"] = _mask_secret_dict(item["data"])
+            if "data_json" in item:
+                item["data_json"] = json.dumps(item["data"])
+
+    return item
+
 
 async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
     """List finding nodes recorded in an investigation session."""
@@ -20,6 +70,7 @@ async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
 
     schema_type = getattr(args, "type", None)
     include_stale = bool(getattr(args, "include_stale", False))
+    unmask = bool(getattr(args, "unmask", False))
 
     async with context.open_store() as store:
         if schema_type:
@@ -29,41 +80,28 @@ async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
         else:
             nodes = await store.get_all_nodes(session_id, include_stale=include_stale)
 
+    parsed_nodes = [_mask_credential_node(n, unmask=unmask) for n in nodes]
+
     if context.is_json:
-        parsed_nodes = []
-        for n in nodes:
-            item = dict(n)
-            if "pik_json" in item and isinstance(item["pik_json"], str):
-                try:
-                    item["pik"] = json.loads(item["pik_json"])
-                except Exception:
-                    pass
-            if "data_json" in item and isinstance(item["data_json"], str):
-                try:
-                    item["data"] = json.loads(item["data_json"])
-                except Exception:
-                    pass
-            parsed_nodes.append(item)
         print_json(parsed_nodes)
         return EXIT_SUCCESS
 
     headers = ["NODE ID", "SCHEMA TYPE", "TARGET / PIK", "STATUS"]
     rows = []
-    for n in nodes:
-        pik_display = ""
-        try:
-            pik = json.loads(n.get("pik_json", "{}"))
+    for item in parsed_nodes:
+        pik = item.get("pik")
+        if isinstance(pik, dict):
             pik_display = ", ".join(f"{k}={v}" for k, v in pik.items())
-        except Exception:
-            pik_display = n.get("pik_json", "")
+        else:
+            pik_display = str(item.get("pik_json", ""))
         if len(pik_display) > 40:
             pik_display = pik_display[:37] + "..."
         rows.append(
             [
-                n.get("id", "")[:12],
-                n.get("schema_type", ""),
+                item.get("id", "")[:12],
+                item.get("schema_type", ""),
                 pik_display,
-                n.get("status", "confirmed"),
+                item.get("status", "confirmed"),
             ]
         )
 

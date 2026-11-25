@@ -22,7 +22,7 @@ def handle_logs(args: Any, context: CliContext) -> int:
             print(f"Recent Crash [{crash['timestamp']}]:")
             print(f"Summary: {crash['summary']}")
             print("\nTraceback:")
-            print(crash["traceback"])
+            print(crash["block"])
         else:
             print("[+] No unhandled crashes recorded in system log.")
         return EXIT_SUCCESS

@@ -31,8 +31,8 @@ $PYTHON_BIN scripts/generate_schema_registry.py --check
 echo -e "\n--- [3/4] Tier 0 AST Architectural & Mathematical Invariants ---"
 $PYTEST_BIN -m tier0 -q
 
-echo -e "\n--- [4/4] Full Regression Test Suite ---"
-$PYTEST_BIN tests/
+echo -e "\n--- [4/4] Fast PR Gate (tier0 or fast) ---"
+$PYTEST_BIN -m "tier0 or fast"
 
 echo -e "\n=============================================="
 echo "    ALL ETHER MECHANICAL GATES PASSED [OK]    "

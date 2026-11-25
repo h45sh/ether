@@ -567,3 +567,92 @@ async def test_mcp_enriched_tool_info_resources_prompts_and_new_tools():
     assert {"perimeter_recon", "vulnerability_triage"}.issubset(prompt_names)
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_read_action_log_from_session_dir(tmp_path):
+    """Verify read_action_log locates session-scoped log spools and .gz archives via data_dir."""
+    from uuid import uuid4
+
+    from ether.common.forensic_log import ForensicLogManager
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    _, sess_id = await store.get_or_create_default_session()
+
+    action_id = uuid4()
+    short_id = str(action_id)[:8]
+    sess_dir = ForensicLogManager.get_session_dir(sess_id, str(tmp_path))
+    log_file = sess_dir / f"20261125_nmap_example_{short_id}.log"
+    log_file.write_text("line1\nline2\nline3\n", encoding="utf-8")
+
+    server = create_mcp_server(store, default_session_id=sess_id, data_dir=str(tmp_path))
+    res = await server.call_tool("read_action_log", {"action_id": str(action_id), "tail_lines": 2})
+    assert res.is_error is False
+    data = json.loads(res.content[0].text)
+    assert data["tail_lines"] == 2
+    assert "line2" in data["log"]
+    assert "line3" in data["log"]
+    assert "<untrusted_scan_output>" in data["log"]
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_perimeter_recon_prompt_pipeline_syntax():
+    """Verify perimeter_recon prompt uses valid PipelineParser syntax."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    server = create_mcp_server(store)
+
+    prompt = await server.get_prompt("perimeter_recon", {"target": "example.com"})
+    text = "".join(m.content.text for m in prompt.messages if hasattr(m.content, "text"))
+    assert "subfinder(target=" in text
+    assert "dnspython | http_probe" in text
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
+    """Verify execute_tool forwards raw_flags in ActionRequest.params and sets NON_ZERO_EXIT on ExecutionFailed."""
+    from ether.core.session import ExecutionFailed
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    _, sess_id = await store.get_or_create_default_session()
+
+    captured_params = {}
+
+    class FakeExecSession:
+        async def dispatch(self, action):
+            captured_params.update(action.params)
+            return action.id
+
+        async def subscribe(self, action_id):
+            yield ExecutionFailed(action_id=action_id, error="exit code 2", duration_seconds=0.1)
+
+        def get_output_history(self, action_id):
+            return ["nmap: invalid option"]
+
+    server = create_mcp_server(
+        store,
+        default_session_id=sess_id,
+        execution_session=FakeExecSession(),
+    )
+    res = await server.call_tool(
+        "execute_tool",
+        {
+            "tool_name": "nmap",
+            "target": "93.184.216.34",
+            "arguments": {"flags": ["-sV", "-p80"]},
+            "session_id": sess_id,
+        },
+    )
+    assert res.is_error is False
+    data = json.loads(res.content[0].text)
+    assert captured_params.get("raw_flags") == "-sV -p80"
+    assert data["is_error"] is True
+    assert data["error_category"] == "NON_ZERO_EXIT"
+
+    await store.close()
