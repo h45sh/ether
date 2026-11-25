@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import shlex
+import ssl
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -46,8 +47,11 @@ async def calibrate_fuzzer_baseline(
     nonce = uuid.uuid4().hex[:8]
     probe_url = f"{url.rstrip('/')}/.ether_probe_{nonce}"
     try:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
         async with httpx.AsyncClient(
-            verify=False, timeout=timeout_sec, follow_redirects=True
+            verify=ssl_ctx, timeout=timeout_sec, follow_redirects=True
         ) as client:
             resp = await client.get(probe_url)
             text = resp.text

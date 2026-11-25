@@ -410,9 +410,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Minimal Interface Surface*:
     ```python
     class PluginLoader:
-        def load_verified_adapter(
-            self, adapter_path: Path, manifest_path: Path
-        ) -> ToolAdapter: ...
+        def load_verified_adapter(self, adapter_path: Path, manifest_path: Path) -> ToolAdapter: ...
     ```
   - *Implementation (Hidden Complexity)*:
     - Ed25519 signature verification against embedded or trusted public keys.
@@ -429,9 +427,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Minimal Interface Surface*:
     ```python
     class CryptoEngine:
-        def open_encrypted_store(
-            self, db_path: Path, passphrase_or_key: bytes
-        ) -> GraphStore: ...
+        def open_encrypted_store(self, db_path: Path, passphrase_or_key: bytes) -> GraphStore: ...
     ```
   - *Implementation (Hidden Complexity)*:
     - Transparent database page encryption via SQLCipher / ChaCha20-Poly1305.
