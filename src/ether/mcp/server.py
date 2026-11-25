@@ -15,7 +15,6 @@ from mcp.server.mcpserver import MCPServer
 from ether import paths
 from ether.common import sanitize_untrusted_output
 from ether.common.forensic_log import ForensicLogManager
-from ether.core.pipeline import PipelineEngine, PipelineParser
 from ether.drift.engine import audit_drift as run_audit_drift
 from ether.gateway.gate import ActionGateway, GatePolicy
 from ether.gateway.preflight import get_tool_target_guidance
@@ -725,7 +724,6 @@ def create_mcp_server(
             session_id: Target session ID. If omitted, uses the active default session.
         """
         sess_id = await _resolve_session(session_id)
-        from ether.graph.analytics import GraphAnalyticsEngine
 
         beliefs = await GraphAnalyticsEngine.evaluate_and_persist(store, sess_id)
 
@@ -812,64 +810,9 @@ def create_mcp_server(
             session_id: Target investigation session ID (optional, defaults to active session).
         """
         sess_id = await _resolve_session(session_id)
-        try:
-            stages = PipelineParser.parse(expression, reg)
-        except ValueError as e:
-            return json.dumps(
-                {"is_error": True, "error": "InvalidPipeline", "message": str(e)}, indent=2
-            )
-
-        if not stages:
-            return json.dumps(
-                {
-                    "is_error": True,
-                    "error": "EmptyPipeline",
-                    "message": "No pipeline stages found.",
-                },
-                indent=2,
-            )
-
-        first_stage = stages[0]
-        raw_target = first_stage.params.get("target") or "127.0.0.1"
-        report = gw.preflight_verify(tool_name=first_stage.tool_name, target=raw_target, flags="")
-        if not report.is_valid:
-            error_list = [
-                {"title": e.title, "description": e.description, "remediation": e.remediation_hint}
-                for e in report.errors
-            ]
-            return json.dumps(
-                {
-                    "is_error": True,
-                    "error": "PreflightGateRejected",
-                    "message": f"Pipeline stage '{first_stage.tool_name}' against '{raw_target}' rejected by policy {gw.policy.value}.",
-                    "errors": error_list,
-                },
-                indent=2,
-            )
-
-        engine = PipelineEngine(reg, store=store)
-        collected: List[Dict[str, Any]] = []
-        async for finding in engine.execute_pipeline(
-            expression, session_id=sess_id, policy=gw.policy.value
-        ):
-            collected.append(
-                {
-                    "schema_type": finding.schema_type,
-                    "pik": finding.pik,
-                    "data": finding.data,
-                }
-            )
-
-        return json.dumps(
-            {
-                "session_id": sess_id,
-                "expression": expression,
-                "stages": [s.tool_name for s in stages],
-                "total_findings": len(collected),
-                "findings": collected,
-            },
-            indent=2,
-        )
+        exec_service = SupervisedExecutionService(gw, store, execution_session=exec_sess)
+        result = await exec_service.execute_pipeline(expression=expression, session_id=sess_id)
+        return json.dumps(result, indent=2)
 
     @server.tool()
     async def verify_session_audit(session_id: Optional[str] = None) -> str:

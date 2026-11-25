@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Callable, Coroutine, Dict, Optional, Tupl
 
 from ether.common import strip_ansi
 from ether.common.forensic_log import LogSpooler
+from ether.core.container import ContainerizedToolRunner
 from ether.graph.store import GraphStore
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
@@ -195,13 +196,15 @@ class Executor:
         """
         Execute a tool adapter against a target finding and yield findings.
         """
-        if not adapter.validate_install():
+        command = adapter.build_command(target, params)
+        use_container = ContainerizedToolRunner.should_use_container(
+            command[0] if command else "", getattr(adapter, "execution_tier", None)
+        )
+        if not adapter.validate_install() and not use_container:
             raise RuntimeError(f"Tool binary for {adapter.__class__.__name__} not found on system.")
 
         tracking_id = task_id or session_id
         start_time = asyncio.get_event_loop().time()
-
-        command = adapter.build_command(target, params)
         clean_env = sanitize_subprocess_env(env)
 
         if use_shell:
@@ -211,6 +214,18 @@ class Executor:
             final_cmd = [default_shell, "-c", cmd_str]
             process = await asyncio.create_subprocess_exec(
                 *final_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
+                cwd=cwd,
+                env=clean_env,
+            )
+        elif use_container:
+            container_cmd = ContainerizedToolRunner.build_container_command(
+                command, cwd=cwd, env=clean_env
+            )
+            process = await asyncio.create_subprocess_exec(
+                *container_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.DEVNULL,
@@ -342,6 +357,12 @@ class Executor:
                         )
                     if process.returncode is None:
                         process.terminate()
+                        try:
+                            await asyncio.wait_for(process.wait(), timeout=1.0)
+                        except Exception:
+                            process.kill()
+                    while not finding_queue.empty():
+                        yield finding_queue.get_nowait()
                     raise TimeoutError(f"Tool execution timed out after {timeout_seconds} seconds.")
 
                 try:

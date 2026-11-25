@@ -162,6 +162,21 @@ class FfufAdapter(ToolAdapter):
 
         # 1. Try parsing JSON payload
         json_obj = self._parse_json(cleaned)
+        if not json_obj:
+            from ether.common.recovery import salvage_json_objects
+
+            salvaged = salvage_json_objects(cleaned)
+            for s in salvaged:
+                if "results" in s and isinstance(s["results"], list):
+                    json_obj = s
+                    break
+            if not json_obj and salvaged:
+                endpoint_items = [
+                    s for s in salvaged if "url" in s or ("input" in s and "status" in s)
+                ]
+                if endpoint_items:
+                    json_obj = {"results": endpoint_items}
+
         if json_obj and "results" in json_obj:
             results = json_obj.get("results", [])
             for item in results:

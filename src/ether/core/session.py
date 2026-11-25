@@ -609,6 +609,112 @@ class ExecutionSession:
         )
         wipe_credentials(job)
 
+    async def _begin_action_execution(
+        self,
+        action: ActionRequest,
+        job: JobStatus,
+        tool_name: str,
+        header_title: str,
+        log_file_path: str,
+    ) -> float:
+        """Write the execution header to the spooler and emit ExecutionStarted."""
+        start_time = asyncio.get_event_loop().time()
+        spooler = self._job_spoolers.get(action.action_id)
+        if spooler:
+            spooler.write(
+                f"=== {header_title}: {datetime.now(UTC).isoformat()} ===\n"
+                f"Tool: {tool_name}\n"
+                f"Session: {action.session_id}\n"
+                f"Action ID: {action.action_id}\n"
+                f"{'=' * 50}\n\n"
+            )
+
+        await self._emit_event(
+            action.action_id,
+            ExecutionStarted(
+                action_id=action.action_id,
+                tool_name=tool_name,
+                command_snippet=job.command_snippet or "",
+                log_file=log_file_path,
+            ),
+        )
+        return start_time
+
+    async def _complete_action_execution(
+        self,
+        action: ActionRequest,
+        job: JobStatus,
+        log_file_path: str,
+        start_time: float,
+        end_label: str,
+        command_summary: str,
+        err_msg: Optional[str],
+        findings_count: int = 0,
+        remove_if_closed: bool = False,
+        on_complete: Optional[Callable[[], Any]] = None,
+    ) -> None:
+        """Finalize spooling, persist event log, emit terminal events, and notify listeners."""
+        elapsed = asyncio.get_event_loop().time() - start_time
+        job.completed_at = datetime.now(UTC)
+        self._finalize_action_spool(action, job, log_file_path, end_label, err_msg)
+
+        if not getattr(self.store, "_closed", False):
+            try:
+                buf_output = "".join(self.get_output_history(action.action_id))
+                if len(buf_output) > 200_000:
+                    db_output = (
+                        buf_output[:100_000]
+                        + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
+                        + buf_output[-100_000:]
+                    )
+                else:
+                    db_output = buf_output
+
+                await self.store.append_event(
+                    str(action.session_id),
+                    action,
+                    {"output": db_output, "log_file": log_file_path, "error": err_msg},
+                    command_summary + (f" (failed: {err_msg})" if err_msg else ""),
+                )
+                if str(action.action_id) in self.closed_job_ids:
+                    if remove_if_closed:
+                        self.remove_job(action.action_id)
+                    else:
+                        await self.store.mark_event_closed(
+                            str(action.action_id), session_id=str(action.session_id)
+                        )
+            except Exception:
+                pass
+
+        self._notify_status(job)
+
+        if job.status == JobStatusEnum.DONE:
+            await self._emit_event(
+                action.action_id,
+                ExecutionCompleted(
+                    action_id=action.action_id,
+                    status=JobStatusEnum.DONE,
+                    findings_count=findings_count,
+                    duration_seconds=elapsed,
+                ),
+            )
+        else:
+            await self._emit_event(
+                action.action_id,
+                ExecutionFailed(
+                    action_id=action.action_id,
+                    error=err_msg or "Failed",
+                    duration_seconds=elapsed,
+                ),
+            )
+        await self._emit_event(action.action_id, None)
+
+        if on_complete:
+            try:
+                await on_complete()
+            except Exception:
+                pass
+
     async def _run_privileged_action(
         self,
         action: ActionRequest,
@@ -619,29 +725,14 @@ class ExecutionSession:
         on_chunk: Optional[Callable[[str], Any]],
         on_complete: Optional[Callable[[], Any]],
     ) -> None:
-        start_time = asyncio.get_event_loop().time()
         cwd = self.get_cwd(str(action.session_id))
         clean_env = sanitize_subprocess_env(self.user_env)
-
-        # Reuse LogSpooler opened in dispatch()
-        spooler = self._job_spoolers.get(action.action_id)
-        if spooler:
-            spooler.write(
-                f"=== Privileged Execution Start: {datetime.now(UTC).isoformat()} ===\n"
-                f"Tool: sudo\n"
-                f"Session: {action.session_id}\n"
-                f"Action ID: {action.action_id}\n"
-                f"{'=' * 50}\n\n"
-            )
-
-        await self._emit_event(
-            action.action_id,
-            ExecutionStarted(
-                action_id=action.action_id,
-                tool_name="sudo",
-                command_snippet=job.command_snippet or "",
-                log_file=log_file_path,
-            ),
+        start_time = await self._begin_action_execution(
+            action,
+            job,
+            tool_name="sudo",
+            header_title="Privileged Execution Start",
+            log_file_path=log_file_path,
         )
 
         err_msg = None
@@ -767,67 +858,20 @@ class ExecutionSession:
                 except Exception:
                     pass
         finally:
-            elapsed = asyncio.get_event_loop().time() - start_time
-            job.completed_at = datetime.now(UTC)
-            self._notify_status(job)
-            self._finalize_action_spool(
-                action, job, log_file_path, "Privileged Execution End", err_msg
+            command_summary = (
+                f"Ran sudo {shlex.join(target_args)}" if target_args else f"Ran sudo {cmd_raw}"
             )
-
-            if job.status == JobStatusEnum.DONE:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionCompleted(
-                        action_id=action.action_id,
-                        status=JobStatusEnum.DONE,
-                        duration_seconds=elapsed,
-                    ),
-                )
-            else:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionFailed(
-                        action_id=action.action_id,
-                        error=err_msg or "Failed",
-                        duration_seconds=elapsed,
-                    ),
-                )
-            await self._emit_event(action.action_id, None)
-
-            # Persist to database event log
-            if not getattr(self.store, "_closed", False):
-                try:
-                    buf_output = "".join(self.get_output_history(action.action_id))
-                    if len(buf_output) > 200_000:
-                        db_output = (
-                            buf_output[:100_000]
-                            + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
-                            + buf_output[-100_000:]
-                        )
-                    else:
-                        db_output = buf_output
-
-                    command_summary = (
-                        f"Ran sudo {shlex.join(target_args)}"
-                        if target_args
-                        else f"Ran sudo {cmd_raw}"
-                    )
-                    await self.store.append_event(
-                        str(action.session_id),
-                        action,
-                        {"output": db_output, "log_file": log_file_path, "error": err_msg},
-                        command_summary + (f" (failed: {err_msg})" if err_msg else ""),
-                    )
-                    if str(action.action_id) in self.closed_job_ids:
-                        self.remove_job(action.action_id)
-                except Exception:
-                    pass
-
-            if on_complete:
-                try:
-                    await on_complete()
-                except Exception:
-                    pass
+            await self._complete_action_execution(
+                action=action,
+                job=job,
+                log_file_path=log_file_path,
+                start_time=start_time,
+                end_label="Privileged Execution End",
+                command_summary=command_summary,
+                err_msg=err_msg,
+                remove_if_closed=True,
+                on_complete=on_complete,
+            )
 
     async def _run_background_action(
         self,
@@ -839,29 +883,14 @@ class ExecutionSession:
         on_chunk: Optional[Callable[[str], Any]],
         on_complete: Optional[Callable[[], Any]],
     ) -> None:
-        start_time = asyncio.get_event_loop().time()
         cwd = self.get_cwd(str(action.session_id))
         clean_env = sanitize_subprocess_env(self.user_env)
-
-        # Reuse LogSpooler opened in dispatch()
-        spooler = self._job_spoolers.get(action.action_id)
-        if spooler:
-            spooler.write(
-                f"=== Execution Start: {datetime.now(UTC).isoformat()} ===\n"
-                f"Tool: {action.tool_name}\n"
-                f"Session: {action.session_id}\n"
-                f"Action ID: {action.action_id}\n"
-                f"{'=' * 50}\n\n"
-            )
-
-        await self._emit_event(
-            action.action_id,
-            ExecutionStarted(
-                action_id=action.action_id,
-                tool_name=action.tool_name,
-                command_snippet=job.command_snippet or "",
-                log_file=log_file_path,
-            ),
+        start_time = await self._begin_action_execution(
+            action,
+            job,
+            tool_name=action.tool_name,
+            header_title="Execution Start",
+            log_file_path=log_file_path,
         )
 
         async def handle_spool(text: str, is_error: bool = False) -> None:
@@ -932,64 +961,18 @@ class ExecutionSession:
             job.status = JobStatusEnum.FAILED
             job.error_snippet = err_msg
         finally:
-            elapsed = asyncio.get_event_loop().time() - start_time
-            job.completed_at = datetime.now(UTC)
-            self._finalize_action_spool(action, job, log_file_path, "Execution End", err_msg)
-
-            # Persist to database event log
-            if not getattr(self.store, "_closed", False):
-                try:
-                    buf_output = "".join(self.get_output_history(action.action_id))
-                    if len(buf_output) > 200_000:
-                        db_output = (
-                            buf_output[:100_000]
-                            + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
-                            + buf_output[-100_000:]
-                        )
-                    else:
-                        db_output = buf_output
-
-                    await self.store.append_event(
-                        str(action.session_id),
-                        action,
-                        {"output": db_output, "log_file": log_file_path, "error": err_msg},
-                        f"Ran {action.tool_name}" + (f" (failed: {err_msg})" if err_msg else ""),
-                    )
-                    if str(action.action_id) in self.closed_job_ids:
-                        await self.store.mark_event_closed(
-                            str(action.action_id), session_id=str(action.session_id)
-                        )
-                except Exception:
-                    pass
-
-            self._notify_status(job)
-
-            if job.status == JobStatusEnum.DONE:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionCompleted(
-                        action_id=action.action_id,
-                        status=JobStatusEnum.DONE,
-                        findings_count=findings_count,
-                        duration_seconds=elapsed,
-                    ),
-                )
-            else:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionFailed(
-                        action_id=action.action_id,
-                        error=err_msg or "Failed",
-                        duration_seconds=elapsed,
-                    ),
-                )
-            await self._emit_event(action.action_id, None)
-
-            if on_complete:
-                try:
-                    await on_complete()
-                except Exception:
-                    pass
+            await self._complete_action_execution(
+                action=action,
+                job=job,
+                log_file_path=log_file_path,
+                start_time=start_time,
+                end_label="Execution End",
+                command_summary=f"Ran {action.tool_name}",
+                err_msg=err_msg,
+                findings_count=findings_count,
+                remove_if_closed=False,
+                on_complete=on_complete,
+            )
 
     async def kill_job(self, action_id: UUID) -> bool:
         """Cancel and terminate an active execution."""

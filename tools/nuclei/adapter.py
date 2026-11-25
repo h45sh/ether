@@ -61,19 +61,24 @@ class NucleiAdapter(ToolAdapter):
             target.pik.get("host_ip") or target.pik.get("ip") or target.data.get("host_ip")
         )
 
+        items = []
         for line in cleaned.splitlines():
             line = line.strip()
-            if not line or not line.startswith("{"):
+            if not line:
                 continue
-
             try:
                 item = json.loads(line)
-            except json.JSONDecodeError:
+                if isinstance(item, dict):
+                    items.append(item)
+            except Exception:
                 continue
 
-            if not isinstance(item, dict):
-                continue
+        if not items:
+            from ether.common.recovery import salvage_ndjson_lines
 
+            items = salvage_ndjson_lines(cleaned)
+
+        for item in items:
             template_id = str(item.get("template-id", "")).strip()
             info = item.get("info", {})
             if not isinstance(info, dict):

@@ -430,6 +430,24 @@ class PreflightVerifier:
             is_installed = bool(shutil.which(binary_name))
 
         if not is_installed:
+            from ether.core.container import ContainerizedToolRunner
+
+            exec_tier = getattr(adapter, "execution_tier", None)
+            if ContainerizedToolRunner.should_use_container(binary_name, exec_tier):
+                report.issues.append(
+                    PreflightIssue(
+                        category="binary",
+                        severity="warning",
+                        title=f"Tool binary '{binary_name}' executing via container fallback",
+                        description=(
+                            f"Host binary '{binary_name}' was not found; container fallback is enabled "
+                            f"using OCI image '{ContainerizedToolRunner.get_image()}'."
+                        ),
+                        remediation_hint="Install local binary for native host execution, or continue via container.",
+                    )
+                )
+                return
+
             hint = (
                 INSTALLATION_HINTS.get(tool_name)
                 or INSTALLATION_HINTS.get(binary_name)
