@@ -154,4 +154,20 @@ _Avoid_: Task pool, write lock, transaction worker, batch worker
 A normalized domain finding (`audit.drift`) denoting a specific topological divergence (such as an unexpected open port, absent expected service, or missing required HTTP header) between an observed session graph and an architectural baseline specification.
 _Avoid_: Diff node, discrepancy record, drift error, violation finding
 
+**Audit Manifest & Cryptographic Hash Chain**:
+An append-only, tamper-evident JSONL ledger (`AuditRecord`) linking each supervised action's payload, raw output log hash, and preceding block hash via SHA-256 for mathematical verification of the chain of custody.
+_Avoid_: Action history, command log, tracking file, audit dump
+
+**Scope Validator**:
+A high-leverage RadixTrie-backed network boundary engine in `ActionGateway` that enforces strict CIDR containment and permanently neutralizes cloud metadata/IMDS destinations under `GatePolicy.SAFE`.
+_Avoid_: Network filter, IP checker, range checker
+
+**Write Queue Worker**:
+A decoupled background serialization worker (`WriteQueueWorker`) managing an async operation queue with adaptive transaction batching (25ms window, up to 50 operations) to ensure deadlock-free SQLite WAL writes.
+_Avoid_: Write thread, database queue, batch runner
+
+**Vector Index Engine**:
+A modular subsystem (`VectorIndex`) encapsulating `sqlite-vec` extension loading, `vec_findings` virtual table lifecycle, batch embeddings, and cosine similarity queries.
+_Avoid_: Vector helper, embedding module, search wrapper
+
 

@@ -5,6 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.1.4] - 2026-11-24
+
+### Hardened Core, Sandbox Integrity & Forensic Telemetry Substrate (Epoch 3 Section 5)
+
+#### Forensic Telemetry & Cryptographic Audit Trails
+* **Cryptographic Hash Chaining (`ForensicLogManager`)**: Every supervised tool execution automatically appends an `AuditRecord` containing SHA-256 hashes of the action payload, raw output log file, previous audit record hash, and chained block hash.
+* **Automatic Audit Compaction**: Session closure triggers automatic gzip compaction of uncompressed raw spool files into `{action_id}.log.gz` while verifying and updating SHA-256 hashes in the session audit manifest.
+* **Audit Verification CLI**: Added `ether session verify-audit <SESSION_ID>` CLI subcommand to mechanically verify the cryptographic chain of custody and file integrity.
+
+#### High-Fidelity Scanner Telemetry & Sandbox Integrity
+* **Purge of Destructive Filters**: Completely purged `strip_scanner_noise()` and in-transit credential redaction (`redact_sensitive_artifacts()`). Tool output is preserved in high fidelity for vulnerability and credential discovery.
+* **Bounded Context Framing**: Standardized `wrap_untrusted_output()` with a strict 100,000-character ceiling to prevent context window overflow while neutralizing XML closing tag breakout attacks (`<\/untrusted_scan_output>`).
+* **Presentation-Time Credential Masking**: Implemented `--unmask` flag for CLI node inspection and search, preserving credentials in the graph while masking sensitive attributes by default in terminal output.
+
+#### Deep Seam Gateway & Dynamic Preflight
+* **Deep Scope Validation (`ScopeValidator`)**: Implemented high-performance CIDR containment and link-local/cloud metadata defense (`169.254.169.254`, `fd00:ec2::254`) using `RadixTrie` under `GatePolicy.SAFE`.
+* **Dynamic Target Guidance**: Externalized static lookup tables in `preflight.py`; target guidance is dynamically synthesized from tool manifests, target schemas, and capability metadata.
+* **5-Tier Wordlist Resolution (`AssetResolver`)**: Added hierarchical asset discovery supporting embedded minimal wordlists, system SecLists, user overrides, and prefix stripping (`@wordlist.txt`).
+
+#### Architectural Decoupling & GraphStore Decomposition
+* **Write Queue Worker (`WriteQueueWorker`)**: Extracted async serialization queue and adaptive transaction batch commit worker into a standalone module in `ether.graph.write_queue`.
+* **Vector Index Engine (`VectorIndex`)**: Extracted `sqlite-vec` extension loading, virtual table maintenance, batch embeddings, and cosine similarity search into `ether.graph.vector_index`.
+* **Zero Legacy Shims**: Purged `ActionGateway.neutralize_prompt()` and runtime schema migration DDL loops, adhering to the clean, fresh engine policy.
+
+---
+
 ## [0.1.3] - 2026-11-23
 
 ### Supervisory Model Context Protocol (MCP) Expansion & Extreme Mechanical Constraints

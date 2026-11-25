@@ -119,3 +119,26 @@ def test_action_gateway_resolves_wordlist():
     vars_dict = ActionGateway.resolve_entity_variables()
     assert "WORDLIST" in vars_dict
     assert vars_dict["WORDLIST"].endswith("common_dirs.txt")
+
+
+def test_asset_resolver_prefix_and_fallback(tmp_path):
+    from ether.registry.assets import resolve_wordlist as resolve_asset
+
+    # 1. Prefix stripping
+    p1 = resolve_asset("@minimal.txt")
+    assert p1.name == "minimal.txt"
+    assert p1.is_file()
+
+    p2 = resolve_asset("-w @minimal.txt")
+    assert p2.name == "minimal.txt"
+
+    # 2. Direct file
+    sample = tmp_path / "custom_sample.txt"
+    sample.write_text("item\n", encoding="utf-8")
+    p3 = resolve_asset(str(sample))
+    assert p3 == sample
+
+    # 3. Nonexistent fallback to minimal if empty
+    p_empty = resolve_asset("")
+    assert p_empty.name == "minimal.txt"
+

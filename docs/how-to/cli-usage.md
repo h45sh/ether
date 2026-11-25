@@ -102,6 +102,23 @@ ether session create "External Perimeter Assessment"
 
 # Create a session under a specific workspace
 ether session create "API Fuzzing" --workspace-id <WORKSPACE_ID>
+
+# Verify cryptographic chain of custody and file hashes for a session's audit manifest
+ether session verify-audit <SESSION_ID>
+
+# Verify audit trail and output machine-readable JSON verification status
+ether session verify-audit <SESSION_ID> --json
+
+# Forensically seal a session and compress raw log spools to .log.gz
+ether session close <SESSION_ID>
+```
+
+**Verification Output Example:**
+```text
+INDEX  ACTION ID  TOOL      LOG FILE                      CHAIN  FILE  STATUS
+0      3a8f1b2c   nmap      3a8f1b2c.log.gz              PASS   PASS  VALID
+1      b4c7d9e1   gobuster  b4c7d9e1.log.gz              PASS   PASS  VALID
+[+] Cryptographic audit chain verified: All 2 entries intact.
 ```
 
 ---
@@ -132,6 +149,9 @@ Perform natural language k-NN vector search against findings using embedded `sql
 ```bash
 # Search for web servers or path traversal flaws
 ether graph search <SESSION_ID> "Apache HTTP Server path traversal"
+
+# Display plaintext credentials (passwords, tokens) using --unmask
+ether graph search <SESSION_ID> "administrator login" --unmask
 
 # Limit returned findings and enforce minimum similarity score
 ether graph search <SESSION_ID> "OpenSSH remote code execution" --limit 5 --min-score 0.3
@@ -261,7 +281,33 @@ ether mcp --transport sse --port 8000
 
 ---
 
-## 10. Architectural Drift & Baseline Auditing (`ether drift`)
+## 10. Chained Tool Pipeline DAGs (`ether pipeline`)
+
+Execute multi-stage tool reconnaissance pipelines where normalized findings from one adapter automatically feed as typed targets into downstream adapters (enforcing `GatePolicy` preflight validation and persisting findings when `--session` is provided):
+
+```bash
+# Chain subdomain discovery -> DNS resolution -> HTTP surface probing
+ether pipeline "subfinder(target=example.com) | dnspython | http_probe" --session <SESSION_ID>
+
+# Run with JSON summary output
+ether pipeline "nmap(target=10.10.10.20) | http_probe" --session <SESSION_ID> --json
+```
+
+### Graph Intelligence Subcommands (`ether graph`)
+```bash
+# Compute shortest directed attack path between two entities
+ether graph attack-path <SESSION_ID> <SOURCE_ID> <TARGET_ID>
+
+# Calculate compromise blast radius from a node
+ether graph blast-radius <SESSION_ID> <NODE_ID> --max-depth 10
+
+# Identify critical crown-jewel assets
+ether graph crown-jewels <SESSION_ID>
+```
+
+---
+
+## 11. Architectural Drift & Baseline Auditing (`ether drift`)
 
 The `ether drift` subsystem enables continuous architectural compliance verification by measuring the structural divergence between an observed session graph and an expected ground-truth baseline specification:
 
@@ -298,7 +344,7 @@ ether run --tool nmap --target 192.168.1.1
 
 ---
 
-## 11. Real-World Goal-Oriented CLI Workflows
+## 12. Real-World Goal-Oriented CLI Workflows
 
 ### Workflow A: End-to-End External Surface Discovery Pipeline
 Automate a multi-stage target reconnaissance pass across passive DNS, port discovery, and web probing:

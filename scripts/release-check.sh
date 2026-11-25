@@ -62,6 +62,7 @@ required_assets = [
     prefix + 'common_params.txt.gz',
     prefix + 'common_passwords.txt.gz',
     prefix + 'common_usernames.txt.gz',
+    prefix + 'minimal.txt',
     'tools/nmap/manifest.toml',
     'tools/nuclei/manifest.toml',
     'tools/ffuf/manifest.toml',

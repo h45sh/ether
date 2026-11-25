@@ -9,6 +9,7 @@ from collections import deque
 from typing import Any, AsyncIterator, Callable, Coroutine, Dict, Optional, Tuple
 
 from ether.common import strip_ansi
+from ether.common.forensic_log import LogSpooler
 from ether.graph.store import GraphStore
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
@@ -98,70 +99,6 @@ class StreamTarpitGuard:
                     return True, f"Banner loop detected: identical chunk repeating for {no_finding_elapsed:.1f}s with 0 findings"
 
         return False, ""
-
-
-class LogSpooler:
-    """High-throughput disk spooler with 64KB buffering, ANSI stripping, and \r overwrite normalization."""
-
-    def __init__(self, log_path: Optional[str] = None):
-        self.log_path = log_path
-        self._file = None
-        self._pending_cr_buffer = ""
-        if self.log_path:
-            try:
-                log_dir = os.path.dirname(os.path.abspath(self.log_path))
-                if log_dir:
-                    os.makedirs(log_dir, exist_ok=True)
-                self._file = open(
-                    self.log_path, "a", encoding="utf-8", errors="replace", buffering=65536
-                )
-            except Exception as e:
-                logger.error(f"Failed to open log file {self.log_path}: {e}")
-
-    def write(self, chunk: str) -> None:
-        if self._file:
-            try:
-                # 1. Strip ANSI escape codes
-                clean_chunk = strip_ansi(chunk)
-                if not clean_chunk:
-                    return
-
-                # 2. Normalize CRLF to LF and handle carriage return overwrites
-                combined = (self._pending_cr_buffer + clean_chunk).replace("\r\n", "\n")
-                if "\r" in combined:
-                    lines = combined.split("\n")
-                    self._pending_cr_buffer = lines.pop()
-                    # Collapse each complete line by taking the last segment after \r
-                    collapsed_lines = [line.split("\r")[-1] for line in lines]
-                    if collapsed_lines:
-                        self._file.write("\n".join(collapsed_lines) + "\n")
-                else:
-                    self._pending_cr_buffer = ""
-                    self._file.write(combined)
-            except Exception:
-                pass
-
-    def flush(self) -> None:
-        if self._file:
-            try:
-                if self._pending_cr_buffer:
-                    final_line = self._pending_cr_buffer.split("\r")[-1]
-                    if final_line:
-                        self._file.write(final_line + "\n")
-                    self._pending_cr_buffer = ""
-                self._file.flush()
-            except Exception:
-                pass
-
-    def close(self) -> None:
-        if self._file:
-            try:
-                self.flush()
-                self._file.close()
-            except Exception:
-                pass
-            finally:
-                self._file = None
 
 
 class Executor:

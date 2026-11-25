@@ -59,3 +59,74 @@ async def handle_session_create(args: Any, context: CliContext) -> int:
         print(f"[+] Created session '{name}' (ID: {sess_id}) in workspace '{workspace_id}'")
 
     return EXIT_SUCCESS
+
+
+async def handle_session_verify_audit(args: Any, context: CliContext) -> int:
+    """Verify cryptographic chain of custody and file hashes for a session's audit manifest."""
+    from ether.common.forensic_log import ForensicLogManager
+
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print("[!] Missing required session_id.")
+        return 1
+
+    is_valid, records = ForensicLogManager.verify_session_audit(session_id)
+    if context.is_json:
+        print_json({"session_id": session_id, "valid": is_valid, "entries": records})
+        return EXIT_SUCCESS if is_valid else 1
+
+    if not records:
+        print(f"[-] No audit manifest found for session '{session_id}'.")
+        return EXIT_SUCCESS
+
+    headers = ["INDEX", "ACTION ID", "TOOL", "LOG FILE", "CHAIN", "FILE", "STATUS"]
+    rows = []
+    for r in records:
+        rows.append(
+            [
+                str(r["index"]),
+                str(r["action_id"])[:8],
+                str(r["tool"]),
+                str(r["log_file"]),
+                "PASS" if r["hash_chain_valid"] else "FAIL",
+                "PASS" if r["file_hash_valid"] else "FAIL",
+                "VALID" if r["valid"] else "TAMPERED",
+            ]
+        )
+    print_table(headers, rows)
+    if is_valid:
+        print(f"[+] Cryptographic audit chain verified: All {len(records)} entries intact.")
+        return EXIT_SUCCESS
+    else:
+        print("[!] Forensic audit verification FAILED: Tampering or corruption detected.")
+        return 1
+
+
+async def handle_session_close(args: Any, context: CliContext) -> int:
+    """Seal a session as forensically closed and compress raw log spools to .log.gz."""
+    from ether.common.forensic_log import ForensicLogManager
+
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print("[!] Missing required session_id.")
+        return 1
+
+    async with context.open_store() as store:
+        await store.close_session(session_id)
+
+    compressed_count = ForensicLogManager.compress_session_logs(session_id)
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "status": "CLOSED",
+                "compressed_logs": compressed_count,
+            }
+        )
+    else:
+        print(
+            f"[+] Forensically sealed session '{session_id}' "
+            f"(compressed {compressed_count} log spool(s) to .log.gz)."
+        )
+    return EXIT_SUCCESS

@@ -6,7 +6,6 @@ import pytest
 
 from ether.gateway.gate import GatePolicy
 from ether.gateway.preflight import (
-    DEFAULT_TOOL_TARGETS,
     PreflightVerifier,
     get_tool_target_guidance,
 )
@@ -190,23 +189,27 @@ def test_preflight_wordlist_macro_unseeded_remedy(tmp_path):
 
 
 def test_default_tool_targets_coverage_and_preflight():
-    """Verify all tools in registry have valid default targets satisfying preflight."""
+    """Verify all tools in registry have dynamic target guidance and pass preflight on valid targets."""
     registry = ToolRegistry()
     registry.load_tools()
     verifier = PreflightVerifier()
 
-    assert len(registry.tools) == len(DEFAULT_TOOL_TARGETS)
+    assert len(registry.tools) > 0
     for tool_name in registry.tools:
-        assert tool_name in DEFAULT_TOOL_TARGETS
-        target = DEFAULT_TOOL_TARGETS[tool_name]
-        assert bool(target)
+        target_types = verifier._get_tool_target_types(tool_name)
+        if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
+            target = "http://scanme.nmap.org"
+        elif "domain" in target_types and "ip" not in target_types:
+            target = "example.com"
+        else:
+            target = "127.0.0.1"
 
         report = verifier.verify(tool_name, target=target, flags="")
         non_binary_errors = [
             i for i in report.issues if i.severity == "error" and i.category != "binary"
         ]
         assert not non_binary_errors, (
-            f"Tool {tool_name} failed preflight on default target: {non_binary_errors}"
+            f"Tool {tool_name} failed preflight on dynamic target {target}: {non_binary_errors}"
         )
 
         guidance = get_tool_target_guidance(tool_name)

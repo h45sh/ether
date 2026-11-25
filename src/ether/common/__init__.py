@@ -30,15 +30,18 @@ from ether.common.secure_memory import SecureBuffer, wipe_buffer, wipe_credentia
 
 __all__ = [
     "ANSI_ESCAPE_RE",
+    "AuditRecord",
     "BloomFilter",
     "CTF_FLAG_RE",
     "CryptoError",
     "DisjointSet",
     "EtherError",
     "ExecutionErrorCategory",
+    "ForensicLogManager",
     "IPRadixTrie",
     "InvalidArchiveFormatError",
     "InvalidPassphraseError",
+    "LogSpooler",
     "MinHash",
     "PolicyViolationError",
     "SecureBuffer",
@@ -53,7 +56,6 @@ __all__ = [
     "knapsack_01",
     "sanitize_untrusted_output",
     "strip_ansi",
-    "strip_scanner_noise",
     "wipe_buffer",
     "wipe_credentials",
 ]
@@ -134,76 +136,12 @@ def extract_ctf_flags(text: str) -> List[str]:
     return flags
 
 
-def strip_scanner_noise(raw_text: str) -> str:
-    """Filter out repetitive scanner banner headers, ASCII art, and progress bars."""
-    cleaned_text = ANSI_ESCAPE_RE.sub("", raw_text)
-    lines = cleaned_text.splitlines()
-    cleaned = []
-    noise_prefixes = (
-        "Starting Nmap",
-        "Nmap done:",
-        "Gobuster v",
-        "by OJ Reeves",
-        "[-] Loaded",
-        "[-] Target:",
-        "[-] Flags:",
-        "[-] Method:",
-        "[-] Wordlist:",
-        "[-] Extensions:",
-        "[-] Mode:",
-        "[-] Threads:",
-        "[-] Timeout:",
-        "- Nikto v",
-        "+ Target IP:",
-        "+ Target Hostname:",
-        "+ Target Port:",
-        "+ Start Time:",
-        "+ End Time:",
-        "+ 0 host(s) tested",
-        ":: Method :",
-        ":: URL :",
-        ":: Wordlist :",
-        ":: Header :",
-        ":: Output :",
-        ":: Follow :",
-        "[INF] Current nuclei version:",
-        "[INF] New templates added in nuclei-templates",
-        "[INF] Loading templates...",
-        "[INF] Using",
-        "[INF] Target:",
-        "[INF] Templates cluster",
-        "[INF] Scan stats:",
-        "[INF] Enumerating subdomains for",
-        "% This is the RIPE Database",
-        "% Rights restricted",
-        "# whois.arin.net",
-        "NOTICE: The expiration date",
-        "___",
-        "---",
-        "===",
-        "***",
-    )
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if all(c in "=-_*~#./\\ " for c in stripped) and len(stripped) > 4:
-            continue
-        if "Progress:" in stripped or "Stats:" in stripped or "ETA:" in stripped:
-            continue
-        normalized = re.sub(r"^\[[\+\*\-\!]\]\s*", "", stripped)
-        if any(stripped.startswith(p) or normalized.startswith(p) for p in noise_prefixes):
-            continue
-        if sum(1 for c in stripped if c in "/\\|`_") > len(stripped) * 0.5 and len(stripped) > 5:
-            continue
-        cleaned.append(stripped)
-
-    return "\n".join(cleaned[-60:]) if cleaned else raw_text[-1500:]
-
-
 def sanitize_untrusted_output(raw_text: str) -> str:
     """Wrap untrusted scanner output in protective boundary tags and neutralize breakout attempts."""
     if not raw_text:
         return "<untrusted_scan_output>\n</untrusted_scan_output>"
     neutralized = raw_text.replace("</untrusted_scan_output>", r"<\/untrusted_scan_output>")
     return f"<untrusted_scan_output>\n{neutralized}\n</untrusted_scan_output>"
+
+
+from ether.common.forensic_log import AuditRecord, ForensicLogManager, LogSpooler

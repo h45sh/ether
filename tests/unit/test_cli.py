@@ -133,6 +133,14 @@ async def test_cli_session_and_graph_commands(tmp_path, capsys):
     assert snap["session_id"] == sess_id
     assert snap["graph_summary"]["total_nodes"] >= 1
 
+    # 7. Session Verify Audit
+    code = main(["session", "verify-audit", sess_id, "--db", db_file, "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    audit_data = json.loads(captured.out)
+    assert audit_data["session_id"] == sess_id
+    assert audit_data["valid"] is True
+
 
 def test_cli_run_blocks_cloud_metadata(tmp_path, capsys):
     """Verify 'ether run' preflight gate blocks cloud metadata under safe policy."""

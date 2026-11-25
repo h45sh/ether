@@ -54,10 +54,13 @@ Ether operates as a headless reactive process supervisor, AST validator, and det
    Ether enforces `GatePolicy.SAFE` by default: target validation, Link-Local and cloud metadata blocking (`169.254.0.0/16`, `fd00:ec2::254`, `100.100.100.200`, `metadata.google.internal`). Bypasses that trick the gateway into dispatching requests to cloud metadata services or bypassing target CIDR boundary checks under `GatePolicy.SAFE` are considered high-severity security issues.
 
 4. **AI Prompt Injection Boundary**:
-   Untrusted scanner outputs passed to AI models must be wrapped inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`</untrusted_scan_output>` replaced with `<\/untrusted_scan_output>`) and credential redaction (PEM keys, tokens, passwords). Exploits that achieve prompt injection override or credential exfiltration are in-scope.
+   Untrusted scanner outputs passed to AI models must be wrapped inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`</untrusted_scan_output>` replaced with `<\/untrusted_scan_output>`) and strict length bounding (`max_chars=100_000`). Discovered credentials remain unmutated in the entity graph for technical fidelity, with sensitive values masked at presentation time unless `--unmask` is explicitly supplied. Exploits that achieve prompt injection override or sandbox breakout are in-scope.
 
 5. **Session Database Hardening & Parameterization**:
    Exported and internal SQLite databases enforce 100% parameterized SQL queries (`?`), `PRAGMA foreign_keys = ON;`, and `PRAGMA journal_mode = WAL;`. Deserialization flaws leading to path traversal, arbitrary file writes, or trigger execution are in-scope.
 
 6. **Local Filesystem Permissions**:
    Sensitive exported archives, operator state, and credential caches enforce atomic `0o600` permissions (`atomic_create_file` or `os.open` with `O_CREAT | O_WRONLY | O_TRUNC`) to prevent TOCTOU permission races.
+
+7. **Forensic Integrity & Audit Chain of Custody**:
+   All executed actions generate cryptographically hash-chained `AuditRecord` entries in `~/.ether/audit/{session_id}.jsonl`. Each record links the previous block hash and verifies raw log file integrity (`SHA-256`), with automatic gzip compaction upon session closure. Tampering with audit logs or manifests is detectable via `ether session verify-audit`.

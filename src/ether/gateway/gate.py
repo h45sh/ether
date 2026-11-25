@@ -256,13 +256,6 @@ class ActionGateway:
         return True
 
     @staticmethod
-    def neutralize_prompt(prompt: str) -> str:
-        """Translate aggressive phrasing in agent instructions into standardized NIST/OWASP terminology."""
-        from ether.gateway.neutralizer import PromptNeutralizer
-
-        return PromptNeutralizer.neutralize(prompt)
-
-    @staticmethod
     def infer_target_finding(target: str) -> BaseFinding:
         """Infer the typed BaseFinding entity from a raw target string."""
         import ipaddress

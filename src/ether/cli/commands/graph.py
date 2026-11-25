@@ -343,13 +343,132 @@ async def handle_graph_belief(args: Any, context: CliContext) -> int:
     headers = ["NODE ID", "CONFIDENCE", "HONEYPOT", "TARPIT", "INDICATORS"]
     rows = []
     for b in beliefs:
-        rows.append([
-            b["node_id"][:12] + "...",
-            f"{b['confidence']:.2f}",
-            "YES" if b["is_honeypot"] else "no",
-            "YES" if b["is_tarpit"] else "no",
-            ", ".join(b["indicators"]) if b["indicators"] else "none",
-        ])
+        rows.append(
+            [
+                b["node_id"][:12] + "...",
+                f"{b['confidence']:.2f}",
+                "YES" if b["is_honeypot"] else "no",
+                "YES" if b["is_tarpit"] else "no",
+                ", ".join(b["indicators"]) if b["indicators"] else "none",
+            ]
+        )
     print_table(headers, rows)
     return EXIT_SUCCESS
 
+
+async def handle_graph_attack_path(args: Any, context: CliContext) -> int:
+    """Compute shortest directed attack path between two entity IDs."""
+    from ether.graph.analytics import GraphAnalyticsEngine
+
+    session_id = getattr(args, "session_id", None)
+    source_id = getattr(args, "source_id", None)
+    target_id = getattr(args, "target_id", None)
+    if not session_id or not source_id or not target_id:
+        print_error("session_id, source_id, and target_id are required.")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+    analytics = GraphAnalyticsEngine(nodes, edges)
+    path = analytics.find_shortest_attack_path(source_id, target_id)
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "source_id": source_id,
+                "target_id": target_id,
+                "found": path is not None,
+                "path": path or [],
+            }
+        )
+        return EXIT_SUCCESS
+
+    if not path:
+        print(f"[-] No directed attack path found from '{source_id}' to '{target_id}'.")
+        return EXIT_SUCCESS
+
+    print(f"[+] Shortest Attack Path ({len(path)} hops):")
+    for idx, nid in enumerate(path):
+        print(f"  {idx + 1}. {nid}")
+    return EXIT_SUCCESS
+
+
+async def handle_graph_blast_radius(args: Any, context: CliContext) -> int:
+    """Calculate compromise blast radius for a compromised entity node."""
+    from ether.graph.analytics import GraphAnalyticsEngine
+
+    session_id = getattr(args, "session_id", None)
+    node_id = getattr(args, "node_id", None)
+    max_depth = int(getattr(args, "max_depth", 10))
+    if not session_id or not node_id:
+        print_error("session_id and node_id are required.")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+    analytics = GraphAnalyticsEngine(nodes, edges)
+    radius_set = analytics.calculate_blast_radius(node_id, max_depth=max_depth)
+    affected = sorted(list(radius_set))
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "compromised_node_id": node_id,
+                "max_depth": max_depth,
+                "total_affected": len(affected),
+                "affected_entity_ids": affected,
+            }
+        )
+        return EXIT_SUCCESS
+
+    print(
+        f"[+] Compromise Blast Radius for '{node_id}' (max_depth={max_depth}): {len(affected)} entity(ies)"
+    )
+    for nid in affected:
+        print(f"  - {nid}")
+    return EXIT_SUCCESS
+
+
+async def handle_graph_crown_jewels(args: Any, context: CliContext) -> int:
+    """Identify critical crown-jewel assets and topological choke points."""
+    from ether.graph.analytics import GraphAnalyticsEngine
+
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required.")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+    analytics = GraphAnalyticsEngine(nodes, edges)
+    jewels = analytics.identify_critical_assets()
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "total_critical": len(jewels),
+                "crown_jewels": jewels,
+            }
+        )
+        return EXIT_SUCCESS
+
+    if not jewels:
+        print("No critical crown-jewel assets identified in session.")
+        return EXIT_SUCCESS
+
+    headers = ["NODE ID", "SCHEMA TYPE", "STATUS"]
+    rows = [
+        [j.get("id", "")[:12] + "...", j.get("schema_type", ""), j.get("status", "")]
+        for j in jewels
+    ]
+    print_table(headers, rows)
+    return EXIT_SUCCESS

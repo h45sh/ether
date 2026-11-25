@@ -39,7 +39,8 @@ Ether manages database files across distinct locations depending on operational 
 ```text
 ~/.ether/ (or $ETHER_DATA_DIR, mode 0700)
 ├── ether.db           # Default global workspace & session database
-├── logs/              # 64KB buffered subprocess raw output spools ({action_id}.log)
+├── logs/              # 64KB buffered subprocess raw output spools ({action_id}.log / .log.gz)
+├── audit/             # Cryptographic session audit manifests ({session_id}.jsonl)
 ├── exports/           # Portable standalone or encrypted session archives
 └── scratchpad.md      # Operator notes (mode 0600)
 ```

@@ -23,9 +23,9 @@ Instead of human operators and AI agents clumsily spawning raw bash subshells an
 
 ```text
  Epoch 1 ───────► Epoch 2 ───────► Epoch 3 ───────► Epoch 4 ───────► Epoch 5
- Decoupled        Autonomous       High-Throughput  Unrestricted     Distributed
- Foundation       Agent Gateway    Chained Mesh     Offensive Engine Sovereign Fleet
- (Current)        (MCP & Diffs)    (DAG Pipelines)  (PTY & Attack)   (Global Graph)
+ Decoupled        Autonomous       High-Throughput  Virtual PTY &    Distributed Mesh
+ Foundation       Agent Gateway    Chained Mesh     Deep Inspection  & Autonomous Swarm
+ (Substrate Core) (MCP & Diffs)    (DAG Pipelines)  (PTY, APK, Goals)(CRDTs, IDS, Fleet)
 ```
 
 ---
@@ -216,28 +216,28 @@ Based on empirical findings, failure modes, and performance telemetry from the 6
 #### 5. Deep Seam Refactoring & High-Fidelity Telemetry Substrate (via `$codebase-design`)
 Restructure gateway, execution, and sanitization boundaries to follow deep module principles—replacing shallow filters, paternalistic overrides, and destructive text mangling with high-leverage interfaces that preserve forensic integrity for professional labs and sovereign operators:
 
-- [ ] **Elimination of Shallow Output Truncators (`strip_scanner_noise` Refactoring):**
+- [x] **Elimination of Shallow Output Truncators (`strip_scanner_noise` Refactoring):**
   - *Problem*: `strip_scanner_noise` acts as a shallow filter that drops banners matching arbitrary string prefixes and truncates tool output to the last 60 lines, destroying critical version banners, SSL details, and CVE correlation evidence.
   - *Deep Module Design*: Deprecate shallow text slicing. Centralize stream capture behind the deep `LogSpooler` module interface (`spool(chunk: bytes)` / `stream() -> AsyncIterator[bytes]`).
   - *Implementation*: Hides circular ring buffering (`deque(maxlen=5000)`), 64KB atomic chunking, and raw forensic disk spooling.
   - *Leverage & Locality*: Structured telemetry extraction is localized entirely inside deep `ToolAdapter` implementations at the adapter seam; callers receive complete, unmutated streams with zero forensic data loss.
-- [ ] **De-linking In-Transit Credential Redaction from Ingestion Seam:**
+- [x] **De-linking In-Transit Credential Redaction from Ingestion Seam:**
   - *Problem*: `redact_sensitive_artifacts` blindly replaces discovered private keys, bearer tokens, and passwords with `[REDACTED_*]` strings in transit, breaking the core objective of credential discovery tools (`hydra`, `netexec`, `sqlmap`).
   - *Deep Module Design*: Remove destructive string mutilation from the stream and parser seams. Tools must emit intact findings into typed `CredentialFinding` and `VulnerabilityFinding` schemas.
   - *Implementation*: Enforce artifact confidentiality at the storage and memory seams using the deep `SecureBuffer` (`ether.common.secure_memory`) and encrypted SQLite WAL archive modules rather than destroying operational data mid-flight.
-- [ ] **Deep Rules of Engagement (RoE) Scope Module (`ether.gateway.scope`):**
+- [x] **Deep Rules of Engagement (RoE) Scope Module (`ether.gateway.scope`):**
   - *Problem*: The existing `preflight.py` is bloated with shallow static dictionaries (`DEFAULT_TOOL_TARGETS`, `WEB_TOOLS`) and rigid hardcoded bans (blocking loopback `127.0.0.1` and `sudo`), obstructing authorized lab workflows, container bridges, and SYN scanning.
   - *Deep Module Design*: Replace shallow static validation lists with a deep `ScopeValidator` module placed cleanly at the gateway seam.
   - *Interface*: `is_in_scope(target: str, scope: EngagementScope) -> ScopeVerdict` (minimal caller footprint).
   - *Implementation*: Hides CIDR Radix Trie matching, FQDN globbing, container bridge subnet resolution, and cloud IMDS (`169.254.169.254`) SSRF boundary enforcement.
   - *Leverage*: One deep module serves all CLI, MCP, and autonomous pipeline callers, permitting local lab audits when authorized while strictly preventing unauthorized egress.
-- [ ] **Decoupled Prompt Neutralization Seam:**
+- [x] **Decoupled Prompt Neutralization Seam:**
   - *Problem*: Hardcoding artificial vocabulary translation (`PromptNeutralizer` converting `exploit` $\rightarrow$ `verify vulnerability impact`) into the gateway core distorts operator intent and disrupts custom security tooling.
   - *Deep Module Design*: Retire prompt mutation from the core execution gateway. Relocate defensive prompt framing to an upstream agent-skill seam (where autonomous planning agents formulate natural compliance prompts), ensuring the core execution engine preserves exact technical commands and arguments verbatim.
-- [ ] **Externalized Wordlist & Asset Seam (`ether.registry.assets`):**
+- [x] **Externalized Wordlist & Asset Seam (`ether.registry.assets`):**
   - *Problem*: Bundling static seed wordlists (`common.txt`) inside the core library creates packaging bloat and maintenance overhead for tools that real labs already configure with SecLists.
   - *Deep Module Design*: Prune static text files from the core package implementation. Deepen the asset resolution interface (`resolve_wordlist(spec: str) -> Path`) to resolve against system paths (`/usr/share/seclists`, `/usr/share/wordlists`) and user environment contracts.
-- [ ] **Forensic-Grade Session Log Architecture & Auditability (`ether.common.forensic_log`):**
+- [x] **Forensic-Grade Session Log Architecture & Auditability (`ether.common.forensic_log`):**
   - *Problem*: Scans currently dump unindexed, opaque files directly into a flat directory (`~/.ether/logs/<action_id>.log`). Forensic investigators and red-team auditors cannot determine which tool ran, which target was scanned, or which session owned the run without manual grep over hundreds of UUID files.
   - *Deep Module Design*: Replace flat file dumping with a deep `ForensicLogManager` module placed at the spooling seam.
   - *Small Interface*: `open_action_spool(session_id, action) -> LogSpooler` and `query_session_audit(session_id, filter) -> Sequence[AuditRecord]`.
@@ -248,53 +248,236 @@ Restructure gateway, execution, and sanitization boundaries to follow deep modul
     - **Cryptographic Chain of Custody**: SHA-256 hash chaining over completed scan logs for tamper-evident forensic reporting.
   - *Leverage & Locality*: Callers and execution sessions use a single clean interface for logging without leaking path formatting, file handles, or rotation logic across the codebase.
 
-### Epoch 4: The Unrestricted Offensive Engine (Offensive Workstation Core)
+#### 6. Empirical Hardening & Operational Resilience (Resolving Run 1 Deficiencies)
+Directly addressing the empirical bottlenecks, tool dropouts, and latency anomalies identified in the live multi-agent AWS benchmark (`reports/run_1/`):
+
+- [ ] **Hermetic Container Tool Execution & Automated Binary Provisioning (`ether.core.container`):**
+  - *Problem from Run 1*: Autonomous agents failed to discover client-side Single-Page Application (SPA) routes on OWASP Juice Shop (`/#/login`, `/#/score-board`) and hidden API query parameters because `katana`, `arjun`, `sqlmap`, and `naabu` were missing from the host system environment.
+  - *Deep Module Design*: Create a deep `ContainerizedToolRunner` placed at the execution supervisor seam.
+  - *Seam Placement*: Execution supervisor seam (`ether.core.container.ContainerizedToolRunner`).
+  - *Small Interface*: `execute_hermetic_tool(tool_name: str, target: str, args: Sequence[str], context: ExecutionContext) -> AsyncIterator[bytes]`.
+  - *Implementation (Hidden Complexity)*:
+    - Transparent binary presence check on system `$PATH`. If present locally, execute directly via pure argument vectors.
+    - If absent, seamlessly fall back to an isolated, OCI-compliant container runtime (`podman` / `docker` / rootless `runc` using `ghcr.io/ether/arsenal:latest`) with mounts restricted to the specific target socket and log spool.
+    - Zero host configuration: agents execute tool adapters uniformly without knowing whether a tool is a local binary, an in-process coroutine, or a containerized worker.
+  - *Leverage & Locality*: Resolves the "missing tool" operational blind spot for any tool adapter across all host operating systems without polluting the host environment or requiring manual apt/brew installations.
+  - *The Deletion Test*: Deleting this module would require human operators or deployment scripts to pre-install 37+ disparate binary dependencies manually on every agent machine.
+
+- [ ] **Ambient Raw Socket Acceleration & Stealth SYN Scanner (`ether.core.raw_net`):**
+  - *Problem from Run 1*: Without root privileges, Nmap defaulted to unprivileged TCP Connect handshakes (`-sT`), ballooning scan latency to ~26.3 seconds per target host (5× slower than raw SYN scans).
+  - *Deep Module Design*: Create a deep `RawNetworkGovernor` module placed at the network execution seam.
+  - *Seam Placement*: Packet crafting and socket seam (`ether.core.raw_net.RawNetworkGovernor`).
+  - *Small Interface*: `fast_syn_sweep(target: str, ports: Sequence[int], timeout_sec: float = 2.0) -> AsyncIterator[ServiceProbeResult]`.
+  - *Implementation (Hidden Complexity)*:
+    - Detects and acquires Linux ambient capabilities (`CAP_NET_RAW` / `CAP_NET_ADMIN`) or utilizes in-process Scapy/eBPF raw socket filters.
+    - Emits asynchronous, non-blocking TCP SYN half-open probe bursts directly from the event loop, parsing incoming SYN-ACK / RST packets in under 1 second without child process fork overhead.
+    - Automatically falls back to high-concurrency non-blocking connect coroutines (`asyncio.open_connection` pool) when raw socket access is strictly denied by OS hypervisors.
+  - *Leverage & Locality*: All network reconnaissance adapters (`nmap`, `naabu`, `masscan`) query port state through a single optimized driver, reducing host discovery latency from 26 seconds to <1.5 seconds.
+  - *The Deletion Test*: Deleting this module forces all network tools to either run as full root or suffer massive latency penalties from unprivileged OS TCP handshake handoffs.
+
+- [ ] **Resilient Heuristic Stream Chunk Recovery (`ether.core.recovery`):**
+  - *Problem from Run 1*: When long-running external scanners (`nuclei`, `ffuf`) hit execution timeouts (e.g. Nuclei timing out at 35 seconds) or were terminated prematurely, trailing JSON streams were discarded, losing valuable in-flight findings discovered before process termination.
+  - *Deep Module Design*: Deep `HeuristicStreamRecovery` module placed at the parser pipeline seam.
+  - *Seam Placement*: Stream chunk normalization seam (`ether.core.recovery.StreamRecoveryEngine`).
+  - *Small Interface*: `salvage_stream_chunks(damaged_buffer: bytes, expected_schema: Type[BaseFinding]) -> Sequence[BaseFinding]`.
+  - *Implementation (Hidden Complexity)*:
+    - Intercepts partial or malformed JSON/XML parser exceptions on process exit.
+    - Employs streaming regex lookahead to identify complete, valid JSON objects within truncated array buffers (`[{...}, {...}, {"part...`), parsing valid entities while safely dropping only the corrupted terminal fragment.
+    - Injects execution timeout markers directly into the session telemetry, distinguishing between target unresponsiveness, firewall tarpits, and local tool failure.
+  - *Leverage & Locality*: Tool adapters retain 100% of partial findings even when commands time out or are cancelled, preventing lost intelligence during autonomous agent loops.
+  - *The Deletion Test*: Deleting this module causes any interrupted or timed-out tool run to lose 100% of its findings, forcing redundant re-scans.
+
+- [ ] **Automated Storage Quota & Background Log Lifecycle (`ether.common.storage`):**
+  - *Problem from Run 1*: High-throughput stress tests generated 26.5MB of uncompressed raw console logs in a single run. Continuous operations will exhaust host disk space over time.
+  - *Deep Module Design*: Deep `StorageLifecycleManager` placed at the filesystem persistence seam.
+  - *Seam Placement*: Spooling and storage persistence seam (`ether.common.storage.StorageLifecycleManager`).
+  - *Small Interface*: `enforce_retention_policy(max_disk_mb: int = 1000, max_age_days: int = 30) -> StoragePruneReport`.
+  - *Implementation (Hidden Complexity)*:
+    - Background asynchronous worker monitoring the `~/.ether/logs/` tree.
+    - Transparent on-disk Zstandard (`zstd`) compression for completed scan session logs (>90% compression ratio on terminal ANSI logs).
+    - Hard disk watermark enforcement: automatically prunes oldest non-flagged forensic logs when directory size approaches configurable quota (default 1GB).
+  - *Leverage & Locality*: Host machines maintain bounded disk usage indefinitely during 24/7 autonomous monitoring without requiring manual cron logrotate configurations.
+  - *The Deletion Test*: Deleting this module leads to inevitable disk exhaustion during continuous fuzzing or large-scale network surveys.
+
+- [ ] **Adaptive Volatility Scoring & Rapid State Decay for High-Churn Cloud Targets (`GraphStore`):**
+  - *Problem from Run 1*: The static 3600-second TTL decay was too coarse to capture containerized services mutating or restarting on 10-minute cycles (such as the vulnerable AWS container stack).
+  - *Deep Module Design*: Implement adaptive volatility decay calculations directly inside `GraphStore`.
+  - *Seam Placement*: Entity state machine seam (`ether.graph.store.GraphStore.apply_temporal_decay`).
+  - *Implementation*:
+    - Computes a mathematical volatility coefficient $V_n \in [0.1, 1.0]$ based on historical flapping frequency and container restart intervals.
+    - Dynamically scales TTL window: highly stable bare-metal hosts maintain long confidence windows, while dynamic cloud containers accelerate confidence decay (`confirmed` $\rightarrow$ `flapping` $\rightarrow$ `stale`) in sub-15-minute cycles, matching real-world ephemeral cloud architectures.
+
+### Epoch 4: The Unrestricted Virtual PTY & Enterprise Identity Engine
 *Target: v0.5.0*
-*Focus: Sovereign offensive operations, full PTY emulation, and exploit choreography.*
+*Focus: POSIX pseudo-terminal virtualization, in-memory VT102 screen emulation, Active Directory & Cloud IAM graph calculus, and autonomous background daemonization.*
 
-- [ ] **Zero-Tampering Forensic Stream Seam (Sovereign Telemetry Invariant):**
-  - Guarantee that the PTY supervisor and process execution modules enforce an absolute zero-tampering invariant across the stream seam: 100% of raw byte streams, ANSI cursor motions, and terminal escape sequences are preserved byte-for-byte for forensic replay and operator review, with zero paternalistic filtering.
+- [ ] **Dual-Path Interactive POSIX PTY Supervisor (`ether.core.pty`):**
+  - *Problem*: Current process supervision routes standard I/O via non-interactive pipes with `stdin=DEVNULL`. Interactive security utilities (`msfconsole`, `gdb`, reverse shell listeners, interactive SSH, password challenges, and `sudo`) hang, fail to allocate terminal buffers, or corrupt ANSI cursor state.
+  - *Deep Module Design*: Replace shallow pipe wrappers with a deep `PtySupervisor` module placed at the execution seam.
+  - *Seam Placement*: Process execution seam (`ether.core.pty.PtySupervisor`).
+  - *Minimal Interface Surface*:
+    ```python
+    class PtySession:
+        async def write(self, data: bytes) -> None: ...
+        async def read_screen(self) -> ScreenMatrix: ...
+        async def resize(self, rows: int, cols: int) -> None: ...
+        async def terminate(self, grace_period_sec: float = 5.0) -> int: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Dedicated OS pseudo-terminal allocation (`master_fd`/`slave_fd` via `os.openpty`).
+    - In-memory headless VT102/xterm screen state machine via `pyte` tracking 2D character matrices, ANSI color buffers, cursor coordinates, and scrollback ring buffers.
+    - Asynchronous non-blocking I/O loop (`asyncio.get_running_loop().add_reader`) streaming bytes directly to 64KB disk spools without event loop starvation.
+    - Transparent propagation of window resize signals (`SIGWINCH` via `fcntl.ioctl` with `termios.TIOCSWINSZ`).
+    - Passive in-stream telemetry hook: evaluates raw byte streams with non-destructive regex scanners to extract credentials and session tokens in real time without modifying or delaying byte delivery.
+  - *Leverage & Locality*: Callers (CLI operators, MCP agents, automated scripts) receive an identical, clean `PtySession` handle; raw terminal control sequences, terminal emulator state machines, and OS signal wiring are encapsulated in one module.
+  - *The Deletion Test*: Deleting this module would force every calling agent or CLI command to manually juggle raw terminal termios flags, manage OS file descriptors, and parse ANSI escape sequences.
 
-- [ ] **Dual-Path Interactive POSIX PTY Supervisor (`pyte` + `ptyprocess` / `os.openpty`):**
-  - *Transferred from CyGuide Engine Core*
-  - Dedicated OS pseudo-terminal pair (`master_fd`/`slave_fd`) allocation replacing `stdin=DEVNULL` for interactive tools (`msfconsole`, `gdb`, reverse shell listeners, `ssh`, `sudo`).
-  - In-memory VT102/xterm screen emulation via `pyte` to track ANSI escape codes, cursor positions, color buffers, and screen diffs.
-  - Forwarding terminal window resize signals (`SIGWINCH` via `fcntl.ioctl` with `termios.TIOCSWINSZ`).
-  - Background loot & credential extraction from live interactive streams without interrupting the operator shell.
-- [ ] **Enterprise Active Directory Protocol Engine (`impacket` & `bloodhound-python`):**
-  - Python-native Active Directory assessment engine providing Kerberoasting, AS-REP roasting, and SMB/RPC/LDAP interaction as in-process async coroutines.
-  - Integration with `bloodhound-python` to ingest Active Directory domain ACLs, object permissions, and trust relationships directly into the target graph.
-  - Emits typed findings (`ad.user`, `ad.spn`, `ad.ticket`, `ad.share`, `ad.acl`) directly into the target graph.
-- [ ] **Binary Exploitation & Exploit Choreography Bridge (`pwntools` + `msfconsole`):**
+- [ ] **Zero-Tampering Sovereign Telemetry Seam (Forensic Integrity Invariant):**
+  - Enforce an absolute zero-tampering invariant across the PTY and subprocess stream seams: 100% of raw byte streams, ANSI cursor motions, and terminal escape sequences are preserved byte-for-byte for forensic replay and operator review, with zero paternalistic filtering.
+  - Provide an append-only terminal session replay stream (`.cast` / asciinema format) directly from the underlying disk spool.
+
+- [ ] **Enterprise Active Directory & Cloud Identity Graph Engine (`ether.graph.identity`):**
+  - *Problem*: Discovered network hosts and open ports are disconnected from enterprise authorization structures. Attack paths traversing LDAP permissions, Kerberos tickets, and Cloud IAM trust relationships cannot be evaluated in a flat network graph.
+  - *Deep Module Design*: Replace ad-hoc script parsing with a deep `EnterpriseIdentityEngine` placed at the graph modeling seam.
+  - *Seam Placement*: Graph domain layer (`ether.graph.identity.IdentityEngine`).
+  - *Minimal Interface Surface*:
+    ```python
+    class IdentityEngine:
+        async def ingest_identity_finding(self, finding: BaseFinding) -> NodeId: ...
+        async def compute_privilege_path(self, session_id: str, source_node: NodeId, target_node: NodeId) -> AttackPath: ...
+        async def calculate_blast_radius(self, session_id: str, compromised_node: NodeId) -> BlastRadius: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Pure-Python in-process asynchronous protocol adapters querying LDAP, Kerberos, and SMB using `impacket` and native coroutines (Kerberoasting, AS-REP roasting, domain controller trust enumeration).
+    - BloodHound graph ontology normalization: ingests `MemberOf`, `GenericAll`, `WriteDacl`, `AllExtendedRights`, and `AddMember` edges directly into SQLite `graph_edges`.
+    - Unified Cloud IAM graph expansion: ingests AWS IAM policies, Azure Entra ID service principals, and GCP service account keys, modeling cross-cloud assume-role trust chains.
+    - Graph path calculus: directed multi-hop shortest attack path evaluation, transitive blast radius reachability, and automated choke-point identification (Brandes' betweenness centrality).
+  - *Leverage & Locality*: One deep module handles Active Directory, cloud permissions, and path traversal without exposing LDAP queries, ASN.1 parsing, or graph traversal mathematics to external callers.
+  - *The Deletion Test*: Deleting this module would scatter Kerberos ticket parsing, BloodHound JSON transformation, and graph pathfinding algorithms across disparate tool adapters.
+
+- [ ] **Cross-Platform Binary & Mobile Package Inspection (`ether.analysis.artifact`):**
+  - *Problem*: Security engineers and autonomous agents need to audit compiled binaries, mobile applications, and system artifacts across diverse platforms (Android APK, macOS Mach-O, iOS IPA, Windows PE, Linux ELF). Current workflows rely on fragmented, ad-hoc CLI tools (`jadx`, `apktool`, `rabin2`, `checksec`, `codesign`, `otool`) emitting incompatible text formats and requiring complex host orchestration.
+  - *Deep Module Design*: Create a unified `ArtifactAnalyzer` module placed at the artifact inspection seam.
+  - *Seam Placement*: Binary and package analysis seam (`ether.analysis.artifact.ArtifactAnalyzer`).
+  - *Minimal Interface Surface*:
+    ```python
+    class ArtifactAnalyzer:
+        async def inspect_artifact(self, artifact_path: Path, config: AnalysisConfig | None = None) -> ArtifactFinding: ...
+        async def extract_decompilation(self, artifact_path: Path, symbol_or_class: str) -> DecompilationResult: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Magic-byte container identification: automatically disambiguates ELF, PE/COFF, Mach-O (thin and universal fat binaries), Android DEX/APK ZIP bundles, and iOS IPA archives.
+    - Platform-specific deep static inspection:
+      - **Android APK**: Manifest parsing (`AndroidManifest.xml`), dangerous permissions, exported components (Activities, Services, Broadcast Receivers), debuggable flags, intent-filter vulnerabilities, and native `.so` library checks.
+      - **macOS / iOS (Mach-O / IPA)**: Entitlements plist extraction, codesigning certificate validation, Provisioning Profile verification, Hardened Runtime checks, dynamic library load commands (`LC_LOAD_DYLIB`), and dylib hijacking risks.
+      - **Linux ELF / Windows PE**: Binary mitigation auditing (RELRO, stack canaries, NX/DEP, PIE/ASLR, SafeSEH, Authenticode digital signatures), import/export address tables (IAT/EAT), and Shannon entropy calculation across sections (packer/crypter detection).
+      - **Reverse Engineering**: Headless disassembly and decompilation via in-process binary parsers and headless decompiler bindings (rizin/radare2, Ghidra headless, JADX decompiler coroutines).
+    - Maps all discovered artifacts into deterministic graph nodes (`binary.executable`, `binary.mitigation`, `mobile.permission`, `mobile.component`) indexed by SHA-256 Primary Identity Keys.
+  - *Leverage & Locality*: One uniform method call (`inspect_artifact`) handles any binary or mobile package regardless of target operating system; format identification, archive decompression, bytecode parsing, and symbol demangling are completely encapsulated.
+  - *The Deletion Test*: Deleting this module would force calling agents or scripts to maintain 8 separate tool pipelines, manually unzip APKs/IPAs, parse XML/plist files, and calculate binary entropy by hand.
+
+- [ ] **Binary Exploitation & Exploit Choreography Bridge (`ether.core.interactive`):**
   - Supervised PTY adapter for managing active Metasploit shells, meterpreter sessions, and payload handlers.
   - In-process `pwntools` integration for remote socket interaction, ROP gadget analysis, and exploit staging.
+  - Programmatic session handover: seamless transition from autonomous scanning to interactive operator exploitation shells.
+
 - [x] **Attack Graph Traversal & Path Discovery (`ether.graph.analytics`):**
   - In-memory directed graph intelligence engine (`GraphAnalyticsEngine`):
     - BFS shortest attack path discovery across multi-hop findings.
     - Transitive blast radius computation from compromised entities.
     - Crown-jewel critical asset identification (credentials, RCE CVEs, Active Directory, DBs).
     - Tarjan's strongly connected components (SCC) for cyclic attack loops and Brandes' betweenness centrality for choke-point discovery.
-- [ ] **Autonomous Operation Daemon (`etherd`):**
-  - *Transferred from CyGuide Engine Core*
-  - Long-running headless daemon managing continuous surface monitoring, background scans across client disconnects, and Unix domain socket IPC (`~/.ether/run/ether.sock`).
+
+- [ ] **Autonomous Operation Daemon & Continuous Goal Schedulers (`etherd` & `ether.workflow.engine`):**
+  - *Problem*: Complex security operations (continuous attack surface monitoring, periodic credential rotation audits, automated patch verification, and multi-day threat hunting loops) require durable scheduling, timer jitter, and event-triggered workflow execution. Currently, invocations are primarily single-shot or linear CLI pipelines.
+  - *Deep Module Design*: Create a deep `WorkflowEngine` integrated into the headless `etherd` daemon placed at the orchestration seam.
+  - *Seam Placement*: Execution orchestration seam (`ether.workflow.engine.WorkflowEngine`).
+  - *Minimal Interface Surface*:
+    ```python
+    class WorkflowEngine:
+        async def register_goal(self, spec: GoalSpecification, trigger: TriggerPolicy) -> GoalId: ...
+        async def get_goal_status(self, goal_id: GoalId) -> GoalProgress: ...
+        async def cancel_goal(self, goal_id: GoalId) -> None: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Flexible trigger semantics: Cron schedules (`"0 */4 * * *"`), interval timers with anti-correlation jitter, and reactive graph-delta triggers (e.g. automatically trigger Katana web crawling whenever a new `network.service(http)` node is upserted into the graph).
+    - Reactive State Machine & Convergence Tracking: Models multi-step workflows as directed state graphs where steps evaluate graph deltas ($\Delta = S_{t+1} \setminus S_t$) to verify goal convergence (e.g. "all newly discovered services have been audited and verified").
+    - Persistent SQLite-backed task queue: durable task scheduling that survives process restarts or machine reboots without losing workflow state or progress.
+    - Dynamic backpressure and resource budgets: caps concurrency, network bandwidth, and memory consumption during continuous background monitoring.
+    - Headless daemon management: long-running service over Unix domain sockets (`~/.ether/run/ether.sock`) with automatic resource reclamation and client reconnection multiplexing.
+  - *Leverage & Locality*: Callers define high-level security goals and triggers in clean YAML/JSON specifications; durable scheduling, event listening, retry policies, and convergence checking are 100% managed inside the engine.
+  - *The Deletion Test*: Deleting this module would require external orchestration (cron, systemd timers, Celery, or external workflow engines) and custom graph polling scripts to be written for every continuous monitoring task.
 
 ---
 
-### Epoch 5: Distributed Sovereign Mesh & Global Telemetry
+### Epoch 5: Distributed Sovereign Mesh & Sandboxed Ecosystem
 *Target: v1.0.0+*
-*Focus: Multi-node distributed operations, zero-trust coordination, and plugin marketplace.*
+*Focus: Peer-to-peer state federation, continuous host/network intrusion sensing, conflict-free multi-agent graph synchronization, and WebAssembly parser sandboxing.*
 
-- [ ] **Zero-Copy Distributed Graph Federation:**
-  - Synchronization of multiple Ether nodes across VPSs, local networks, and cloud instances using SQLite session replication (CRDT / SQLite Session Extension).
-  - Red-team operators share a live, unified target graph without a centralized server.
-- [ ] **Multi-Agent Swarm Telemetry Protocol:**
-  - *Transferred from CyGuide Engine Core*
-  - Headless coordination primitives for specialized subagents (Recon, Web, Critic, Reporter) publishing findings to a shared target graph with conflict-free resolution.
+- [ ] **Distributed Graph Federation & CRDT State Synchronization (`ether.graph.federation`):**
+  - *Problem*: Multiple operators or autonomous agents executing scans across distinct network segments (cloud VPS, local network, client container) maintain fragmented local databases (`~/.ether/ether.db`), causing blind spots and redundant scanning.
+  - *Deep Module Design*: Create a deep `GraphFederationEngine` placed at the storage persistence seam.
+  - *Seam Placement*: SQLite synchronization seam (`ether.graph.federation.FederationEngine`).
+  - *Minimal Interface Surface*:
+    ```python
+    class FederationEngine:
+        async def join_mesh(self, peer_address: str, auth_token: bytes) -> MeshNode: ...
+        async def export_delta(self, since_vector_clock: VectorClock) -> bytes: ...
+        async def apply_peer_delta(self, payload: bytes) -> SyncSummary: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Delta-state and state-based Conflict-free Replicated Data Types (CRDTs) layered on top of the SQLite session extension and append-only event logs.
+    - Deterministic conflict resolution for finding attributes using Last-Write-Wins (LWW) registers backed by Lamport timestamps, and monotonic Grow-Only Sets (G-Set) for graph relationships (`graph_edges`).
+    - Cryptographic mutual authentication and end-to-end payload encryption using authenticated Diffie-Hellman (X25519 + ChaCha20-Poly1305).
+    - Peer-to-peer gossip protocol over lightweight asynchronous transport (WebSockets / TLS sockets) with automatic network partition recovery.
+  - *Leverage & Locality*: Callers query and mutate their local `GraphStore` identically whether running on an isolated laptop or as part of a 20-node distributed fleet; network transport, serialization, vector clocks, and conflict resolution are 100% hidden.
+  - *The Deletion Test*: Deleting this module would require every agent or operator script to implement manual database export/import reconciliation, resolving primary key collisions by hand.
+
+- [ ] **Continuous Host & Network Intrusion Sensing Engine (`ether.telemetry.sensor`):**
+  - *Problem*: Threat detection and blue-team telemetry requires correlating real-time host events (process spawning, socket binds, file modifications) and network flows (DNS queries, TLS handshakes, anomalous packet bursts). Ad-hoc log parsing is disconnected from Ether's deterministic graph.
+  - *Deep Module Design*: Deep `IntrusionSensorEngine` placed at the telemetry ingestion seam.
+  - *Seam Placement*: Telemetry ingestion and intrusion detection seam (`ether.telemetry.sensor.IntrusionSensorEngine`).
+  - *Minimal Interface Surface*:
+    ```python
+    class IntrusionSensorEngine:
+        async def attach_sensor(self, profile: SensorProfile) -> SensorHandle: ...
+        async def stream_detections(self, session_id: str) -> AsyncIterator[IntrusionFinding]: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Multi-source telemetry ingestion: eBPF tracepoints (Linux `execve`, `connect`, `security_file_open`), macOS Endpoint Security Framework / `auditd` stream, Windows Event Log / Sysmon bridge.
+    - Passive network packet dissection: Scapy/pcap coroutines extracting live DNS queries, TLS Server Name Indication (SNI), and ARP anomalies with zero external daemon requirements.
+    - In-memory behavioral state machine: maintains sliding-window process lineage trees (parent-child PID graphs), correlating anomalous CLI arguments or reverse shells with MITRE ATT&CK techniques (T1059, T1071).
+    - Sigma rule evaluation: in-process YAML Sigma rule compiler evaluating incoming event streams against behavioral attack signatures with sub-millisecond latency.
+  - *Leverage & Locality*: Callers subscribe to structured `IntrusionFinding` events without needing to know whether the signal originated from eBPF, a passive pcap tap, or auditd; all signals are normalized into the unified entity graph.
+  - *The Deletion Test*: Deleting this module would require callers to write custom eBPF filters, parse pcap files, and maintain process tree state across raw syscall streams.
+
+- [ ] **Autonomous Multi-Agent Swarm Telemetry Protocol (`ether.telemetry.swarm`):**
+  - Headless coordination primitives for specialized subagents (Recon, Web Fuzzing, Cloud IAM, Vulnerability Validator, Reporter) collaborating over a unified graph.
+  - Event-driven graph change notification bus (`asyncio.Queue` / distributed pub-sub) allowing subagents to subscribe to specific graph delta types (e.g. agent B automatically triggers when agent A discovers a new `network.service(http)` node).
+  - Conflict-free collaborative task dispatch ensuring parallel subagents do not execute redundant scans on identical targets.
+
+- [ ] **Pluggable WebAssembly (Wasm) Parser Sandboxing (`ether.registry.wasm`):**
+  - *Problem*: Community tool adapters written in Python execute inside the main engine address space with full process privileges. Malicious or malformed third-party adapters can access host files, corrupt internal state, or execute arbitrary code.
+  - *Deep Module Design*: Replace unconstrained Python adapter execution with a deep `WasmParserRuntime` module placed at the adapter registry seam.
+  - *Seam Placement*: Adapter execution and parsing seam (`ether.registry.wasm.WasmAdapterRunner`).
+  - *Minimal Interface Surface*:
+    ```python
+    class WasmAdapterRunner:
+        def load_adapter(self, wasm_binary: bytes, manifest: AdapterManifest) -> ToolAdapter: ...
+        def parse(self, raw_stream: bytes) -> Sequence[BaseFinding]: ...
+    ```
+  - *Implementation (Hidden Complexity)*:
+    - Sandboxed WebAssembly runtime engine (via `wasmtime` / `wasmer`) enforcing strict memory virtualization.
+    - Hard resource bounds: strict memory quota (<16MB linear memory per instance) and CPU instruction count limits (fuel consumption) preventing parser ReDoS or infinite loops.
+    - Zero host access invariant: zero filesystem access, zero environment variable exposure, and zero network socket capabilities inside the Wasm guest.
+    - High-throughput linear memory ABI passing raw chunk buffers in and streaming validated JSON finding schemas out.
+  - *Leverage & Locality*: Third-party contributors and community repositories can distribute pre-compiled tool parsers without security vetting of host code; the engine runs community adapters with mathematical safety guarantees.
+  - *The Deletion Test*: Deleting this module forces users to either restrict themselves to built-in adapters or risk host compromise running arbitrary third-party parser scripts.
+
 - [ ] **Cross-Session Knowledge Sharing & Workspace Graph Rollups:**
-  - *Transferred from CyGuide Engine Core*
-  - Correlate discoveries across multiple engagements to detect shared infrastructure, identical SSL certificates, and enterprise-wide vulnerabilities.
-- [ ] **Pluggable WebAssembly (Wasm) Parser Sandboxing:**
-  - Execute third-party community adapters in lightweight Wasm sandboxes, ensuring community tool parsers can never compromise the host machine.
+  - Correlate discoveries across multiple chronological engagements to detect persistent shared infrastructure, recurring SSL certificates, and enterprise-wide architectural trends.
+  - Historical diffing engine tracking perimeter evolution and remediation verification over time.
+
 - [ ] **Ecosystem Integration:**
   - CyGuide permanently re-based on top of `pip install ether-core`.
   - Independent release of the offensive workstation utilizing Ether's full PTY and offensive capabilities.

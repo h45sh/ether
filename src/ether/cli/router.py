@@ -9,7 +9,10 @@ from ether import __version__
 from ether.cli.commands.doctor import handle_doctor
 from ether.cli.commands.drift import handle_drift_audit, handle_drift_export_baseline
 from ether.cli.commands.graph import (
+    handle_graph_attack_path,
     handle_graph_belief,
+    handle_graph_blast_radius,
+    handle_graph_crown_jewels,
     handle_graph_export,
     handle_graph_import,
     handle_graph_list_nodes,
@@ -20,7 +23,12 @@ from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.mcp import handle_mcp
 from ether.cli.commands.pipeline import handle_pipeline_run
 from ether.cli.commands.run import handle_run
-from ether.cli.commands.session import handle_session_create, handle_session_list
+from ether.cli.commands.session import (
+    handle_session_close,
+    handle_session_create,
+    handle_session_list,
+    handle_session_verify_audit,
+)
 from ether.cli.commands.telemetry import (
     handle_telemetry_diff,
     handle_telemetry_health,
@@ -149,6 +157,18 @@ def build_parser() -> argparse.ArgumentParser:
     sess_create_p.add_argument(
         "-w", "--workspace-id", dest="workspace_id", help="Target workspace ID"
     )
+    sess_verify_p = session_subs.add_parser(
+        "verify-audit",
+        parents=[common_options],
+        help="Verify cryptographic audit chain and log file integrity for a session",
+    )
+    sess_verify_p.add_argument("session_id", help="Session ID to verify")
+    sess_close_p = session_subs.add_parser(
+        "close",
+        parents=[common_options],
+        help="Forensically seal a session and compress raw log spools to .log.gz",
+    )
+    sess_close_p.add_argument("session_id", help="Session ID to seal and compress")
 
     # 5. graph
     graph_parser = subparsers.add_parser(
@@ -166,6 +186,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     nodes_p.add_argument(
         "--include-stale", action="store_true", help="Include decayed stale nodes in listing"
+    )
+    nodes_p.add_argument(
+        "--unmask", action="store_true", help="Display sensitive credential attributes in plaintext"
     )
 
     prune_p = graph_subs.add_parser(
@@ -221,14 +244,48 @@ def build_parser() -> argparse.ArgumentParser:
     search_p.add_argument(
         "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.service)"
     )
+    search_p.add_argument(
+        "--unmask", action="store_true", help="Display sensitive credential attributes in plaintext"
+    )
 
     belief_p = graph_subs.add_parser(
-        "belief", parents=[common_options], help="Inspect Bayesian belief scores and honeypot/tarpit status"
+        "belief",
+        parents=[common_options],
+        help="Inspect Bayesian belief scores and honeypot/tarpit status",
     )
     belief_p.add_argument("session_id", help="Session ID to inspect")
     belief_p.add_argument(
-        "--evaluate", action="store_true", help="Re-run Bayesian deception analysis before displaying"
+        "--evaluate",
+        action="store_true",
+        help="Re-run Bayesian deception analysis before displaying",
     )
+
+    attack_path_p = graph_subs.add_parser(
+        "attack-path",
+        parents=[common_options],
+        help="Compute shortest directed attack path between entities",
+    )
+    attack_path_p.add_argument("session_id", help="Session ID")
+    attack_path_p.add_argument("source_id", help="Origin entity ID")
+    attack_path_p.add_argument("target_id", help="Destination entity ID")
+
+    blast_p = graph_subs.add_parser(
+        "blast-radius",
+        parents=[common_options],
+        help="Calculate compromise blast radius for a node",
+    )
+    blast_p.add_argument("session_id", help="Session ID")
+    blast_p.add_argument("node_id", help="Compromised entity ID")
+    blast_p.add_argument(
+        "--max-depth", type=int, default=10, help="Maximum hop depth (default: 10)"
+    )
+
+    jewels_p = graph_subs.add_parser(
+        "crown-jewels",
+        parents=[common_options],
+        help="Identify critical crown-jewel assets in a session",
+    )
+    jewels_p.add_argument("session_id", help="Session ID")
 
     # 6. telemetry
     telemetry_parser = subparsers.add_parser(
@@ -648,6 +705,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.subcommand == "session":
             if args.session_action == "create":
                 return _run_coroutine(handle_session_create(args, context))
+            elif args.session_action == "verify-audit":
+                return _run_coroutine(handle_session_verify_audit(args, context))
+            elif args.session_action == "close":
+                return _run_coroutine(handle_session_close(args, context))
             return _run_coroutine(handle_session_list(args, context))
 
         elif args.subcommand == "graph":
@@ -661,6 +722,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_graph_search(args, context))
             elif args.graph_action == "belief":
                 return _run_coroutine(handle_graph_belief(args, context))
+            elif args.graph_action == "attack-path":
+                return _run_coroutine(handle_graph_attack_path(args, context))
+            elif args.graph_action == "blast-radius":
+                return _run_coroutine(handle_graph_blast_radius(args, context))
+            elif args.graph_action == "crown-jewels":
+                return _run_coroutine(handle_graph_crown_jewels(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":

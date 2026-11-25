@@ -66,317 +66,145 @@ NETWORK_TOOLS: Set[str] = {
 DOMAIN_TOOLS: Set[str] = {"subfinder", "whois", "dnspython", "amass", "crtsh", "dnsrecon"}
 WORDLIST_TOOLS: Set[str] = {"gobuster", "ffuf", "feroxbuster", "kiterunner"}
 
-DEFAULT_TOOL_TARGETS: dict[str, str] = {
-    "nmap": "127.0.0.1",
-    "netexec": "127.0.0.1",
-    "gobuster": "http://scanme.nmap.org",
-    "nikto": "http://scanme.nmap.org",
-    "ffuf": "http://scanme.nmap.org",
-    "nuclei": "http://scanme.nmap.org",
-    "sqlmap": "http://testphp.vulnweb.com/listproducts.php?cat=1",
-    "subfinder": "example.com",
-    "whois": "example.com",
-    "dnspython": "example.com",
-    "searchsploit": "Apache 2.4.49",
-    "http_probe": "http://scanme.nmap.org",
-    "naabu": "127.0.0.1",
-    "masscan": "127.0.0.1",
-    "zmap": "127.0.0.1",
-    "rustscan": "127.0.0.1",
-    "amass": "example.com",
-    "crtsh": "example.com",
-    "dnsrecon": "example.com",
-    "katana": "http://scanme.nmap.org",
-    "kiterunner": "http://scanme.nmap.org",
-    "feroxbuster": "http://scanme.nmap.org",
-    "arjun": "http://scanme.nmap.org",
-    "wpscan": "http://scanme.nmap.org",
-    "cve_search": "Apache 2.4.49",
-    "mysql_probe": "127.0.0.1",
-    "postgres_probe": "127.0.0.1",
-    "redis_probe": "127.0.0.1",
-    "ghauri": "http://testphp.vulnweb.com/listproducts.php?cat=1",
-    "hydra": "127.0.0.1",
-    "imds_probe": "127.0.0.1",
-    "cloud_enum": "example",
-    "stealth_scan": "127.0.0.1",
-    "tls_probe": "127.0.0.1",
-    "sslyze": "127.0.0.1",
-}
-
-TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {
-    "nmap": {
-        "expected_format": "IPv4 (127.0.0.1), IPv6 (::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)",
-        "safe_sandbox": "127.0.0.1 (local loopback) or scanme.nmap.org (Nmap authorized test server)",
-        "permissible": [
-            "Local loopback (127.0.0.1, localhost) for inspecting locally listening daemons and ports.",
-            "Official Nmap project sandbox (scanme.nmap.org) for testing version and script scans.",
-            "Private lab subnets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and container bridge networks with explicit authorization.",
-        ],
-        "prohibited": [
-            "Cloud metadata endpoints (169.254.169.254, 169.254.169.250, fd00:ec2::254) — potential SSRF vulnerability.",
-            "Third-party production infrastructure, government, banking, healthcare, or military IP ranges without written Rules of Engagement (RoE).",
-            "Broadcast or multicast addresses (e.g. 255.255.255.255, 224.0.0.1) which can cause network amplification storms.",
-        ],
-        "precautions": [
-            "Aggressive timing templates (-T4, -T5) and full port sweeps (-p-) can saturate network firewalls, exhaust state tables, or crash fragile legacy embedded hardware.",
-            "SYN half-open scans (-sS) require raw socket capabilities (root/sudo privileges).",
-            "UDP scanning (-sU) is subject to OS-level ICMP rate limits (RFC 1812); expect scans to run significantly slower.",
-        ],
-        "general_knowledge": "Nmap interrogates the target's TCP/IP stack implementation using raw socket probes. It distinguishes open, closed, and filtered states via SYN-ACK, RST, or ICMP unreachable responses. Service versioning (-sV) probes matching service banners against nmap-service-probes.",
-    },
-    "netexec": {
-        "expected_format": "Target IPv4 (127.0.0.1), CIDR subnet (192.168.1.0/24), or NetBIOS/FQDN hostname (dc01.corp.local)",
-        "safe_sandbox": "127.0.0.1 (local Samba/SSH services) or dedicated Active Directory lab ranges (e.g., GOAD, HackTheBox)",
-        "permissible": [
-            "Local machine (127.0.0.1) for testing null sessions or guest share enumerations against local SMB daemons.",
-            "Isolated Active Directory lab environments configured specifically for pentesting education.",
-            "Authorized enterprise client subnets during approved engagement windows.",
-        ],
-        "prohibited": [
-            "Production Active Directory Domain Controllers during business hours without explicit change approval.",
-            "Internet-facing public SMB (port 445) endpoints not owned by you.",
-            "Cloud metadata endpoints.",
-        ],
-        "precautions": [
-            "NetExec can trigger Active Directory account lockouts if password spraying against domains with aggressive lockout policies (badPwdCount thresholds).",
-            "SMB credential checks generate event ID 4625 (failed logon) and 4624 (successful logon) on the Domain Controller security event log.",
-            "The --rid-brute flag generates sequential RPC queries that can alert SIEM rules detecting credential access.",
-        ],
-        "general_knowledge": "NetExec (formerly CrackMapExec) is a post-exploitation and network reconnaissance tool automating assessment of large Active Directory networks via SMB, WMI, WinRM, LDAP, MSSQL, and SSH protocols.",
-    },
-    "gobuster": {
-        "expected_format": "Complete HTTP or HTTPS URL (http://127.0.0.1:8080, https://scanme.nmap.org)",
-        "safe_sandbox": "http://scanme.nmap.org or local containerized test targets (http://127.0.0.1:8080)",
-        "permissible": [
-            "Local loopback web servers (http://127.0.0.1, http://localhost:8000) for testing wordlist traversal.",
-            "Authorized client web applications during penetration tests.",
-            "Dedicated CTF or training web targets (DVWA, OWASP Juice Shop).",
-        ],
-        "prohibited": [
-            "Third-party websites, production e-commerce platforms, or SaaS portals without explicit scope inclusion.",
-            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/).",
-        ],
-        "precautions": [
-            "High concurrency (-t 50+) can overwhelm low-spec web servers, exhausting Apache/Nginx worker pools and causing HTTP 503 Service Unavailable.",
-            "Brute-forcing on applications with automatic WAF or anti-bot systems (Cloudflare, AWS WAF) will trigger IP bans.",
-            "Be mindful of wordlist size: large wordlists (100k+ paths) generate massive access log files that consume server disk space.",
-        ],
-        "general_knowledge": "Gobuster performs deterministic dictionary traversal by appending wordlist entries to the base URL and inspecting HTTP response status codes (200 OK, 301/302 Redirect, 403 Forbidden). It runs concurrent goroutines for maximum throughput.",
-    },
-    "nikto": {
-        "expected_format": "Hostname (scanme.nmap.org), IP (127.0.0.1), or HTTP/HTTPS URL (http://scanme.nmap.org)",
-        "safe_sandbox": "http://scanme.nmap.org or local Apache/Nginx web server instances",
-        "permissible": [
-            "Local web servers (http://127.0.0.1:8080) to inspect default files, outdated modules, and missing security headers.",
-            "Authorized client web applications during penetration tests.",
-            "Designated academic or lab targets.",
-        ],
-        "prohibited": [
-            "Third-party production websites without written authorization.",
-            "Any target where stealth is required: Nikto is completely unstealthy and intentionally issues thousands of noisy exploit requests.",
-            "Cloud metadata endpoints (169.254.169.254).",
-        ],
-        "precautions": [
-            "Nikto issues over 6,700 known vulnerability checks, dangerous CGI paths, and obsolete file requests. It WILL trigger IDS/IPS and SOC alerts.",
-            "Avoid running full scans (-Tuning 2,4,b) against fragile legacy web servers or embedded IoT web interfaces, as old CGIs may cause crashes.",
-            "Use -ssl when targeting HTTPS endpoints, and -p to specify custom ports.",
-        ],
-        "general_knowledge": "Nikto is a comprehensive web server misconfiguration scanner. It checks for over 6,700 potentially dangerous files/CGIs, outdated server software, insecure HTTP methods (TRACE, PUT), and missing defense headers (X-Frame-Options, CSP, HSTS).",
-    },
-    "ffuf": {
-        "expected_format": "Complete HTTP/HTTPS URL containing the 'FUZZ' keyword (http://scanme.nmap.org/FUZZ, http://target/?FUZZ=1)",
-        "safe_sandbox": "http://scanme.nmap.org/FUZZ or local lab applications (http://127.0.0.1:8000/FUZZ)",
-        "permissible": [
-            "Local and lab web services for directory fuzzing, virtual host discovery, and parameter enumeration.",
-            "Authorized bug bounty targets that permit automated fuzzing within scope.",
-            "scanme.nmap.org/FUZZ for syntax and rate testing.",
-        ],
-        "prohibited": [
-            "Form endpoints that trigger emails, database writes, or financial transactions (e.g. /contact.php?email=FUZZ, /checkout?item=FUZZ).",
-            "Cloud metadata endpoints (http://169.254.169.254).",
-            "Out-of-scope third-party websites.",
-        ],
-        "precautions": [
-            "ffuf is written in Go and can exceed 2,000+ requests per second. Always enforce rate limits (-rate 30 -p 0.1) on shared infrastructure.",
-            "Match and filter flags (-mc, -fc, -fs, -fl) are essential: without proper filtering, wildcard responses will flood your results.",
-            "Virtual host fuzzing requires proper Host header syntax (-H 'Host: FUZZ.domain.com') with a clean domain name.",
-        ],
-        "general_knowledge": "ffuf (Fuzz Faster U Fool) replaces the FUZZ keyword in URLs, headers, or request bodies with entries from a wordlist. It analyzes response length, word count, line count, and status code distributions to identify anomalous responses.",
-    },
-    "nuclei": {
-        "expected_format": "Complete HTTP or HTTPS URL (http://scanme.nmap.org, https://example.com) or network host",
-        "safe_sandbox": "http://scanme.nmap.org or intentionally vulnerable test applications (Vulnweb, DVWA)",
-        "permissible": [
-            "Local lab applications, Dockerized targets, and authorized bug bounty scopes.",
-            "scanme.nmap.org for benign technology and SSL/TLS fingerprinting.",
-            "Production assets when restricted to informational or passive templates (-severity info -tags tech).",
-        ],
-        "prohibited": [
-            "Running intrusive exploit templates (-tags rce,sqli,takeover) against production systems without explicit authorization.",
-            "Cloud metadata endpoints (169.254.169.254).",
-            "Denial of service templates (-tags dos).",
-        ],
-        "precautions": [
-            "Nuclei executes YAML-based protocol templates (HTTP, DNS, TCP, SSL). Running full template sets without severity filters sends tens of thousands of requests.",
-            "Always specify severity levels (-severity low,medium) during initial recon.",
-            "Use -rate-limit to keep requests per second within acceptable thresholds for the target infrastructure.",
-        ],
-        "general_knowledge": "Nuclei uses community-curated YAML templates to send targeted protocol requests and match patterns in responses. It enables fast zero-day detection and automated vulnerability confirmation.",
-    },
-    "sqlmap": {
-        "expected_format": "Target HTTP/HTTPS URL with parameters (http://testphp.vulnweb.com/listproducts.php?cat=1)",
-        "safe_sandbox": "http://testphp.vulnweb.com/listproducts.php?cat=1 (Acrobot authorized testbed) or local DVWA/bWAPP targets",
-        "permissible": [
-            "Authorized penetration test endpoints with confirmed dynamic SQL parameters.",
-            "Intentionally vulnerable testbeds (testphp.vulnweb.com, DVWA, WebGoat).",
-            "Local applications you developed and have root database access to verify.",
-        ],
-        "prohibited": [
-            "Any third-party database without explicit pentest contract authorizing active SQL injection attempts.",
-            "Financial, healthcare, or personal identity endpoints where data corruption or leakage is catastrophic.",
-            "Cloud metadata URIs.",
-        ],
-        "precautions": [
-            "Time-based blind SQLi (WAITFOR DELAY, pg_sleep) locks database threads and can lead to resource starvation.",
-            "Do NOT use --os-shell or --sql-shell unless explicitly permitted by your Rules of Engagement.",
-            "Be cautious with --risk 3 and --level 5: heavy OR-based injection tests can inadvertently UPDATE or DELETE database rows.",
-        ],
-        "general_knowledge": "sqlmap automates the detection and exploitation of SQL injection flaws. It fingerprints database management systems (DBMS), extracts schema hierarchies, retrieves table data, and can access the underlying operating system file system.",
-    },
-    "subfinder": {
-        "expected_format": "Base root domain name without protocol or path (example.com, nmap.org)",
-        "safe_sandbox": "example.com (IANA reserved domain) or your own registered domain assets",
-        "permissible": [
-            "example.com for testing passive query execution and verifying DNS parsing pipelines.",
-            "Client domains explicitly in scope for reconnaissance during authorized pentest engagements.",
-            "Bug bounty programs that permit passive subdomain enumeration.",
-        ],
-        "prohibited": [
-            "Internal network names (e.g. .local, .internal, .lan) which have no public DNS presence.",
-            "URLs with protocols (http://) or paths (/api) — subfinder strictly expects a clean domain name.",
-            "IP addresses (subfinder resolves subdomains for domain names, not IP addresses).",
-        ],
-        "precautions": [
-            "Subfinder is completely passive: it queries public data sources (Search engines, Certificate Transparency logs, VirusTotal, Censys) and never sends packets to the target domain directly.",
-            "Respect public API rate limits: configure provider API keys in subfinder configuration to avoid IP throttling.",
-            "Subdomains discovered may point to decommissioned servers (potential Subdomain Takeover vulnerability).",
-        ],
-        "general_knowledge": "Subfinder discovers valid subdomains for websites by using passive online sources. It operates silently without generating IDS/IPS alerts on the target's infrastructure, making it ideal for the initial OSINT phase.",
-    },
-    "whois": {
-        "expected_format": "Domain name (example.com), Autonomous System Number (AS15169), or IP address (93.184.216.34)",
-        "safe_sandbox": "example.com (IANA test domain) or public IP addresses (e.g. 8.8.8.8)",
-        "permissible": [
-            "example.com for verifying registrar and ownership data structures.",
-            "Any public domain, IP address, or ASN within standard registry lookup terms.",
-            "Client domains and allocated netblocks during initial reconnaissance.",
-        ],
-        "prohibited": [
-            "High-frequency automated scraping loops that violate Regional Internet Registry (RIR) acceptable use policies.",
-            "Internal private IP addresses (10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12) which yield no public registry data.",
-        ],
-        "precautions": [
-            "WHOIS servers (TCP port 43) strictly enforce IP rate limits. Exceeding query thresholds will result in temporary or permanent IP bans.",
-            "Modern GDPR and ICANN privacy redaction policies frequently mask personal registrant names and emails behind privacy proxies.",
-            "Use -h to query specific regional registries directly (e.g., whois.arin.net, whois.ripe.net).",
-        ],
-        "general_knowledge": "The WHOIS protocol (RFC 3912) queries distributed databases maintained by TLD registries, registrars, and Regional Internet Registries (ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC) to determine domain registration, nameservers, and IP allocations.",
-    },
-    "dnspython": {
-        "expected_format": "Domain name (example.com) or IPv4 address for reverse pointer lookups (e.g. 93.184.216.34)",
-        "safe_sandbox": "example.com (RFC 2606 safe domain) or local DNS test environments (BIND9, CoreDNS)",
-        "permissible": [
-            "example.com for querying A, AAAA, MX, NS, TXT, and SOA records.",
-            "Your authorized target domains for DNS configuration auditing and mail routing inspection.",
-            "Local or lab DNS servers for testing Zone Transfers (AXFR).",
-        ],
-        "prohibited": [
-            "Unauthorized Zone Transfer (AXFR) attempts against production third-party nameservers.",
-            "DNS amplification or flooding attacks against public recursive resolvers (8.8.8.8, 1.1.1.1).",
-            "Cloud metadata endpoints.",
-        ],
-        "precautions": [
-            "Zone Transfers (AXFR) will be logged on authoritative nameservers. An open zone transfer is a high-severity finding that leaks entire internal network namespaces.",
-            "When auditing email anti-spoofing (SPF, DMARC), verify that TXT records are syntactically valid and enforce reject policies (p=reject).",
-            "Be aware of DNS caching: queries might return cached intermediate results from your upstream resolver rather than authoritative values.",
-        ],
-        "general_knowledge": "dnspython is a pure-Python DNS toolkit. It constructs standard RFC 1035 UDP/TCP wire packets to interrogate nameservers directly. It verifies record types (A, MX, NS, TXT, PTR) and evaluates defensive controls like DNSSEC and zone transfer ACLs.",
-    },
-    "searchsploit": {
-        "expected_format": "Software name and version string (Apache 2.4.49, OpenSSH 7.2p2) or CVE ID (2021-41773). Do NOT use URLs or IPs.",
-        "safe_sandbox": "Apache 2.4.49 (famous CVE-2021-41773 RCE), ProFTPD 1.3.5, vsftpd 2.3.4",
-        "permissible": [
-            "Searching for known public exploits, PoC scripts, and papers from the local Exploit-DB archive.",
-            "Filtering by title, CVE identifier, platform (Linux/Windows), or remote exploit type.",
-            "Offline query analysis with zero network footprint.",
-        ],
-        "prohibited": [
-            "NEVER compile or execute downloaded public exploit code against live systems without auditing the source code in an isolated VM sandbox first!",
-            "Do not enter raw IP addresses or URLs as search terms; searchsploit searches text descriptions and version metadata.",
-        ],
-        "precautions": [
-            "Public exploits on Exploit-DB often require modification (offsets, shellcode, return addresses) to function on specific target builds.",
-            "Malicious actors sometimes upload backdoored exploit scripts to public databases. Always perform code review before running third-party exploit code.",
-            "Keep the local exploit database updated using searchsploit -u.",
-        ],
-        "general_knowledge": "searchsploit is a command-line search tool for Exploit-DB that operates entirely offline. It matches search terms against an offline index (files_exploits.csv) to discover proof-of-concept exploits, shellcodes, and security papers.",
-    },
-    "http_probe": {
-        "expected_format": "Complete HTTP or HTTPS URL (http://scanme.nmap.org, https://example.com)",
-        "safe_sandbox": "http://scanme.nmap.org or https://example.com",
-        "permissible": [
-            "Local or remote authorized web endpoints for service and title discovery.",
-            "scanme.nmap.org or example.com for syntax and response verification.",
-            "Authorized client web assets during penetration testing.",
-        ],
-        "prohibited": [
-            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/).",
-            "Loopback interfaces under GatePolicy.SAFE without explicit authorization.",
-            "Unauthorized external systems.",
-        ],
-        "precautions": [
-            "High concurrency can trigger rate limits or WAF blocks.",
-            "SSRF pre-connect checks strictly abort attempts against link-local or metadata addresses.",
-        ],
-        "general_knowledge": "http_probe is a high-performance in-process HTTP discovery adapter extracting response codes, server banners, page titles, and web technologies.",
-    },
-}
+# Empty dictionary maintained for backward compatibility
+TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {}
 
 
 def get_tool_target_guidance(tool_name: str) -> str:
-    """Return formatted Markdown target guidance for a specified security tool."""
-    guidance = TOOL_TARGET_GUIDANCE.get(tool_name.lower())
-    if not guidance:
-        guidance = {
-            "expected_format": "Target IP, hostname, CIDR, or URL depending on tool capability",
-            "safe_sandbox": "127.0.0.1 (local loopback) or authorized test lab targets",
-            "permissible": [
-                "Local loopback (127.0.0.1) and authorized lab environments.",
-                "Authorized targets within scoped Rules of Engagement.",
-            ],
-            "prohibited": [
-                "Cloud metadata endpoints (169.254.169.254).",
-                "Out-of-scope third-party production systems.",
-            ],
-            "precautions": [
-                "Ensure target scope compliance before executing scans.",
-            ],
-            "general_knowledge": f"Automated security tool adapter for {tool_name}.",
-        }
+    """Return formatted Markdown target guidance dynamically generated for a specified security tool."""
+    tool_lower = tool_name.lower()
 
-    perm_bullets = "\n".join(f"- {p}" for p in guidance["permissible"])
-    proh_bullets = "\n".join(f"- {p}" for p in guidance["prohibited"])
-    prec_bullets = "\n".join(f"- {p}" for p in guidance["precautions"])
+    # Retrieve tool metadata and protocol theory if available in registry
+    theory = ""
+    description = ""
+    try:
+        from ether.registry.registry import ToolRegistry
+
+        reg = ToolRegistry()
+        reg.load_tools()
+        t = reg.get_tool(tool_lower)
+        if t and t.get("manifest"):
+            m = t["manifest"]
+            tool_meta = getattr(m, "meta", None)
+            if tool_meta:
+                description = getattr(tool_meta, "description", "")
+                theory = getattr(tool_meta, "theory", "")
+    except Exception:
+        pass
+
+    # Determine capabilities & target profile dynamically
+    verifier = PreflightVerifier()
+    target_types = verifier._get_tool_target_types(tool_lower)
+
+    if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
+        expected_format = "Complete HTTP or HTTPS URL (http://127.0.0.1:8080, https://scanme.nmap.org)"
+        safe_sandbox = "http://scanme.nmap.org or local containerized test targets (http://127.0.0.1:8080)"
+        permissible = [
+            "Local loopback web servers (http://127.0.0.1, http://localhost:8000) for testing endpoints.",
+            "Official sandbox testbeds (scanme.nmap.org, testphp.vulnweb.com).",
+            "Authorized client web applications during penetration tests within defined Rules of Engagement.",
+        ]
+        prohibited = [
+            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/, fd00:ec2::254).",
+            "Third-party websites, production e-commerce platforms, or SaaS portals without explicit scope inclusion.",
+            "Form endpoints that trigger emails, database writes, or financial transactions without authorization.",
+        ]
+        precautions = [
+            "High concurrency can overwhelm low-spec web servers, exhausting worker pools and causing HTTP 503.",
+            "Brute-forcing on applications with automatic WAF or anti-bot systems will trigger IP bans.",
+            "Ensure rate limits are enforced to respect target infrastructure bandwidth.",
+        ]
+    elif "domain" in target_types and "ip" not in target_types:
+        expected_format = "Base root domain name without protocol or path (example.com, nmap.org)"
+        safe_sandbox = "example.com (IANA reserved domain) or your own registered domain assets"
+        permissible = [
+            "example.com for verifying DNS resolution and parsing pipelines.",
+            "Client domains explicitly in scope for reconnaissance during authorized pentest engagements.",
+            "Bug bounty programs that permit passive reconnaissance within scope.",
+        ]
+        prohibited = [
+            "Internal network names (e.g. .local, .internal, .lan) which have no public DNS presence.",
+            "URLs with protocols (http://) or paths (/api) — domain tools strictly expect a clean domain name.",
+            "IP addresses (domain tools resolve records for domain names, not IP addresses).",
+        ]
+        precautions = [
+            "Respect public API rate limits when querying upstream data sources to avoid IP throttling.",
+            "Be aware of DNS caching: queries might return cached intermediate results from upstream resolvers.",
+            "Zone Transfers (AXFR) will be logged on authoritative nameservers and can leak internal namespaces.",
+        ]
+    elif tool_lower in {"searchsploit"}:
+        expected_format = "Software name and version string (Apache 2.4.49, OpenSSH 7.2p2) or CVE ID (2021-41773). Do NOT use URLs or IPs."
+        safe_sandbox = "Apache 2.4.49 (famous CVE-2021-41773 RCE), ProFTPD 1.3.5, vsftpd 2.3.4"
+        permissible = [
+            "Searching for known public exploits, PoC scripts, and papers from local vulnerability archives.",
+            "Filtering by title, CVE identifier, platform (Linux/Windows), or remote exploit type.",
+            "Offline query analysis with zero network footprint.",
+        ]
+        prohibited = [
+            "NEVER compile or execute downloaded public exploit code against live systems without auditing source code first!",
+            "Do not enter raw IP addresses or URLs as search terms; searchsploit searches text descriptions.",
+        ]
+        precautions = [
+            "Public exploits often require manual modification (offsets, shellcode, return addresses) to function.",
+            "Always perform code review before running third-party exploit code.",
+            "Keep the local exploit database updated using searchsploit -u.",
+        ]
+    elif tool_lower in {"netexec", "nxc"}:
+        expected_format = "Target IPv4 (127.0.0.1), CIDR subnet (192.168.1.0/24), or NetBIOS/FQDN hostname (dc01.corp.local)"
+        safe_sandbox = "127.0.0.1 (local Samba/SSH services) or dedicated Active Directory lab ranges (e.g., GOAD, HackTheBox)"
+        permissible = [
+            "Local machine (127.0.0.1) for testing null sessions or guest share enumerations against local SMB daemons.",
+            "Isolated Active Directory lab environments configured specifically for pentesting education.",
+            "Authorized enterprise client subnets during approved engagement windows.",
+        ]
+        prohibited = [
+            "Production Active Directory Domain Controllers during business hours without explicit change approval.",
+            "Internet-facing public SMB (port 445) endpoints not owned by you.",
+            "Cloud metadata endpoints.",
+        ]
+        precautions = [
+            "Can trigger Active Directory account lockouts if password spraying against domains with lockout policies.",
+            "SMB credential checks generate event ID 4625 and 4624 on the Domain Controller security event log.",
+            "Sequential RPC queries can alert SIEM rules detecting credential access.",
+        ]
+    else:
+        expected_format = "IPv4 (127.0.0.1), IPv6 (::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)"
+        safe_sandbox = "127.0.0.1 (local loopback) or scanme.nmap.org (authorized test server)"
+        permissible = [
+            "Local loopback (127.0.0.1, localhost) for inspecting locally listening daemons and ports.",
+            "Official project sandbox (scanme.nmap.org) for testing version and script scans.",
+            "Private lab subnets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and container bridge networks with explicit authorization.",
+        ]
+        prohibited = [
+            "Cloud metadata endpoints (169.254.169.254, 169.254.169.250, fd00:ec2::254) — potential SSRF vulnerability.",
+            "Third-party production infrastructure, government, banking, or military IP ranges without written Rules of Engagement.",
+            "Broadcast or multicast addresses (e.g. 255.255.255.255, 224.0.0.1) which can cause network amplification storms.",
+        ]
+        precautions = [
+            "Aggressive timing templates and full port sweeps can saturate network firewalls, exhaust state tables, or crash fragile hardware.",
+            "SYN half-open scans require raw socket capabilities (root/sudo privileges).",
+            "UDP scanning is subject to OS-level ICMP rate limits (RFC 1812); expect scans to run slower.",
+        ]
+
+    mechanics = (
+        theory.strip()
+        or description.strip()
+        or f"Automated security tool adapter for {tool_name}."
+    )
+
+    perm_bullets = "\n".join(f"- {p}" for p in permissible)
+    proh_bullets = "\n".join(f"- {p}" for p in prohibited)
+    prec_bullets = "\n".join(f"- {p}" for p in precautions)
 
     return (
         f"# Target Scope & Safety Guidance: {tool_name.upper()}\n\n"
-        f"**Expected Format:** `{guidance['expected_format']}`\n\n"
-        f"**Safe Sandbox Target:** `{guidance['safe_sandbox']}`\n\n"
+        f"**Expected Format:** `{expected_format}`\n\n"
+        f"**Safe Sandbox Target:** `{safe_sandbox}`\n\n"
         f"## Permissible & Effective Targets\n{perm_bullets}\n\n"
         f"## Strictly Prohibited & Dangerous Targets\n{proh_bullets}\n\n"
         f"## Operational Precautions & Ethics\n{prec_bullets}\n\n"
-        f"## Protocol Mechanics & Behavior\n{guidance['general_knowledge']}\n"
+        f"## Operational Precautions & Ethics\n{prec_bullets}\n\n"
+        f"## Protocol Mechanics & Behavior\n{mechanics}\n"
     )
 
 
@@ -730,9 +558,12 @@ class PreflightVerifier:
         is_network_or_domain = (
             ("ip" in target_types or "domain" in target_types) and "url" not in target_types
         )
-        default_target = DEFAULT_TOOL_TARGETS.get(
-            tool_name, "http://127.0.0.1:8888" if is_web else "127.0.0.1"
-        )
+        if is_web:
+            default_target = "http://127.0.0.1:8888"
+        elif "domain" in target_types and "ip" not in target_types:
+            default_target = "example.com"
+        else:
+            default_target = "127.0.0.1"
 
         if not target:
             report.issues.append(

@@ -39,15 +39,15 @@ Ether strictly adheres to John Ousterhout’s philosophy of software design (**D
    ```
    Headless Interfaces (SDK / CLI / MCP Server: ether/__init__.py, ether/cli.py)
      ↓
-   Gateways & Policy (ether/gateway/gate.py, network.py)
+   Gateways & Policy (ether/gateway/gate.py, scope.py, preflight.py)
      ↓
-   Core Process Supervision & Execution (ether/core/session.py, executor.py)
+   Core Process Supervision & Execution (ether/core/session.py, executor.py, sandbox.py)
      ↓
-   State & Graph Storage (ether/graph/store.py, timeline.py)
+   State & Graph Storage (ether/graph/store.py, write_queue.py, vector_index.py, timeline.py)
      ↓
-   Pluggable Tool Adapters & Registry (ether/registry/registry.py, adapter.py, tools/*)
+   Pluggable Tool Adapters & Registry (ether/registry/registry.py, assets.py, wordlists.py, tools/*)
      ↓
-   Normalized Schemas & Primitives (ether/schemas/*, ether/common/*)
+   Normalized Schemas & Primitives (ether/schemas/*, ether/common/forensic_log.py, secure_memory.py)
    ```
 
 ---
@@ -132,8 +132,8 @@ All contributors and autonomous agents must adhere to the file modification gove
 
 | Tier | Category | Files | Policy |
 | :--- | :--- | :--- | :--- |
-| **Tier 1** | **Frozen Core** | `ether/schemas/base.py`<br>`ether/graph/store.py`<br>`ether/common/canonicalize.py`<br>`ether/registry/registry.py`<br>`ether/paths.py` | Foundational engine infrastructure. Must not be modified casually. Zero breaking contract changes without architectural review. |
-| **Tier 2** | **Review Required** | `tools/*/adapter.py`<br>`ether/schemas/*.py`<br>`ether/core/executor.py`<br>`ether/core/session.py`<br>`ether/gateway/gate.py` | Core runtime and normalization components. Any modification requires full regression testing verifying backward compatibility. |
+| **Tier 1** | **Frozen Core** | `ether/schemas/base.py`<br>`ether/graph/store.py`<br>`ether/graph/write_queue.py`<br>`ether/graph/vector_index.py`<br>`ether/common/canonicalize.py`<br>`ether/common/forensic_log.py`<br>`ether/registry/registry.py`<br>`ether/paths.py` | Foundational engine infrastructure. Must not be modified casually. Zero breaking contract changes without architectural review. |
+| **Tier 2** | **Review Required** | `tools/*/adapter.py`<br>`ether/schemas/*.py`<br>`ether/core/executor.py`<br>`ether/core/session.py`<br>`ether/gateway/gate.py`<br>`ether/gateway/scope.py`<br>`ether/gateway/preflight.py` | Core runtime and normalization components. Any modification requires full regression testing verifying backward compatibility. |
 | **Tier 3** | **Free to Change** | `docs/`<br>`scripts/`<br>`tests/`<br>`ROADMAP.md` | Layouts, developer guides, tests, and operational scripts. |
 
 ---

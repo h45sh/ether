@@ -93,6 +93,24 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         adapter.validate_install() if (tier == "coroutine" and adapter) else (bin_path is not None)
     )
 
+    from ether.gateway.preflight import get_tool_target_guidance
+
+    recommended_flags = []
+    power_cfg = getattr(manifest, "power", None)
+    if power_cfg and getattr(power_cfg, "suggests", None):
+        recommended_flags.extend(dict(s) for s in power_cfg.suggests)
+    learning_cfg = getattr(manifest, "learning", None)
+    if learning_cfg and getattr(learning_cfg, "recipes", None):
+        for r in learning_cfg.recipes:
+            recommended_flags.append(
+                {
+                    "name": r.name,
+                    "difficulty": r.difficulty,
+                    "description": r.description,
+                    "flags": r.flags,
+                }
+            )
+
     info = {
         "name": tool_name,
         "tier": tier,
@@ -101,13 +119,18 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         "binary_path": bin_path,
         "installed": is_installed,
         "category": getattr(meta, "category", "general") if meta else "general",
+        "one_line_summary": getattr(meta, "one_line_summary", "") if meta else "",
         "description": getattr(meta, "description", "") if meta else "",
-        "input_accepts": getattr(manifest.input, "accepts", [])
-        if hasattr(manifest, "input")
+        "input_accepts": manifest.input.get("accepts", [])
+        if isinstance(getattr(manifest, "input", None), dict)
         else [],
-        "output_emits": getattr(manifest.output, "emits", [])
-        if hasattr(manifest, "output")
-        else [],
+        "output_emits": (
+            manifest.output.get("produces") or manifest.output.get("emits", [])
+            if isinstance(getattr(manifest, "output", None), dict)
+            else []
+        ),
+        "recommended_flags": recommended_flags,
+        "target_guidance": get_tool_target_guidance(tool_name),
     }
 
     if context.is_json:

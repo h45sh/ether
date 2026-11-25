@@ -1,9 +1,10 @@
 # Domain Knowledge: Storage & Graph Persistence (Tier 2)
 
 ## 1. Persistence Seams & Facades
-- **Unified Graph Store**: Graph database interactions are encapsulated inside `GraphStore` (`src/ether/graph/store.py`).
-- **Async Execution**: Never run synchronous, blocking SQLite calls directly on the event loop. Use `aiosqlite` with connection management via `GraphStore._get_conn()`.
+- **Unified Graph Store**: Graph database interactions are encapsulated inside `GraphStore` (`src/ether/graph/store.py`), backed by `WriteQueueWorker` for serialized writes and `VectorIndex` for vector search.
+- **Async Execution & Concurrency**: Never run synchronous, blocking SQLite calls directly on the event loop. Concurrent writes are batched and committed by `WriteQueueWorker` in adaptive 25ms windows. Reads use a dedicated read connection pool with `PRAGMA query_only = ON`.
 - **WAL Journaling**: SQLite connections use write-ahead logging (`PRAGMA journal_mode=WAL;`), synchronous normal mode, and foreign keys enabled on every connection.
+- **Forensic Audit Manifests**: Every executed action appends an `AuditRecord` to `~/.ether/audit/{session_id}.jsonl` with SHA-256 cryptographic hash chaining and automatic session-close gzip compaction.
 
 ## 2. Ingestion Performance & Atomic Micro-Batching
 - **Batch Insertion Mandate**: Executing individual `INSERT` statements inside loops is strictly prohibited ($O(N)$ transaction overhead). Bulk imports must use `db.executemany()` or `upsert_findings_batch()`.

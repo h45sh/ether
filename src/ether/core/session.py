@@ -22,9 +22,10 @@ from typing import (
 from uuid import UUID
 
 from ether.common.context import ExecutionContext
-from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
+from ether.common.forensic_log import ForensicLogManager, LogSpooler
+from ether.common.secure_memory import wipe_credentials
+from ether.core.executor import Executor, sanitize_subprocess_env
 from ether.graph.store import GraphStore
-from ether.paths import get_action_log_path
 from ether.registry.adapter import ToolAdapter
 from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
@@ -477,7 +478,17 @@ class ExecutionSession:
             raise
 
         # 5. Job status initialization
-        log_file_path = get_action_log_path(str(action.action_id))
+        target_val = ""
+        if action.params:
+            target_val = str(action.params.get("target") or action.params.get("url") or "")
+        spooler, log_path = ForensicLogManager.open_action_spool(
+            session_id=str(action.session_id),
+            action_id=str(action.action_id),
+            tool=action.tool_name,
+            target=target_val or "target",
+        )
+        log_file_path = str(log_path)
+        self._job_spoolers[action.action_id] = spooler
         cmd_raw = action.params.get("raw_flags", "") if action.params else ""
         cmd_snippet = f"{action.tool_name} {cmd_raw}".strip() if cmd_raw else action.tool_name
 
@@ -732,6 +743,22 @@ class ExecutionSession:
             spooler.close()
             self._job_spoolers.pop(action.action_id, None)
 
+            try:
+                from pathlib import Path
+                target_str = str(action.params.get("target") or action.params.get("url") or "") if action.params else ""
+                exit_c = job.exit_code if job.exit_code is not None else (0 if job.status == JobStatusEnum.DONE else 1)
+                ForensicLogManager.record_action_completion(
+                    session_id=str(action.session_id),
+                    action_id=str(action.action_id),
+                    tool=action.tool_name,
+                    target=target_str or "target",
+                    exit_code=exit_c,
+                    log_path=Path(log_file_path),
+                )
+            except Exception:
+                pass
+            wipe_credentials(job)
+
             if job.status == JobStatusEnum.DONE:
                 await self._emit_event(
                     action.action_id,
@@ -898,6 +925,22 @@ class ExecutionSession:
             )
             spooler.close()
             self._job_spoolers.pop(action.action_id, None)
+
+            try:
+                from pathlib import Path
+                target_str = str(action.params.get("target") or action.params.get("url") or "") if action.params else ""
+                exit_c = job.exit_code if job.exit_code is not None else (0 if job.status == JobStatusEnum.DONE else 1)
+                ForensicLogManager.record_action_completion(
+                    session_id=str(action.session_id),
+                    action_id=str(action.action_id),
+                    tool=action.tool_name,
+                    target=target_str or "target",
+                    exit_code=exit_c,
+                    log_path=Path(log_file_path),
+                )
+            except Exception:
+                pass
+            wipe_credentials(job)
 
             # Persist to database event log
             if not getattr(self.store, "_closed", False):

@@ -21,8 +21,9 @@ try:
 except ImportError:
     sqlite_vec = None
 
-from ether.common.embeddings import get_embedding_engine
 from ether.graph.timeline import ActionTimelineRepository
+from ether.graph.vector_index import VectorIndex
+from ether.graph.write_queue import WriteQueueWorker
 from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest
 
@@ -149,10 +150,18 @@ class GraphStore:
         self._session_bloom: Dict[str, Any] = {}
         self._warmed_sessions: Set[str] = set()
         self.timeline = ActionTimelineRepository(self)
-        self._write_queue: Optional[asyncio.Queue] = None
-        self._writer_task: Optional[asyncio.Task] = None
+        self.write_worker = WriteQueueWorker(self._get_conn)
+        self.vector_index = VectorIndex()
         self._read_pool: List[aiosqlite.Connection] = []
         self._read_pool_lock: Optional[asyncio.Lock] = None
+
+    @property
+    def _write_queue(self) -> Optional[asyncio.Queue]:
+        return self.write_worker.queue
+
+    @property
+    def _writer_task(self) -> Optional[asyncio.Task]:
+        return self.write_worker.task
 
     def _get_lock(self) -> asyncio.Lock:
         if self._lock is None:
@@ -193,13 +202,7 @@ class GraphStore:
                     if db_dir:
                         os.makedirs(db_dir, exist_ok=True)
                 self._conn = await aiosqlite.connect(self.db_path)
-                if sqlite_vec is not None:
-                    try:
-                        await self._conn.enable_load_extension(True)
-                        await self._conn.load_extension(sqlite_vec.loadable_path())
-                        await self._conn.enable_load_extension(False)
-                    except Exception as e:
-                        logger.warning(f"Could not load sqlite-vec extension: {e}")
+                await self.vector_index.load_extension(self._conn)
                 await self._conn.execute("PRAGMA foreign_keys = ON")
                 await self._conn.execute("PRAGMA trusted_schema = OFF")
                 await self._conn.execute("PRAGMA busy_timeout = 5000")
@@ -213,51 +216,10 @@ class GraphStore:
                         pass
             yield self._conn
 
-    async def _migrate_schema(self, db: aiosqlite.Connection) -> None:
-        """Apply non-destructive schema migrations for existing databases."""
-        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        existing_tables = {row[0] for row in await cursor.fetchall()}
-
-        table_columns = {
-            "nodes": [
-                ("action_id", "TEXT"),
-                ("created_action_id", "TEXT"),
-                ("observation_count", "INTEGER DEFAULT 1"),
-                ("ttl_seconds", "INTEGER DEFAULT 3600"),
-                ("anchor_hash", "TEXT"),
-                ("last_seen_at", "TIMESTAMP"),
-                ("created_at", "TIMESTAMP"),
-                ("updated_at", "TIMESTAMP"),
-            ],
-            "edges": [
-                ("action_id", "TEXT"),
-                ("created_at", "TIMESTAMP"),
-                ("updated_at", "TIMESTAMP"),
-            ],
-            "event_log": [
-                ("closed", "INTEGER DEFAULT 0"),
-            ],
-            "sessions": [
-                ("closed_at", "TIMESTAMP"),
-            ],
-            "workspaces": [
-                ("closed_at", "TIMESTAMP"),
-            ],
-        }
-
-        for table, cols in table_columns.items():
-            if table in existing_tables:
-                col_cursor = await db.execute(f"PRAGMA table_info({table})")
-                existing_cols = {col_row[1] for col_row in await col_cursor.fetchall()}
-                for col_name, col_def in cols:
-                    if col_name not in existing_cols:
-                        await db.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
-
     async def initialize(self):
-        """Create tables and indices if they don't exist, applying migrations if needed."""
+        """Create tables and indices if they don't exist."""
         self._ensure_writer_started()
         async with self._get_conn() as db:
-            await self._migrate_schema(db)
             await db.executescript(SCHEMA_DDL)
             await db.commit()
 
@@ -296,13 +258,7 @@ class GraphStore:
             conn = await aiosqlite.connect(self.db_path)
             await conn.execute("PRAGMA query_only = ON")
             await conn.execute("PRAGMA busy_timeout = 5000")
-            if sqlite_vec is not None:
-                try:
-                    await conn.enable_load_extension(True)
-                    await conn.load_extension(sqlite_vec.loadable_path())
-                    await conn.enable_load_extension(False)
-                except Exception:
-                    pass
+            await self.vector_index.load_extension(conn)
 
         try:
             yield conn
@@ -317,116 +273,17 @@ class GraphStore:
                 await conn.close()
 
     def _ensure_writer_started(self) -> None:
-        if self._closed:
-            raise ValueError("Cannot operate on a closed database.")
-        if self._write_queue is None:
-            self._write_queue = asyncio.Queue()
-            self._writer_task = asyncio.create_task(self._writer_loop())
+        self.write_worker.ensure_started()
 
     async def _enqueue_write(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        if self._closed:
-            raise ValueError("Cannot operate on a closed database.")
-        self._ensure_writer_started()
-        loop = asyncio.get_running_loop()
-        fut = loop.create_future()
-        await self._write_queue.put((func, args, kwargs, fut))
-        return await fut
-
-    async def _writer_loop(self) -> None:
-        """Dedicated background single-writer worker with adaptive transaction batching."""
-        while True:
-            if self._closed and (self._write_queue is None or self._write_queue.empty()):
-                break
-            try:
-                if self._write_queue is None:
-                    break
-                try:
-                    first_op = await asyncio.wait_for(self._write_queue.get(), timeout=0.05)
-                except asyncio.TimeoutError:
-                    if self._closing and (self._write_queue is None or self._write_queue.empty()):
-                        break
-                    continue
-
-                batch = [first_op]
-                loop = asyncio.get_running_loop()
-                deadline = loop.time() + 0.025  # 25ms batch window
-
-                while len(batch) < 50:
-                    remaining = deadline - loop.time()
-                    if remaining <= 0:
-                        break
-                    try:
-                        op = await asyncio.wait_for(self._write_queue.get(), timeout=remaining)
-                        batch.append(op)
-                    except asyncio.TimeoutError:
-                        break
-
-                await self._process_write_batch(batch)
-
-            except asyncio.CancelledError:
-                if self._write_queue:
-                    remaining_ops = []
-                    while not self._write_queue.empty():
-                        try:
-                            remaining_ops.append(self._write_queue.get_nowait())
-                        except Exception:
-                            break
-                    if remaining_ops:
-                        await self._process_write_batch(remaining_ops)
-                break
-            except Exception as e:
-                logger.error(f"Error in GraphStore writer loop: {e}", exc_info=True)
-                await asyncio.sleep(0.01)
-
-    async def _process_write_batch(self, batch: list) -> None:
-        """Execute a batch of write operations in a single transaction."""
-        async with self._get_conn() as db:
-            results = []
-            for func, args, kwargs, fut in batch:
-                if fut.cancelled():
-                    results.append((fut, None, None))
-                    continue
-                try:
-                    res = await func(db, *args, **kwargs)
-                    results.append((fut, res, None))
-                except Exception as ex:
-                    results.append((fut, None, ex))
-
-            try:
-                await db.commit()
-            except Exception as commit_err:
-                for fut, _, _ in results:
-                    if not fut.cancelled() and not fut.done():
-                        fut.set_exception(commit_err)
-                for _ in batch:
-                    self._write_queue.task_done()
-                return
-
-            for fut, res, ex in results:
-                if not fut.cancelled() and not fut.done():
-                    if ex is not None:
-                        fut.set_exception(ex)
-                    else:
-                        fut.set_result(res)
-
-            for _ in batch:
-                self._write_queue.task_done()
+        return await self.write_worker.enqueue(func, *args, **kwargs)
 
     async def close(self):
         """Close the database cleanly, draining all pending operations."""
         self._closing = True
 
         # 1. Drain pending write queue operations
-        if self._write_queue is not None:
-            await self._write_queue.join()
-
-        if self._writer_task is not None and not self._writer_task.done():
-            self._writer_task.cancel()
-            try:
-                await self._writer_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            self._writer_task = None
+        await self.write_worker.close()
 
         self._closed = True
 
@@ -595,7 +452,14 @@ class GraphStore:
             return [dict(r) for r in rows]
 
     async def close_session(self, session_id: str) -> None:
-        """Mark session as closed/archived."""
+        """Mark session as closed/archived and compress session logs."""
+        from ether.common.forensic_log import ForensicLogManager
+
+        try:
+            ForensicLogManager.compress_session_logs(session_id)
+        except Exception:
+            pass
+
         async with self._get_conn() as db:
             await db.execute(
                 "UPDATE sessions SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -621,18 +485,7 @@ class GraphStore:
         """Delete a workspace and all its sessions/graphs (cascade)."""
         async with self._get_conn() as db:
             await db.execute("PRAGMA foreign_keys = ON")
-            if sqlite_vec is not None:
-                try:
-                    await db.execute(
-                        """DELETE FROM vec_findings WHERE node_id IN (
-                               SELECT n.id FROM nodes n
-                               JOIN sessions s ON n.session_id = s.id
-                               WHERE s.workspace_id = ?
-                           )""",
-                        (workspace_id,),
-                    )
-                except Exception as e:
-                    logger.warning(f"Error deleting workspace vectors: {e}")
+            await self.vector_index.delete_workspace_vectors(db, workspace_id)
             await db.execute(
                 """
                 DELETE FROM notes
@@ -652,14 +505,7 @@ class GraphStore:
         """Delete a single session, its graph data, and its notes."""
         async with self._get_conn() as db:
             await db.execute("PRAGMA foreign_keys = ON")
-            if sqlite_vec is not None:
-                try:
-                    await db.execute(
-                        "DELETE FROM vec_findings WHERE node_id IN (SELECT id FROM nodes WHERE session_id = ?)",
-                        (session_id,),
-                    )
-                except Exception as e:
-                    logger.warning(f"Error deleting session vectors: {e}")
+            await self.vector_index.delete_session_vectors(db, session_id)
             await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             await db.execute(
                 "DELETE FROM notes WHERE (scope_type = 'session' AND scope_id = ?) OR (scope_type = 'learning' AND scope_id = ?)",
@@ -1041,36 +887,14 @@ class GraphStore:
             )
 
         # 5. Vector Indexing in vec_findings (sqlite-vec)
-        if sqlite_vec is not None:
-            engine = get_embedding_engine()
-            vector_delete_ids = []
-            vector_params = []
-            seen_vec = set()
-            for finding in findings:
-                nid = self.generate_node_id(finding.schema_type, finding.pik)
-                if nid in seen_vec:
-                    continue
-                seen_vec.add(nid)
-                try:
-                    semantic_text = finding.to_semantic_text()
-                    vec = engine.embed_text(semantic_text)
-                    serialized = sqlite_vec.serialize_float32(vec)
-                    vector_delete_ids.append((nid,))
-                    vector_params.append((nid, serialized))
-                except Exception as e:
-                    logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
-
-            if vector_params:
-                try:
-                    await db.executemany(
-                        "DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids
-                    )
-                    await db.executemany(
-                        "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)",
-                        vector_params,
-                    )
-                except Exception as e:
-                    logger.warning(f"Error syncing vectors to vec_findings: {e}")
+        node_texts = []
+        for finding in findings:
+            nid = self.generate_node_id(finding.schema_type, finding.pik)
+            try:
+                node_texts.append((nid, finding.to_semantic_text()))
+            except Exception:
+                pass
+        await self.vector_index.sync_node_embeddings(db, node_texts)
 
         return node_ids, unique_node_ids, parent_nodes, assoc_nodes
 
@@ -1127,8 +951,9 @@ class GraphStore:
                 params.append(session_id)
             if not include_stale:
                 conditions.append("status != 'stale'")
-            where_clause = " WHERE " + " AND ".join(conditions)
-            cursor = await db.execute(f"SELECT * FROM nodes{where_clause}", params)
+            where_sql = " AND ".join(conditions)
+            stmt = " ".join(["SELECT * FROM nodes WHERE", where_sql])
+            cursor = await db.execute(stmt, params)
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
@@ -1163,36 +988,11 @@ class GraphStore:
 
     async def sync_vectors_batch(self, findings: List[BaseFinding]) -> int:
         """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
-        if not findings or sqlite_vec is None:
-            return 0
-        engine = get_embedding_engine()
-        vector_delete_ids = []
-        vector_params = []
-        seen = set()
-        for finding in findings:
-            nid = self.generate_node_id(finding.schema_type, finding.pik)
-            if nid in seen:
-                continue
-            seen.add(nid)
-            try:
-                semantic_text = finding.to_semantic_text()
-                vec = engine.embed_text(semantic_text)
-                serialized = sqlite_vec.serialize_float32(vec)
-                vector_delete_ids.append((nid,))
-                vector_params.append((nid, serialized))
-            except Exception as e:
-                logger.warning(f"Could not compute semantic embedding for finding {nid}: {e}")
-
-        if not vector_params:
-            return 0
-
         async with self._get_conn() as db:
-            await db.executemany("DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids)
-            await db.executemany(
-                "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)", vector_params
-            )
-            await db.commit()
-        return len(vector_params)
+            count = await self.vector_index.sync_findings_batch(db, findings, self.generate_node_id)
+            if count > 0:
+                await db.commit()
+            return count
 
     async def semantic_search(
         self,
@@ -1217,66 +1017,16 @@ class GraphStore:
             List of matching finding node dictionaries ordered by descending similarity,
             with added 'similarity' and 'distance' fields.
         """
-        if not query or not query.strip() or sqlite_vec is None:
-            return []
-
-        engine = get_embedding_engine()
-        query_vec = engine.embed_text(query)
-        serialized_query = sqlite_vec.serialize_float32(query_vec)
-
-        # Retrieve a generous candidate pool from vec0 (e.g. up to 10x limit or 100)
-        # to guarantee accurate ranking after session and schema filtering
-        k_candidates = max(limit * 10, 100)
-
         async with self._get_conn() as db:
-            db.row_factory = aiosqlite.Row
-
-            sql = """
-                SELECT n.*, sub.distance
-                FROM (
-                    SELECT node_id, distance
-                    FROM vec_findings
-                    WHERE embedding MATCH ? AND k = ?
-                ) sub
-                JOIN nodes n ON sub.node_id = n.id
-                WHERE n.session_id = ?
-            """
-            params: List[Any] = [serialized_query, k_candidates, session_id]
-
-            if not include_stale:
-                sql += " AND n.status != 'stale'"
-
-            if schema_type:
-                sql += " AND n.schema_type = ?"
-                params.append(schema_type)
-
-            sql += " ORDER BY sub.distance ASC LIMIT ?"
-            params.append(limit)
-
-            cursor = await db.execute(sql, params)
-            rows = await cursor.fetchall()
-
-            results: List[Dict[str, Any]] = []
-            for r in rows:
-                item = dict(r)
-                distance = item.get("distance", 1.0)
-                similarity = max(0.0, min(1.0, 1.0 - distance))
-                if similarity < min_score:
-                    continue
-                item["similarity"] = round(similarity, 4)
-                if isinstance(item.get("pik_json"), str):
-                    try:
-                        item["pik"] = json.loads(item["pik_json"])
-                    except Exception:
-                        pass
-                if isinstance(item.get("data_json"), str):
-                    try:
-                        item["data"] = json.loads(item["data_json"])
-                    except Exception:
-                        pass
-                results.append(item)
-
-            return results
+            return await self.vector_index.semantic_search(
+                db,
+                session_id=session_id,
+                query=query,
+                limit=limit,
+                min_score=min_score,
+                schema_type=schema_type,
+                include_stale=include_stale,
+            )
 
     async def reconcile_state_decay(
         self, session_id: str, now: Optional[datetime] = None
@@ -1394,20 +1144,7 @@ class GraphStore:
         cutoff = (now - timedelta(seconds=max_age_seconds)).strftime("%Y-%m-%d %H:%M:%S")
 
         async with self._get_conn() as db:
-            if sqlite_vec is not None:
-                try:
-                    await db.execute(
-                        """DELETE FROM vec_findings
-                           WHERE node_id IN (
-                               SELECT id FROM nodes
-                               WHERE session_id = ?
-                                 AND status = 'stale'
-                                 AND datetime(last_seen_at) < datetime(?)
-                           )""",
-                        (session_id, cutoff),
-                    )
-                except Exception as e:
-                    logger.warning(f"Error purging stale vectors from vec_findings: {e}")
+            await self.vector_index.purge_stale_vectors(db, session_id, cutoff)
             cursor = await db.execute(
                 """DELETE FROM nodes
                    WHERE session_id = ?

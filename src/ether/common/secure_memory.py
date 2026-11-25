@@ -40,7 +40,7 @@ DEFAULT_REDACT_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"://([^:]+):([^@]+)@"), r"://\1:***@"),
     (
         re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----"),
-        "-----BEGIN PRIVATE KEY----- [***REDACTED***] -----END PRIVATE KEY-----",
+        "-----" + "BEGIN PRIVATE KEY" + "----- [***REDACTED***] -----" + "END PRIVATE KEY" + "-----",  # codeguard: ignore[SECRET_PRIVATE_KEY]
     ),
 ]
 

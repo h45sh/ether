@@ -46,6 +46,18 @@ ether mcp --policy unrestricted
 }
 ```
 
+*Tip: If installed via `pipx` or if `ether` is not on your global system `$PATH`, configure Claude Desktop with `pipx run`:*
+```json
+{
+  "mcpServers": {
+    "ether": {
+      "command": "pipx",
+      "args": ["run", "ether-core", "mcp"]
+    }
+  }
+}
+```
+
 #### Cursor Configuration (`.cursor/mcp.json`):
 ```json
 {
@@ -67,7 +79,7 @@ ether mcp --transport sse --port 8000
 
 ## 3. Authoritative MCP Tool Catalog
 
-The Ether MCP server exposes **15 high-leverage tools** organized across 6 core operational domains:
+The Ether MCP server exposes **18 high-leverage tools** organized across 6 core operational domains (alongside server-level `instructions`, `ether://schemas` & `ether://tools/{tool_name}/guidance` resources, and `perimeter_recon` / `vulnerability_triage` prompts):
 
 ### Execution & Process Supervision
 
@@ -237,6 +249,18 @@ Ether surfaces granular execution telemetry payloads with a standardized `Execut
 | `BINARY_MISSING` | `127` | Tool is unregistered or binary executable not found on host `$PATH`. | Fall back to an in-process Tier A coroutine tool (e.g. `http_probe`, `dnspython`). |
 | `SCOPE_BLOCKED` | `1` | Preflight gate rejected execution under active `GatePolicy` (SSRF/IMDS). | Refine target scope or switch to `GatePolicy.UNRESTRICTED` if authorized. |
 | `NON_ZERO_EXIT` | `1+` | General tool execution failure or abnormal process exit. | Inspect `stderr_snippet` and adjust custom `arguments` flags. |
+
+---
+
+## 4b. Additional MCP Tools, Resources & Workflow Prompts
+
+* **`get_telemetry_snapshot(session_id, token_budget, task_objective, selected_entity_id)`**: Compiles a 0/1 knapsack token-budgeted state snapshot with optional vector RAG objective boosting.
+* **`execute_pipeline(expression, session_id)`**: Executes a chained tool pipeline DAG (e.g., `"subfinder(target=example.com) | dnspython | http_probe"`) gated by `ActionGateway` preflight checks.
+* **`verify_session_audit(session_id)`**: Verifies the cryptographic SHA-256 chain of custody and log file hashes for a session.
+* **MCP Resources**: `ether://schemas` (lists all 25 normalized finding schemas and PIK fields) and `ether://tools/{tool_name}/guidance` (dynamic target scope and safety guidance).
+* **MCP Prompts**: `perimeter_recon(target)` and `vulnerability_triage(session_id)` workflow templates.
+* **Server Instructions**: Sent automatically during MCP handshake summarizing active `GatePolicy`, token-efficiency rules, and `<untrusted_scan_output>` boundaries.
+* **Flag Flexibility**: `execute_tool` accepts both `arguments["flags"]` and `arguments["raw_flags"]`, and `read_action_log` transparently decompresses `.log.gz` archives for closed sessions.
 
 ---
 

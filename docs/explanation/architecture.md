@@ -24,24 +24,28 @@ Ether solves this through a **"Smart Adapter / Simple Core"** architecture:
 ├────────────────────────────────────────────────────────────────────────┤
 │                       GATEWAYS & SECURITY POLICY                       │
 │  - ActionGateway (GatePolicy.SAFE vs GatePolicy.UNRESTRICTED)          │
-│  - CIDR Scope Containment, SSRF & Cloud Metadata Defense               │
+│  - ScopeValidator (Radix Trie CIDR Containment & IMDS Defense)         │
+│  - PreflightVerifier (Dynamic Manifest-Driven Target Guidance)         │
 ├────────────────────────────────────────────────────────────────────────┤
 │                     CORE EXECUTION & SUPERVISION                       │
 │  - ExecutionSession (Asyncio Subprocess & Native Tier A Coroutines)    │
 │  - LogSpooler (64KB buffered disk stream), RingBuffer (<10MB RAM cap)  │
+│  - ForensicLogManager (SHA-256 Hash Chaining & Session Gzip Compaction)│
 │  - Subprocess Environment Secret Scrubbing (sanitize_subprocess_env)   │
 ├────────────────────────────────────────────────────────────────────────┤
 │                      STATE & GRAPH STORAGE (SQLite)                    │
-│  - GraphStore (Deterministic SHA-256 PIKs, Idempotent Upsert, WAL)     │
+│  - GraphStore Facade (Deterministic SHA-256 PIKs, Idempotent Upsert)   │
+│  - WriteQueueWorker (Adaptive 25ms/50-op Batch Serialization Queue)    │
+│  - VectorIndex (sqlite-vec vec0 Offline Embeddings & Semantic Search)  │
 │  - Temporal State Decay (TTL Windows: confirmed -> flapping -> stale)   │
 │  - Invariant Identity Anchoring (TLS/SSH/Favicon Cryptographic Hashes) │
-│  - Embedded Offline Vector Memory & Finding RAG (sqlite-vec vec0)      │
 │  - GraphTelemetryCompiler (Knapsack Token Budgeting & Zero-Token Diffs)│
 │  - GraphAnalyticsEngine (Attack Paths, Blast Radius, Centrality)       │
 ├────────────────────────────────────────────────────────────────────────┤
 │                     PLUGGABLE TOOL ADAPTERS (tools/*)                  │
 │  - Tier A: In-process async coroutines (http_probe, dnspython)         │
 │  - Tier B: Binary subprocesses (nmap, nuclei, ffuf, etc.)              │
+│  - AssetResolver: 5-tier wordlist resolution & prefix stripping        │
 ├────────────────────────────────────────────────────────────────────────┤
 │                   NORMALIZED SCHEMAS & PRIMITIVES                      │
 │  - BaseFinding, NetworkHost, NetworkService, WebEndpoint, VulnFound    │
@@ -85,11 +89,11 @@ Dependencies flow strictly downwards in one direction:
 ```mermaid
 graph TD
     Headless["Headless Interfaces<br>(CLI Router, MCP Server, Python SDK)"]
-    Gateway["Gateways & Policy<br>(ActionGateway, Scope Guardrails, Preflight)"]
-    Core["Process Supervision & Execution<br>(ExecutionSession, Executor, LogSpooler)"]
-    State["State & Graph Storage<br>(GraphStore, TelemetryCompiler, Vector RAG)"]
-    Registry["Pluggable Adapters & Registry<br>(ToolRegistry, ToolAdapter, tools/*)"]
-    Schemas["Normalized Schemas & Primitives<br>(BaseFinding, Canonicalize, Crypto)"]
+    Gateway["Gateways & Policy<br>(ActionGateway, ScopeValidator, PreflightVerifier)"]
+    Core["Process Supervision & Execution<br>(ExecutionSession, Executor, LogSpooler, ForensicLogManager)"]
+    State["State & Graph Storage<br>(GraphStore Facade, WriteQueueWorker, VectorIndex, TelemetryCompiler)"]
+    Registry["Pluggable Adapters & Registry<br>(ToolRegistry, ToolAdapter, AssetResolver, tools/*)"]
+    Schemas["Normalized Schemas & Primitives<br>(BaseFinding, AuditRecord, Canonicalize, Crypto)"]
 
     Headless --> Gateway
     Gateway --> Core

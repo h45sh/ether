@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ether import paths
+from ether.registry.assets import resolve_wordlist as resolve_wordlist_asset
 
 # Wordlists located in packaged assets directory inside ether package
 BUNDLED_WORDLISTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "wordlists"
@@ -87,6 +88,7 @@ def resolve_wordlist(
       - Direct existing file path (e.g. "/tmp/custom.txt")
       - Named identifier (e.g. "common_dirs", "subdomains_500")
       - Macro tokens (e.g. "{wordlist:common_dirs}", "{wordlist}")
+      - Dynamic system resolution via ether.registry.assets
     """
     clean = name_or_macro.strip()
 
@@ -118,7 +120,17 @@ def resolve_wordlist(
     if lookup_key in refreshed_map:
         return refreshed_map[lookup_key]
 
-    # 5. Ultimate default fallback to common_dirs
+    # 5. Try asset resolver (system SecLists, $ETHER_WORDLISTS_DIR, minimal fallback)
+    try:
+        resolved_path = resolve_wordlist_asset(
+            name, data_dir=str(Path(target_dir).parent) if target_dir else None
+        )
+        if resolved_path.is_file():
+            return str(resolved_path)
+    except Exception:
+        pass
+
+    # 6. Ultimate default fallback to common_dirs
     if DEFAULT_WORDLIST_NAME in refreshed_map:
         return refreshed_map[DEFAULT_WORDLIST_NAME]
 

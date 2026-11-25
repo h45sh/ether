@@ -18,7 +18,9 @@
 - **Packaging Integrity**: 100% packaged asset verification by building and testing the real distribution wheel artifact (`dist/*.whl`) in CI.
 - **SSRF Blocklist Preservation**: `ActionGateway.BLOCKED_TARGETS` must permanently block AWS IMDSv2, Alibaba metadata, IPv4 link-local (`169.254.0.0/16`), and hexadecimal/decimal IP encodings.
 - **Subprocess Environment Isolation**: Subprocess spawning must always execute `sanitize_subprocess_env()` to strip API keys, cloud credentials, and SSH handles.
-- **Untrusted Output Boundary**: All untrusted scanner output passed to LLMs must be sanitized and enclosed within `<untrusted_scan_output>...</untrusted_scan_output>` tags with tag breakout escaping.
+- **Untrusted Output Boundary**: All untrusted scanner output passed to LLMs must be sanitized and enclosed within `<untrusted_scan_output>...</untrusted_scan_output>` tags with tag breakout escaping and strict length bounding (`max_chars=100_000`).
+- **Forensic Chain of Custody**: All actions maintain SHA-256 hash-chained `AuditRecord` entries in the session audit manifest, verified via `ether session verify-audit`.
+- **Zero Backward Compatibility Debt**: Ether is maintained as a fresh, modern engine. No legacy shims, dead wrappers, or runtime migration loops are retained.
 
 ## 4. Testing & Architectural Invariants
 - **Fast Pre-Flight Tier 0 (`pytest -m tier0 -q`)**: Must complete in $< 3.0\text{s}$ with zero network calls and zero flakiness.

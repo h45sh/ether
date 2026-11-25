@@ -47,7 +47,20 @@ These standards are mechanically enforced via automated linting, property-based 
 
 ---
 
-## 6. Code Quality Gates
+## 6. Forensic Integrity & Audit Standards
+- **Rule:** Every executed tool action must generate an append-only `AuditRecord` in the session's audit manifest (`~/.ether/audit/{session_id}.jsonl`).
+- **Rule:** Audit records must maintain a continuous SHA-256 cryptographic hash chain linking each action to the preceding block.
+- **Rule:** Upon session closure, uncompressed log spools must be compacted into `.log.gz` archives with verified checksums.
+
+---
+
+## 7. Clean Engine Invariant (Zero Backward Compatibility Debt)
+- **Rule:** Ether is maintained as a clean, modern substrate. Do not introduce legacy shims, dead compatibility wrappers, or deprecated fallbacks.
+- **Rule:** Database schemas initialize atomically via `SCHEMA_DDL` without runtime migration loops.
+
+---
+
+## 8. Code Quality Gates
 - **Linter:** `ruff check .` (zero warnings or errors).
 - **Formatter:** `ruff format .` (line length: 100).
 - **Target Python Version:** `>= 3.11` (specifically tested on `py311`, `py312`, `py313`).

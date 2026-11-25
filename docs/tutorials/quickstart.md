@@ -16,8 +16,13 @@ By the end of this 10-minute tutorial, you will know how to:
 
 Before beginning, ensure you have:
 * Python $\ge 3.11$ installed.
-* Ether installed in an active virtual environment:
+* Ether installed globally via `pipx` / `pip`, or in an active local environment:
   ```bash
+  # Option A: Install globally (Recommended)
+  pipx install ether-core
+  # or: pip install ether-core
+
+  # Option B: From local source clone
   cd ether
   source .venv/bin/activate
   ```
@@ -42,7 +47,7 @@ Database: /home/user/.ether/ether.db (SQLite 3.45+, WAL Mode)
 sqlite-vec Extension: LOADABLE (vec0 virtual table enabled)
 Security Policy: GatePolicy.SAFE (SSRF & IMDS defense active)
 
-Discovered Pluggable Tool Adapters (12 available):
+Discovered Pluggable Tool Adapters (35 registered):
   [+] nmap             -> /usr/bin/nmap
   [+] nuclei           -> /usr/local/bin/nuclei
   [+] ffuf             -> /usr/bin/ffuf
@@ -54,6 +59,8 @@ Discovered Pluggable Tool Adapters (12 available):
   [+] whois            -> /usr/bin/whois
   [+] dnspython        -> Python in-process coroutine (Tier A)
   [+] http_probe       -> Python in-process coroutine (Tier A)
+  [+] tls_probe        -> Python in-process coroutine (Tier A)
+  ... (and 23 more adapters)
 
 Overall Health: [HEALTHY] All systems operational.
 ============================================================
@@ -205,6 +212,12 @@ ether graph export "$SESSION" -o engagement_backup.enc --encrypt --passphrase "S
 You can import this archive on any machine running Ether with:
 ```bash
 ether graph import engagement_backup.enc --passphrase "SuperSecretPassphrase123"
+```
+
+### Verify Cryptographic Audit Chain of Custody:
+Every executed action in your session is cryptographically chained via SHA-256 in an append-only audit manifest. Verify its integrity at any time:
+```bash
+ether session verify-audit "$SESSION"
 ```
 
 ---

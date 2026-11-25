@@ -109,7 +109,7 @@ To enable tool chaining, all findings inherit from `BaseFinding` and declare a d
 | `vulnerability.found` | `VulnerabilityFound` | `{"host_ip": "<ip>", "vuln_id": "<cve_or_id>"}` |
 
 > [!TIP]
-> Consult [`reference/schema-registry.md`](reference/schema-registry.md) for the complete reference of all 18 active finding schemas.
+> Consult [`reference/schema-registry.md`](reference/schema-registry.md) for the complete reference of all 25 active finding schemas.
 
 ---
 
@@ -154,14 +154,19 @@ To protect system determinism and database stability, Ether follows a three-tier
 > Foundational engine infrastructure. Zero breaking contract changes without architectural review.
 * `src/ether/schemas/base.py`: The `BaseFinding` and `Relation` models.
 * `src/ether/graph/store.py`: Upsert logic, PIK SHA-256 calculation, and database schemas.
+* `src/ether/graph/write_queue.py`: Async write serialization queue and batch commit worker.
+* `src/ether/graph/vector_index.py`: Offline `sqlite-vec` vector indexing and search engine.
 * `src/ether/common/canonicalize.py`: Value and schema normalization rules.
+* `src/ether/common/forensic_log.py`: Cryptographic hash-chained audit logging and compaction.
 * `src/ether/registry/registry.py`: Dynamic tool discovery and manifest loader.
 * `src/ether/paths.py`: Centralized application data path resolution.
 
 ### Tier 2: Review Required
 * `src/ether/core/executor.py`: Subprocess streams, timeouts, and process group management.
 * `src/ether/core/session.py`: ExecutionSession lifecycle and ring buffering.
-* `src/ether/gateway/gate.py`: Action validation and CIDR scope policies.
+* `src/ether/gateway/gate.py`: Action validation and policy enforcement.
+* `src/ether/gateway/scope.py`: RadixTrie CIDR scope validation and IMDS defense.
+* `src/ether/gateway/preflight.py`: Dynamic capability-driven preflight verification.
 * `src/ether/schemas/*.py`: Domain finding schemas.
 * `tools/*/adapter.py`: Individual tool adapters.
 

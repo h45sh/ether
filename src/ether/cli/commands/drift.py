@@ -25,7 +25,9 @@ async def handle_drift_export_baseline(args: Any, context: CliContext) -> int:
         else:
             node_count = len(baseline.get("nodes", []))
             target_desc = f" to '{out_path}'" if out_path else ""
-            print(f"[+] Exported baseline with {node_count} nodes for session '{session_id}'{target_desc}")
+            print(
+                f"[+] Exported baseline with {node_count} nodes for session '{session_id}'{target_desc}"
+            )
         return EXIT_SUCCESS
     except Exception as e:
         print_error(f"Failed to export baseline: {e}")
@@ -58,8 +60,12 @@ async def handle_drift_audit(args: Any, context: CliContext) -> int:
             return EXIT_SUCCESS
 
         print(f"[+] Architectural Drift Audit for Session: {session_id}")
-        print(f"    Mode: {report.mode} | Drift Score: {report.drift_score:.4f} (0.0 = perfect match, 1.0 = total divergence)")
-        print(f"    Summary: {report.summary['matching_count']} matching, {report.summary['missing_count']} missing, {report.summary['unexpected_count']} unexpected")
+        print(
+            f"    Mode: {report.mode} | Drift Score: {report.drift_score:.4f} (0.0 = perfect match, 1.0 = total divergence)"
+        )
+        print(
+            f"    Summary: {report.summary['matching_count']} matching, {report.summary['missing_count']} missing, {report.summary['unexpected_count']} unexpected"
+        )
 
         if report.discrepancies:
             headers = ["TYPE", "TARGET", "SEVERITY", "DESCRIPTION"]
@@ -78,7 +84,9 @@ async def handle_drift_audit(args: Any, context: CliContext) -> int:
             print("[+] Zero discrepancies detected. Observed architecture conforms to baseline.")
 
         if record:
-            print(f"[+] Recorded {len(report.discrepancies)} audit.drift findings to session graph.")
+            print(
+                f"[+] Recorded {len(report.discrepancies)} audit.drift findings to session graph."
+            )
 
         return EXIT_SUCCESS
     except Exception as e:

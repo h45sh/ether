@@ -2,7 +2,6 @@
 
 import pytest
 
-from ether.gateway.gate import ActionGateway
 from ether.gateway.neutralizer import PromptNeutralizer
 
 
@@ -32,13 +31,3 @@ def test_prompt_neutralizer_preserves_technical_identifiers():
     assert "192.168.1.100" in neutralized
     assert "sub.example.com" in neutralized
     assert "external assessment perimeter" in neutralized
-
-
-@pytest.mark.fast
-def test_gateway_neutralize_prompt_integration():
-    res = ActionGateway.neutralize_prompt(
-        "Hack into the admin portal and test privilege escalation"
-    )
-    assert "hack" not in res.lower()
-    assert "perform authorized security audit of" in res
-    assert "evaluate authorization boundary controls" in res
