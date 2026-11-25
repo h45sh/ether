@@ -156,3 +156,73 @@ async def test_cli_telemetry_health(tmp_path, capsys):
     assert exit_code == 0
     captured_prom = capsys.readouterr()
     assert "ether_process_resident_memory_bytes" in captured_prom.out
+
+
+def test_diagnostic_engine_check_tools_uses_meta_binary_and_coroutine(tmp_path):
+    """Verify _check_tools reads manifest.meta.binary and handles execution_tier == 'coroutine'."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    coro_manifest = SimpleNamespace(
+        meta=SimpleNamespace(
+            name="tls_probe",
+            description="TLS probe",
+            one_line_summary="",
+            category="TLS",
+            categories=["tls"],
+            binary="tls_probe",
+            execution_tier="coroutine",
+        ),
+        input={"accepts": ["network.host"], "target_types": ["ip"]},
+        output={"produces": ["network.service"]},
+    )
+    coro_adapter = MagicMock()
+    coro_adapter.validate_install.return_value = True
+
+    bin_manifest = SimpleNamespace(
+        meta=SimpleNamespace(
+            name="netexec",
+            description="NetExec",
+            one_line_summary="",
+            category="Network",
+            categories=["network"],
+            binary="nxc",
+            execution_tier="subprocess",
+        ),
+        input={"accepts": ["network.host"], "target_types": ["ip"]},
+        output={"produces": ["network.service"]},
+    )
+    bin_adapter = MagicMock()
+    bin_adapter.validate_install.return_value = True
+
+    mock_registry = MagicMock()
+    mock_registry.list_tools.return_value = ["tls_probe", "netexec"]
+    mock_registry.get_tool.side_effect = lambda n: {
+        "tls_probe": {"manifest": coro_manifest, "adapter": coro_adapter},
+        "netexec": {"manifest": bin_manifest, "adapter": bin_adapter},
+    }.get(n)
+    mock_registry.list_tool_summaries.return_value = [
+        {
+            "name": "tls_probe",
+            "binary": "tls_probe",
+            "execution_tier": "coroutine",
+            "installed": True,
+        },
+        {
+            "name": "netexec",
+            "binary": "nxc",
+            "execution_tier": "subprocess",
+            "installed": True,
+        },
+    ]
+
+    engine = DiagnosticEngine(db_path=str(tmp_path / "d.db"), registry=mock_registry)
+    report = DiagnosticReport()
+    with patch("ether.core.diagnostics.shutil.which", side_effect=lambda b: "/usr/bin/nxc" if b == "nxc" else None):
+        engine._check_tools(report)
+
+    checks_by_name = {c.name: c for c in report.checks}
+    assert checks_by_name["Tool: tls_probe"].status == "ok"
+    assert "coroutine" in checks_by_name["Tool: tls_probe"].message.lower()
+    assert checks_by_name["Tool: netexec"].status == "ok"
+    assert "/usr/bin/nxc" in checks_by_name["Tool: netexec"].message

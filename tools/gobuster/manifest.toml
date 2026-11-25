@@ -25,6 +25,7 @@ power = true
 
 [input]
 accepts = ["network.service", "web.endpoint"]
+target_types = ["url"]
 
 [output]
 produces = ["web.endpoint"]

@@ -26,6 +26,7 @@ power = true
 
 [input]
 accepts = ["network.service", "vulnerability.found", "network.host"]
+target_types = ["keyword", "domain", "ip"]
 
 [output]
 produces = ["exploit.reference"]

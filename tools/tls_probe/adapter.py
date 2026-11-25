@@ -6,7 +6,8 @@ import ssl
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.common.context import ExecutionContext
-from ether.common.ssrf import check_ssrf_safety
+from ether.common.exceptions import PolicyViolationError
+from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.network import TLSCertificate, TLSCipherSuite
@@ -45,8 +46,15 @@ class TlsProbeAdapter(ToolAdapter):
         host = self.extract_host(target) or "127.0.0.1"
         port = self.extract_port(target) or 443
 
-        if str(getattr(context, "policy", "safe")).lower() in ("safe", "gatepolicy.safe"):
-            check_ssrf_safety(host)
+        policy_str = str(getattr(context, "policy", "safe")).lower()
+        is_unrestricted = "unrestricted" in policy_str
+        verdict = await ScopeValidator.check_destination(
+            host, policy_is_unrestricted=is_unrestricted
+        )
+        if not verdict.allowed:
+            raise PolicyViolationError(
+                f"Target '{host}' blocked by SSRF policy ({verdict.reason})."
+            )
 
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False

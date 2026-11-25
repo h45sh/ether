@@ -10,6 +10,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 import httpx
 
 from ether.common.context import ExecutionContext
+from ether.common.exceptions import PolicyViolationError
+from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
 from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
@@ -19,14 +21,27 @@ from ether.schemas.web import WebEndpoint
 logger = logging.getLogger(__name__)
 
 
-async def calibrate_fuzzer_baseline(url: str, timeout_sec: float = 3.0) -> Optional[Dict[str, Any]]:
+async def calibrate_fuzzer_baseline(
+    url: str,
+    timeout_sec: float = 3.0,
+    policy_is_unrestricted: bool = False,
+) -> Optional[Dict[str, Any]]:
     """Probe random non-existent path to detect custom 404 / wildcard response geometry.
 
+    Enforces ScopeValidator pre-connect before issuing any HTTP request.
     Returns dict with 'size', 'words', 'lines', 'status_code' if server responds uniformly,
     or None if fail-open on network timeout / error.
     """
     if not url or not (url.startswith("http://") or url.startswith("https://")):
         return None
+
+    verdict = await ScopeValidator.check_destination(
+        url, policy_is_unrestricted=policy_is_unrestricted
+    )
+    if not verdict.allowed:
+        raise PolicyViolationError(
+            f"Target '{url}' blocked by ScopeValidator pre-connect ({verdict.reason})."
+        )
 
     nonce = uuid.uuid4().hex[:8]
     probe_url = f"{url.rstrip('/')}/.ether_probe_{nonce}"
@@ -66,7 +81,8 @@ class FfufAdapter(ToolAdapter):
         """Execute ffuf scan with pre-flight response geometry baseline calibration."""
         url = self.extract_url(target)
         if url and not params.get("skip_calibration"):
-            calib = await calibrate_fuzzer_baseline(url)
+            is_unrestricted = "unrestricted" in str(getattr(context, "policy", "safe")).lower()
+            calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
             if calib and calib.get("size") is not None:
                 params = dict(params)
                 raw_flags = params.get("raw_flags", "")
@@ -79,16 +95,6 @@ class FfufAdapter(ToolAdapter):
     def validate_install(self) -> bool:
         """Check if ffuf binary is available in PATH."""
         return self.is_binary_available("ffuf")
-
-    def sanitize_output(self, raw_stdout: str) -> str:
-        """Strip ffuf ASCII art, progress lines, and metadata blocks."""
-        lines = []
-        for line in raw_stdout.splitlines():
-            s = line.strip()
-            if s.startswith("::") or "Progress: [" in s or s.startswith("____"):
-                continue
-            lines.append(line)
-        return "\n".join(lines)
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct the ffuf command line execution."""

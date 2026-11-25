@@ -27,6 +27,7 @@ power = true
 
 [input]
 accepts = ["network.host", "network.service"]
+target_types = ["ip", "cidr", "domain"]
 
 [output]
 produces = ["network.host", "network.service", "audit.misconfig", "credential.found"]

@@ -81,3 +81,72 @@ def test_scope_url_and_port_stripping():
     v = ScopeValidator.is_in_scope("http://10.20.30.40:8080/admin/path", scope)
     assert v.allowed
     assert v.normalized_target == "10.20.30.40"
+
+
+def test_scope_metadata_internal_and_alternate_ip_notations():
+    scope = EngagementScope()
+    v_meta = ScopeValidator.is_in_scope("http://metadata.internal/computeMetadata/v1/", scope)
+    assert not v_meta.allowed
+    assert v_meta.reason == "BLOCKED_CLOUD_METADATA"
+
+    v_hex = ScopeValidator.is_in_scope("http://0xa9fea9fe/latest/meta-data", scope)
+    assert not v_hex.allowed
+    assert v_hex.reason == "BLOCKED_CLOUD_METADATA"
+    assert v_hex.normalized_target == "169.254.169.254"
+
+    v_dec = ScopeValidator.is_in_scope("2852039166", scope)
+    assert not v_dec.allowed
+    assert v_dec.reason == "BLOCKED_CLOUD_METADATA"
+    assert v_dec.normalized_target == "169.254.169.254"
+
+
+@pytest.mark.asyncio
+async def test_scope_check_destination_with_dns_resolver():
+    async def resolve_metadata(_host: str):
+        return ["169.254.169.254"]
+
+    v_meta = await ScopeValidator.check_destination(
+        "https://rebind.evil.com/latest",
+        EngagementScope(),
+        dns_resolver=resolve_metadata,
+    )
+    assert not v_meta.allowed
+    assert v_meta.reason == "BLOCKED_CLOUD_METADATA"
+
+    async def resolve_loopback(_host: str):
+        return ["127.0.0.1"]
+
+    v_loop_blocked = await ScopeValidator.check_destination(
+        "localtest.me",
+        EngagementScope(allow_loopback=False),
+        dns_resolver=resolve_loopback,
+    )
+    assert not v_loop_blocked.allowed
+    assert v_loop_blocked.reason == "BLOCKED_LOOPBACK_UNAUTHORIZED"
+
+    v_loop_allowed = await ScopeValidator.check_destination(
+        "localtest.me",
+        EngagementScope(allow_loopback=True),
+        dns_resolver=resolve_loopback,
+    )
+    assert v_loop_allowed.allowed
+
+    v_loop_unrestricted = await ScopeValidator.check_destination(
+        "localtest.me",
+        EngagementScope(allow_loopback=False),
+        policy_is_unrestricted=True,
+        dns_resolver=resolve_loopback,
+    )
+    assert v_loop_unrestricted.allowed
+    assert v_loop_unrestricted.reason == "WARNING_LOOPBACK_ALLOWED_BY_POLICY"
+
+    async def resolve_public(_host: str):
+        return ["93.184.216.34"]
+
+    v_pub = await ScopeValidator.check_destination(
+        "example.com",
+        EngagementScope(),
+        dns_resolver=resolve_public,
+    )
+    assert v_pub.allowed
+    assert v_pub.reason == "ALLOWED_IN_SCOPE_DOMAIN"

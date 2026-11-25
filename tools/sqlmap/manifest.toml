@@ -28,6 +28,7 @@ power = true
 
 [input]
 accepts = ["web.endpoint", "web.vulnerability"]
+target_types = ["url"]
 
 [output]
 produces = ["web.vulnerability", "credential.found"]

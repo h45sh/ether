@@ -17,6 +17,7 @@ power = true
 
 [input]
 accepts = ["domain.info", "dns.record"]
+target_types = ["domain"]
 
 [output]
 produces = ["cloud.asset"]

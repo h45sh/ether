@@ -5,6 +5,7 @@ one_line_summary = "native async MySQL protocol handshake and auth auditor"
 category = "Database Assessment"
 categories = ["database", "auth", "recon"]
 binary = "mysql_probe"
+execution_tier = "coroutine"
 theory = """
 ### Protocol Theory & MySQL Initial Handshake (Packet 0x0a)
 Upon TCP connection establishment to port 3306, the MySQL server immediately transmits an
@@ -18,6 +19,7 @@ power = true
 
 [input]
 accepts = ["network.service", "network.host"]
+target_types = ["ip", "cidr", "domain"]
 
 [output]
 produces = ["database.service"]

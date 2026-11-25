@@ -67,10 +67,14 @@ async def test_native_tls_probe_adapter():
     )
 
     mock_context = AsyncMock()
+    mock_context.policy = "unrestricted"
 
     with patch("asyncio.open_connection", new_callable=AsyncMock) as mock_open:
         mock_open.return_value = (AsyncMock(), mock_writer)
-        with patch("ether.common.ssrf.check_ssrf_safety", return_value=None):
+        with patch("ether.common.scope.ScopeValidator.check_destination") as mock_check:
+            from ether.common.scope import ScopeVerdict
+
+            mock_check.return_value = ScopeVerdict(allowed=True, reason="ALLOWED", normalized_target="127.0.0.1")
             findings = []
             async for f in adapter.execute_action(target, {}, mock_context):
                 findings.append(f)
