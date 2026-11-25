@@ -131,3 +131,53 @@ def test_forensic_log_compression_lifecycle(tmp_path: Path):
     assert is_valid
     assert records[0]["valid"]
     assert records[0]["file_hash_valid"]
+
+
+def test_find_and_read_action_log_uncompressed_and_compressed(tmp_path: Path):
+    session_id = "sess-read-log"
+    data_dir = str(tmp_path)
+    action_id = "12345678-aaaa-bbbb-cccc-1234567890ab"
+
+    spooler, log_path = ForensicLogManager.open_action_spool(
+        session_id=session_id,
+        action_id=action_id,
+        tool="nmap",
+        target="10.0.0.1",
+        data_dir=data_dir,
+    )
+    for i in range(10):
+        spooler.write(f"line-{i}\n")
+    spooler.close()
+
+    # Find with explicit session_id
+    found = ForensicLogManager.find_action_log(action_id, session_id=session_id, data_dir=data_dir)
+    assert found == log_path
+
+    # Find with session_id=None (searches across sessions)
+    found_any = ForensicLogManager.find_action_log(action_id, data_dir=data_dir)
+    assert found_any == log_path
+
+    # Read tail_lines=3
+    tail = ForensicLogManager.read_action_log(
+        action_id, session_id=session_id, tail_lines=3, data_dir=data_dir
+    )
+    assert tail is not None
+    assert "line-7" in tail
+    assert "line-9" in tail
+    assert "line-6" not in tail
+
+    # Compress and verify find_action_log + read_action_log still work on .log.gz
+    ForensicLogManager.compress_session_logs(session_id, data_dir=data_dir)
+    found_gz = ForensicLogManager.find_action_log(action_id, session_id=session_id, data_dir=data_dir)
+    assert found_gz is not None
+    assert found_gz.name.endswith(".log.gz")
+
+    tail_gz = ForensicLogManager.read_action_log(action_id, tail_lines=2, data_dir=data_dir)
+    assert tail_gz is not None
+    assert "line-8" in tail_gz
+    assert "line-9" in tail_gz
+    assert "line-7" not in tail_gz
+
+    # Missing action returns None
+    assert ForensicLogManager.find_action_log("nonexistent-id", data_dir=data_dir) is None
+    assert ForensicLogManager.read_action_log("nonexistent-id", data_dir=data_dir) is None

@@ -11,12 +11,13 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.common.context import ExecutionContext
+from ether.core.executor import Executor
+from ether.core.session import CommandRunner
 from ether.graph.store import GraphStore
 from ether.registry.adapter import ToolAdapter
 from ether.registry.registry import ToolRegistry
+from ether.registry.target_inference import infer_target_finding
 from ether.schemas.base import BaseFinding
-from ether.schemas.network import NetworkHost
-from ether.schemas.web import WebEndpoint
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +98,15 @@ class PipelineEngine:
         store: Optional[GraphStore] = None,
         max_concurrent: int = 50,
         queue_size: int = 500,
+        command_runner: Optional[CommandRunner] = None,
     ):
         self.registry = registry
         self.store = store
         self.max_concurrent = max_concurrent
         self.queue_size = queue_size
+        self.command_runner: CommandRunner = (
+            command_runner if command_runner is not None else Executor()
+        )
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
     async def execute_pipeline(
@@ -129,10 +134,7 @@ class PipelineEngine:
         seed_target = initial_target
         if not seed_target:
             raw_target = first_stage.params.get("target") or "127.0.0.1"
-            if raw_target.startswith("http://") or raw_target.startswith("https://"):
-                seed_target = WebEndpoint.create(url=raw_target)
-            else:
-                seed_target = NetworkHost.create(ip=raw_target)
+            seed_target = infer_target_finding(raw_target)
 
         await stage_queues[0].put(seed_target)
         await stage_queues[0].put(None)  # EOF for stage 0 inputs
@@ -148,7 +150,7 @@ class PipelineEngine:
                 action_id=f"pipe-act-{stage_idx}",
                 session_id=session_id or "pipeline-session",
                 policy=policy,
-                runner=None,
+                runner=self.command_runner,
             )
 
             try:
@@ -162,19 +164,9 @@ class PipelineEngine:
                     # Execute stage tool against this target
                     async with self._semaphore:
                         try:
-                            # Use execute_action if overridden (Tier A), or parse_output
-                            if getattr(adapter, "execution_tier", "") == "coroutine":
+                            if adapter is not None:
                                 async for finding in adapter.execute_action(
                                     target_finding, stage.params, context
-                                ):
-                                    if self.store and session_id:
-                                        await self.store.upsert_finding(session_id, finding)
-                                    await out_q.put(finding)
-                            else:
-                                # For subprocess tools in pipeline test / mock harnesses:
-                                # Invoke parse_output on dummy or test runs
-                                async for finding in adapter.parse_output(
-                                    "", target_finding, context={"params": stage.params}
                                 ):
                                     if self.store and session_id:
                                         await self.store.upsert_finding(session_id, finding)

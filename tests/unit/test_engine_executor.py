@@ -88,3 +88,82 @@ def test_sanitize_subprocess_env():
         "SSH_PRIVATE_KEY",
     ]:
         assert secret not in cleaned
+
+
+class _ExitCodeAdapter(MockNmapAdapter):
+    def __init__(self, code: int, non_fatal_exit_codes: tuple[int, ...] = ()):
+        self._code = code
+        self.non_fatal_exit_codes = non_fatal_exit_codes
+
+    def build_command(self, target, params):
+        return ["python3", "-c", f"import sys; print('out'); sys.exit({self._code})"]
+
+    async def parse_output(self, raw_stdout, target, context=None):
+        if False:
+            yield
+
+
+def test_job_status_has_exit_code_field():
+    from uuid import uuid4
+
+    from ether.schemas.power import JobStatus, JobStatusEnum
+
+    j_default = JobStatus(job_id=uuid4(), session_id=uuid4(), tool_name="nmap", status=JobStatusEnum.RUNNING)
+    assert j_default.exit_code is None
+
+    j_with_code = JobStatus(
+        job_id=uuid4(), session_id=uuid4(), tool_name="nmap", status=JobStatusEnum.FAILED, exit_code=2
+    )
+    assert j_with_code.exit_code == 2
+
+
+def test_executor_implements_command_runner_protocol():
+    from ether.core.session import CommandRunner
+
+    executor = Executor()
+    assert isinstance(executor, CommandRunner)
+
+
+@pytest.mark.asyncio
+async def test_executor_raises_on_nonzero_exit_and_records_exit_code():
+    executor = Executor()
+    target = NetworkHost.create(ip="127.0.0.1")
+    adapter = _ExitCodeAdapter(code=2)
+
+    with pytest.raises(RuntimeError, match="exit code 2"):
+        async for _ in executor.run(adapter, target, {}, task_id="t-nonzero", cwd="."):
+            pass
+
+    assert executor.get_exit_code("t-nonzero") == 2
+
+
+@pytest.mark.asyncio
+async def test_executor_allows_non_fatal_exit_codes():
+    executor = Executor()
+    target = NetworkHost.create(ip="127.0.0.1")
+    adapter = _ExitCodeAdapter(code=1, non_fatal_exit_codes=(1,))
+
+    async for _ in executor.run(adapter, target, {}, task_id="t-nonfatal", cwd="."):
+        pass
+
+    assert executor.get_exit_code("t-nonfatal") == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_skips_internal_spooler_when_on_output_provided(tmp_path):
+    executor = Executor()
+    target = NetworkHost.create(ip="127.0.0.1")
+    adapter = _ExitCodeAdapter(code=0)
+    log_path = tmp_path / "should_not_spool.log"
+    seen: list[str] = []
+
+    async def on_out(chunk: str) -> None:
+        seen.append(chunk)
+
+    async for _ in executor.run_tool(
+        adapter, target, {}, task_id="t-nospool", on_output=on_out, log_file_path=str(log_path)
+    ):
+        pass
+
+    assert any("out" in c for c in seen)
+    assert not log_path.exists()
