@@ -13,7 +13,7 @@ from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
 from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
-from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
+from ether.registry.assets import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.vulnerability import AuditMisconfig
 from ether.schemas.web import WebEndpoint

@@ -5,7 +5,6 @@ import json
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from ether import paths
 from ether.common.algorithms import IPRadixTrie
 from ether.common.exceptions import EtherError
 from ether.gateway.network import get_lhost_info
@@ -16,6 +15,7 @@ from ether.gateway.scope import (
     ScopeValidator,
 )
 from ether.graph.store import GraphStore
+from ether.registry.assets import DEFAULT_WORDLIST_NAME, resolve_wordlist
 from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest, ActionSource
@@ -296,7 +296,7 @@ class ActionGateway:
         except Exception:
             pass
 
-        resolved["WORDLIST"] = paths.get_wordlist_path("common_dirs")
+        resolved["WORDLIST"] = str(resolve_wordlist(DEFAULT_WORDLIST_NAME))
         return resolved
 
     @staticmethod

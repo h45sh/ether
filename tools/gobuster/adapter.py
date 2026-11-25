@@ -6,7 +6,7 @@ from typing import Any, AsyncIterator, Dict, List
 
 from ether.common.context import ExecutionContext
 from ether.registry.adapter import ToolAdapter
-from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
+from ether.registry.assets import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.web import WebEndpoint
 from tools.ffuf.adapter import calibrate_fuzzer_baseline

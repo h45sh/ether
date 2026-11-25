@@ -186,22 +186,22 @@ def test_preflight_ssrf_metadata_policy_seam():
     assert not any("blocked by security policy" in i.title for i in unres_report.errors)
 
 
-def test_preflight_wordlist_macro_unseeded_remedy(tmp_path):
-    dest_dir = str(tmp_path / "wordlists")
-    verifier = PreflightVerifier(wordlists_dir=dest_dir)
+def test_preflight_wordlist_macro_fallback_warning(tmp_path, monkeypatch):
+    monkeypatch.delenv("ETHER_WORDLISTS_DIR", raising=False)
+    dest_dir = tmp_path / "wordlists"
+    dest_dir.mkdir()
+    verifier = PreflightVerifier(wordlists_dir=str(dest_dir))
 
-    report = verifier.verify("gobuster", target="http://127.0.0.1:8080", flags="-w @common.txt")
+    report = verifier.verify("gobuster", target="http://127.0.0.1:8080", flags="-w @nonexistent_list.txt")
     wordlist_warns = [i for i in report.warnings if i.category == "wordlist"]
     assert len(wordlist_warns) == 1
-    assert "is not yet seeded" in wordlist_warns[0].title
-    assert wordlist_warns[0].can_auto_remedy
+    assert "minimal.txt" in wordlist_warns[0].title
+    assert not wordlist_warns[0].can_auto_remedy
 
-    # Apply remedy
-    t, f, msg = verifier.apply_remedy(
-        wordlist_warns[0], target="http://127.0.0.1:8080", flags="-w @common.txt"
-    )
-    assert "Extracted" in msg
-    assert t == "http://127.0.0.1:8080"
+    # When wordlist exists in wordlists_dir, no warning is emitted
+    (dest_dir / "common.txt").write_text("admin\n", encoding="utf-8")
+    ok_report = verifier.verify("gobuster", target="http://127.0.0.1:8080", flags="-w @common.txt")
+    assert not [i for i in ok_report.warnings if i.category == "wordlist"]
 
 
 def test_default_tool_targets_coverage_and_preflight():
