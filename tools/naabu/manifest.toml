@@ -17,6 +17,7 @@ power = true
 
 [input]
 accepts = ["network.host", "dns.record", "domain.info"]
+target_types = ["ip", "cidr", "domain"]
 
 [output]
 produces = ["network.service"]

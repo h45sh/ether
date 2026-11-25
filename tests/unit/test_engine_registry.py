@@ -115,3 +115,24 @@ def test_tool_registry_coroutine_discovery(tmp_path):
     tool = registry.get_tool("mock_coro")
     assert tool["manifest"].meta.execution_tier == "coroutine"
     assert tool["adapter"].execution_tier == "coroutine"
+
+    # Additive summary helpers call validate_install() once
+    call_count = 0
+    orig_validate = tool["adapter"].validate_install
+
+    def counted_validate():
+        nonlocal call_count
+        call_count += 1
+        return orig_validate()
+
+    tool["adapter"].validate_install = counted_validate
+    summary = registry.get_tool_summary("mock_coro")
+    assert summary is not None
+    assert summary["name"] == "mock_coro"
+    assert summary["execution_tier"] == "coroutine"
+    assert summary["installed"] is True
+    assert call_count == 1
+    assert registry.get_tool_summary("nonexistent") is None
+    summaries = registry.list_tool_summaries()
+    assert len(summaries) == 1
+    assert summaries[0]["name"] == "mock_coro"

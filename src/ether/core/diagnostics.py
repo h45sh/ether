@@ -290,15 +290,49 @@ class DiagnosticEngine:
             await store.close()
 
     def _check_tools(self, report: DiagnosticReport) -> None:
-        """Check discovery and binary availability for all registered security tool adapters."""
+        """Check discovery and binary/coroutine availability for all registered security tool adapters."""
         available_count = 0
         missing_count = 0
 
         for tool_name in self.registry.list_tools():
             tool_data = self.registry.get_tool(tool_name)
-            binary_name = tool_name
-            if tool_data and "manifest" in tool_data:
-                binary_name = getattr(tool_data["manifest"], "binary", tool_name)
+            manifest = tool_data.get("manifest") if isinstance(tool_data, dict) else None
+            adapter = tool_data.get("adapter") if isinstance(tool_data, dict) else None
+            meta = getattr(manifest, "meta", None) if manifest else None
+            binary_name = (getattr(meta, "binary", "") or tool_name) if meta else tool_name
+            execution_tier = (
+                getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+            )
+
+            if execution_tier == "coroutine":
+                is_ready = bool(adapter.validate_install()) if adapter else True
+                if is_ready:
+                    available_count += 1
+                    report.checks.append(
+                        DiagnosticCheck(
+                            name=f"Tool: {tool_name}",
+                            category="Tools",
+                            status="ok",
+                            message=f"Native coroutine adapter '{tool_name}' ready",
+                            details={"tool": tool_name, "execution_tier": "coroutine"},
+                        )
+                    )
+                else:
+                    missing_count += 1
+                    remedy = INSTALLATION_HINTS.get(
+                        tool_name, f"Install Python dependencies for '{tool_name}'"
+                    )
+                    report.checks.append(
+                        DiagnosticCheck(
+                            name=f"Tool: {tool_name}",
+                            category="Tools",
+                            status="info",
+                            message=f"Native coroutine adapter '{tool_name}' missing Python dependency",
+                            remedy=remedy,
+                            details={"tool": tool_name, "execution_tier": "coroutine"},
+                        )
+                    )
+                continue
 
             bin_path = shutil.which(binary_name)
             if bin_path:

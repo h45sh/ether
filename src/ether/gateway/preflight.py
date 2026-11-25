@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional, Set, Tuple
 
 from ether import paths
-from ether.gateway.gate import GatePolicy, is_blocked_destination
+from ether.gateway.gate import GatePolicy
+from ether.gateway.scope import EngagementScope, ScopeValidator
 from ether.registry.wordlists import (
     DEFAULT_WORDLIST_NAME,
     WORDLIST_MACRO_REGEX,
@@ -36,40 +37,6 @@ INSTALLATION_HINTS: dict[str, str] = {
     "searchsploit": "sudo apt install exploitdb  (or: git clone https://gitlab.com/exploit-database/exploitdb.git)",
 }
 
-WEB_TOOLS: Set[str] = {
-    "gobuster",
-    "ffuf",
-    "nikto",
-    "nuclei",
-    "sqlmap",
-    "katana",
-    "kiterunner",
-    "feroxbuster",
-    "arjun",
-    "wpscan",
-    "ghauri",
-}
-NETWORK_TOOLS: Set[str] = {
-    "nmap",
-    "netexec",
-    "nxc",
-    "naabu",
-    "masscan",
-    "zmap",
-    "rustscan",
-    "hydra",
-    "mysql_probe",
-    "postgres_probe",
-    "redis_probe",
-    "imds_probe",
-}
-DOMAIN_TOOLS: Set[str] = {"subfinder", "whois", "dnspython", "amass", "crtsh", "dnsrecon"}
-WORDLIST_TOOLS: Set[str] = {"gobuster", "ffuf", "feroxbuster", "kiterunner"}
-
-# Empty dictionary maintained for backward compatibility
-TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {}
-
-
 def get_tool_target_guidance(tool_name: str) -> str:
     """Return formatted Markdown target guidance dynamically generated for a specified security tool."""
     tool_lower = tool_name.lower()
@@ -77,6 +44,7 @@ def get_tool_target_guidance(tool_name: str) -> str:
     # Retrieve tool metadata and protocol theory if available in registry
     theory = ""
     description = ""
+    reg = None
     try:
         from ether.registry.registry import ToolRegistry
 
@@ -92,16 +60,16 @@ def get_tool_target_guidance(tool_name: str) -> str:
     except Exception:
         pass
 
-    # Determine capabilities & target profile dynamically
-    verifier = PreflightVerifier()
+    # Determine capabilities & target profile dynamically using the loaded registry
+    verifier = PreflightVerifier(registry=reg)
     target_types = verifier._get_tool_target_types(tool_lower)
 
     if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
-        expected_format = "Complete HTTP or HTTPS URL (http://127.0.0.1:8080, https://scanme.nmap.org)"
-        safe_sandbox = "http://scanme.nmap.org or local containerized test targets (http://127.0.0.1:8080)"
+        expected_format = "Complete HTTP or HTTPS URL (https://scanme.nmap.org, http://10.10.10.10:8080)"
+        safe_sandbox = "http://scanme.nmap.org (or http://127.0.0.1:8080 with allow_loopback=True)"
         permissible = [
-            "Local loopback web servers (http://127.0.0.1, http://localhost:8000) for testing endpoints.",
             "Official sandbox testbeds (scanme.nmap.org, testphp.vulnweb.com).",
+            "Local loopback web servers (http://127.0.0.1, http://localhost:8000) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
             "Authorized client web applications during penetration tests within defined Rules of Engagement.",
         ]
         prohibited = [
@@ -150,11 +118,11 @@ def get_tool_target_guidance(tool_name: str) -> str:
             "Keep the local exploit database updated using searchsploit -u.",
         ]
     elif tool_lower in {"netexec", "nxc"}:
-        expected_format = "Target IPv4 (127.0.0.1), CIDR subnet (192.168.1.0/24), or NetBIOS/FQDN hostname (dc01.corp.local)"
-        safe_sandbox = "127.0.0.1 (local Samba/SSH services) or dedicated Active Directory lab ranges (e.g., GOAD, HackTheBox)"
+        expected_format = "Target IPv4 (10.10.10.10), CIDR subnet (192.168.1.0/24), or NetBIOS/FQDN hostname (dc01.corp.local)"
+        safe_sandbox = "Dedicated Active Directory lab ranges (e.g., GOAD, HackTheBox) or 127.0.0.1 with allow_loopback=True"
         permissible = [
-            "Local machine (127.0.0.1) for testing null sessions or guest share enumerations against local SMB daemons.",
             "Isolated Active Directory lab environments configured specifically for pentesting education.",
+            "Local machine (127.0.0.1) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
             "Authorized enterprise client subnets during approved engagement windows.",
         ]
         prohibited = [
@@ -168,11 +136,11 @@ def get_tool_target_guidance(tool_name: str) -> str:
             "Sequential RPC queries can alert SIEM rules detecting credential access.",
         ]
     else:
-        expected_format = "IPv4 (127.0.0.1), IPv6 (::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)"
-        safe_sandbox = "127.0.0.1 (local loopback) or scanme.nmap.org (authorized test server)"
+        expected_format = "IPv4 (10.10.10.10), IPv6 (2001:db8::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)"
+        safe_sandbox = "scanme.nmap.org (authorized test server) or 127.0.0.1 with allow_loopback=True"
         permissible = [
-            "Local loopback (127.0.0.1, localhost) for inspecting locally listening daemons and ports.",
             "Official project sandbox (scanme.nmap.org) for testing version and script scans.",
+            "Local loopback (127.0.0.1, localhost) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
             "Private lab subnets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and container bridge networks with explicit authorization.",
         ]
         prohibited = [
@@ -202,7 +170,6 @@ def get_tool_target_guidance(tool_name: str) -> str:
         f"**Safe Sandbox Target:** `{safe_sandbox}`\n\n"
         f"## Permissible & Effective Targets\n{perm_bullets}\n\n"
         f"## Strictly Prohibited & Dangerous Targets\n{proh_bullets}\n\n"
-        f"## Operational Precautions & Ethics\n{prec_bullets}\n\n"
         f"## Operational Precautions & Ethics\n{prec_bullets}\n\n"
         f"## Protocol Mechanics & Behavior\n{mechanics}\n"
     )
@@ -266,10 +233,12 @@ class PreflightVerifier:
         registry: Optional[Any] = None,
         wordlists_dir: Optional[str] = None,
         policy: GatePolicy = GatePolicy.SAFE,
+        scope: Optional[EngagementScope] = None,
     ):
         self.registry = registry
         self.wordlists_dir = wordlists_dir
         self.policy = policy
+        self.scope = scope if scope is not None else EngagementScope()
 
     def verify(
         self,
@@ -322,18 +291,27 @@ class PreflightVerifier:
         target: str,
         flags: str = "",
         policy: GatePolicy = GatePolicy.SAFE,
+        registry: Optional[Any] = None,
+        scope: Optional[EngagementScope] = None,
     ) -> Optional[str]:
         """Perform a fast, non-blocking check returning a single concise warning string if any issue exists."""
         clean_target = (target or "").strip()
         clean_flags = (flags or "").strip()
         clean_tool = (tool_name or "").strip().lower()
+        active_scope = scope if scope is not None else EngagementScope()
 
         if policy == GatePolicy.SAFE:
             if re.search(r"\bsudo\b", clean_flags) or re.search(r"\bsudo\b", clean_target):
                 return "[!] Sudo execution is prohibited under Safe GatePolicy."
 
-            if clean_target and is_blocked_destination(clean_target):
-                return "[!] Target is blocked by cloud metadata policy."
+            if clean_target:
+                verdict = ScopeValidator.is_in_scope(
+                    clean_target, active_scope, policy_is_unrestricted=False
+                )
+                if not verdict.allowed:
+                    if verdict.reason == "BLOCKED_LOOPBACK_UNAUTHORIZED":
+                        return "[!] Loopback target is blocked under Safe GatePolicy unless allow_loopback=True."
+                    return "[!] Target is blocked by cloud metadata or scope policy."
 
         if not clean_target:
             return "[!] Target address or host is required."
@@ -341,12 +319,21 @@ class PreflightVerifier:
         if any(var in clean_target for var in ("$TARGET", "{target}", "{url}", "$PORT")):
             return "[!] Target contains unexpanded variable placeholder."
 
-        if clean_tool in WEB_TOOLS:
-            if not clean_target.startswith("http://") and not clean_target.startswith("https://"):
+        if registry and clean_tool:
+            target_types = PreflightVerifier(
+                registry=registry, policy=policy, scope=active_scope
+            )._get_tool_target_types(clean_tool)
+            is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
+            is_network = (
+                "ip" in target_types or "cidr" in target_types
+            ) and "url" not in target_types
+            if is_web and not (
+                clean_target.startswith("http://") or clean_target.startswith("https://")
+            ):
                 return f"[!] Web tool '{clean_tool}' expects 'http://' or 'https://' prefix."
-
-        if clean_tool in NETWORK_TOOLS:
-            if clean_target.startswith("http://") or clean_target.startswith("https://"):
+            if is_network and (
+                clean_target.startswith("http://") or clean_target.startswith("https://")
+            ):
                 return f"[!] Network tool '{clean_tool}' expects bare IP or hostname, not URL."
 
         return None
@@ -380,7 +367,7 @@ class PreflightVerifier:
             return new_target, flags, f"Stripped URL scheme: {new_target}"
 
         elif action == "set_default_target":
-            new_target = payload or "127.0.0.1"
+            new_target = payload or "scanme.nmap.org"
             return new_target, flags, f"Set target to test address: {new_target}"
 
         elif action == "remove_sudo":
@@ -489,24 +476,43 @@ class PreflightVerifier:
                     )
                 )
 
-            # SSRF Link-Local Metadata Protection
-            if target and is_blocked_destination(target):
-                report.issues.append(
-                    PreflightIssue(
-                        category="security",
-                        severity="error",
-                        title=f"Target '{target}' is blocked by security policy",
-                        description="Target destination matches prohibited cloud provider metadata or link-local subnet.",
-                        remediation_hint="Choose a valid authorized target or local loopback address (127.0.0.1).",
-                        can_auto_remedy=True,
-                        remedy_label="Set 127.0.0.1",
-                        remedy_action="set_default_target",
-                        remedy_payload="127.0.0.1",
-                    )
+            # Unified ScopeValidator SSRF / Loopback / Scope Protection
+            if target:
+                verdict = ScopeValidator.is_in_scope(
+                    target, self.scope, policy_is_unrestricted=False
                 )
+                if not verdict.allowed:
+                    if verdict.reason == "BLOCKED_LOOPBACK_UNAUTHORIZED":
+                        report.issues.append(
+                            PreflightIssue(
+                                category="security",
+                                severity="error",
+                                title=f"Target '{target}' is blocked by loopback policy",
+                                description="Loopback addresses (127.0.0.0/8, ::1) are blocked under SAFE policy unless EngagementScope(allow_loopback=True) is set.",
+                                remediation_hint="Enable allow_loopback=True in EngagementScope or use an authorized target (scanme.nmap.org).",
+                                can_auto_remedy=True,
+                                remedy_label="Set scanme.nmap.org",
+                                remedy_action="set_default_target",
+                                remedy_payload="scanme.nmap.org",
+                            )
+                        )
+                    else:
+                        report.issues.append(
+                            PreflightIssue(
+                                category="security",
+                                severity="error",
+                                title=f"Target '{target}' is blocked by security policy",
+                                description=f"Target destination rejected by ScopeValidator ({verdict.reason}).",
+                                remediation_hint="Choose a valid authorized target (e.g. scanme.nmap.org).",
+                                can_auto_remedy=True,
+                                remedy_label="Set scanme.nmap.org",
+                                remedy_action="set_default_target",
+                                remedy_payload="scanme.nmap.org",
+                            )
+                        )
 
     def _get_tool_target_types(self, tool_name: str) -> Set[str]:
-        """Dynamically extract supported target types ('url', 'ip', 'cidr', 'domain') for a tool."""
+        """Dynamically extract supported target types ('url', 'ip', 'cidr', 'domain') from ToolRegistry."""
         if self.registry:
             tool_data = self.registry.get_tool(tool_name)
             if tool_data and isinstance(tool_data, dict):
@@ -523,7 +529,7 @@ class PreflightVerifier:
                         if isinstance(input_cfg, dict)
                         else getattr(input_cfg, "accepts", [])
                     )
-                    types = set()
+                    types: Set[str] = set()
                     for schema in accepts:
                         if schema in ("web.endpoint", "web.url"):
                             types.add("url")
@@ -534,17 +540,7 @@ class PreflightVerifier:
                     if types:
                         return types
 
-        # Fallback to static sets for backwards compatibility
-        types = set()
-        if tool_name in WEB_TOOLS:
-            types.add("url")
-            if tool_name == "http_probe":
-                types.update({"ip", "domain"})
-        if tool_name in NETWORK_TOOLS:
-            types.update({"ip", "cidr", "domain"})
-        if tool_name in DOMAIN_TOOLS:
-            types.update({"domain", "ip"})
-        return types or {"url", "ip", "cidr", "domain"}
+        return {"url", "ip", "cidr", "domain"}
 
     def _check_target(
         self,
@@ -559,11 +555,13 @@ class PreflightVerifier:
             ("ip" in target_types or "domain" in target_types) and "url" not in target_types
         )
         if is_web:
-            default_target = "http://127.0.0.1:8888"
+            default_target = (
+                "http://127.0.0.1:8888" if self.scope.allow_loopback else "http://scanme.nmap.org"
+            )
         elif "domain" in target_types and "ip" not in target_types:
             default_target = "example.com"
         else:
-            default_target = "127.0.0.1"
+            default_target = "127.0.0.1" if self.scope.allow_loopback else "scanme.nmap.org"
 
         if not target:
             report.issues.append(
@@ -671,10 +669,23 @@ class PreflightVerifier:
                 )
 
         # 2. CLI flags: -w <path> or --wordlist <path> or -w @<macro>
-        is_wordlist_tool = tool_name in WORDLIST_TOOLS or "--wordlist" in flags or "-w" in flags
+        manifest_uses_wordlist = False
+        if self.registry:
+            tool_data = self.registry.get_tool(tool_name)
+            manifest = tool_data.get("manifest") if isinstance(tool_data, dict) else None
+            learning = getattr(manifest, "learning", None) if manifest else None
+            if learning and getattr(learning, "recipes", None):
+                manifest_uses_wordlist = any(
+                    "-w" in r.flags
+                    or "--wordlist" in r.flags
+                    or any("{wordlist:" in f for f in r.flags)
+                    for r in learning.recipes
+                )
+
+        is_wordlist_tool = manifest_uses_wordlist or "--wordlist" in flags or "-w" in flags
         if is_wordlist_tool:
             flag_matches = WORDLIST_FLAG_REGEX.findall(flags)
-            if not flag_matches and tool_name in WORDLIST_TOOLS and not macro_matches:
+            if not flag_matches and manifest_uses_wordlist and not macro_matches:
                 report.issues.append(
                     PreflightIssue(
                         category="wordlist",

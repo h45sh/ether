@@ -17,6 +17,7 @@ power = true
 
 [input]
 accepts = ["web.endpoint"]
+target_types = ["url"]
 
 [output]
 produces = ["vulnerability.found", "audit.misconfig"]

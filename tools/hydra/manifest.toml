@@ -17,6 +17,7 @@ power = true
 
 [input]
 accepts = ["network.service", "network.host", "web.endpoint"]
+target_types = ["ip", "cidr", "domain"]
 
 [output]
 produces = ["credential.found"]

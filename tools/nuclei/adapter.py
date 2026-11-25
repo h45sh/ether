@@ -17,25 +17,6 @@ class NucleiAdapter(ToolAdapter):
         """Verify nuclei binary is available on system PATH."""
         return self.is_binary_available("nuclei")
 
-    def sanitize_output(self, raw_stdout: str) -> str:
-        """Filter verbose nuclei loading stats, update notices, and template clusters."""
-        lines = []
-        for line in raw_stdout.splitlines():
-            s = line.strip()
-            if any(
-                s.startswith(p)
-                for p in (
-                    "[INF] Current nuclei version",
-                    "[INF] New templates",
-                    "[INF] Loading templates",
-                    "[INF] Templates cluster",
-                    "[INF] Using",
-                )
-            ):
-                continue
-            lines.append(line)
-        return "\n".join(lines)
-
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct nuclei execution command with streaming JSONL output."""
         url = self.extract_url(target)

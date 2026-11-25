@@ -25,6 +25,7 @@ power = true
 
 [input]
 accepts = ["network.service", "web.endpoint", "network.host"]
+target_types = ["url"]
 
 [output]
 produces = ["vulnerability.found", "web.vulnerability", "web.endpoint"]

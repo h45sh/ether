@@ -5,6 +5,7 @@ one_line_summary = "native async cloud metadata (AWS/GCP/Azure) endpoint securit
 category = "Cloud Security"
 categories = ["cloud", "auth", "recon"]
 binary = "imds_probe"
+execution_tier = "coroutine"
 theory = """
 ### Protocol Theory & Cloud Instance Metadata Services (IMDS)
 Hypervisors expose Link-Local endpoints (169.254.169.254) to VM guest instances.
@@ -17,6 +18,7 @@ power = true
 
 [input]
 accepts = ["network.host", "web.endpoint"]
+target_types = ["ip", "url", "domain"]
 
 [output]
 produces = ["cloud.asset"]

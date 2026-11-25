@@ -5,6 +5,7 @@ one_line_summary = "native async Redis unauthenticated access and INFO disclosur
 category = "Database Assessment"
 categories = ["database", "auth", "recon"]
 binary = "redis_probe"
+execution_tier = "coroutine"
 theory = """
 ### Protocol Theory & Redis RESP (REdis Serialization Protocol)
 Redis operates over plain TCP using the human-readable RESP protocol.
@@ -17,6 +18,7 @@ power = true
 
 [input]
 accepts = ["network.service", "network.host"]
+target_types = ["ip", "cidr", "domain"]
 
 [output]
 produces = ["database.service"]

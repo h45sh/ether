@@ -25,6 +25,7 @@ power = true
 
 [input]
 accepts = ["network.host", "web.endpoint", "dns.record"]
+target_types = ["url"]
 
 [output]
 produces = ["web.endpoint", "audit.misconfig"]

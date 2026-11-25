@@ -5,6 +5,7 @@ one_line_summary = "native async stealth packet prober and port-knocker"
 category = "Network Reconnaissance"
 categories = ["recon", "network", "stealth"]
 binary = "stealth_scan"
+execution_tier = "coroutine"
 theory = """
 ### Stealth Packet Crafting & TCP SYN Scanning
 Stealth scanning avoids completing the standard TCP 3-way handshake by transmitting a raw TCP SYN packet.
@@ -20,6 +21,7 @@ power = true
 
 [input]
 accepts = ["network.host", "network.service"]
+target_types = ["ip", "cidr", "domain"]
 
 [output]
 produces = ["network.host", "network.service"]

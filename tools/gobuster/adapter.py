@@ -27,7 +27,8 @@ class GobusterAdapter(ToolAdapter):
         """Execute gobuster scan with pre-flight response geometry baseline calibration."""
         url = self.extract_url(target)
         if url and not params.get("skip_calibration"):
-            calib = await calibrate_fuzzer_baseline(url)
+            is_unrestricted = "unrestricted" in str(getattr(context, "policy", "safe")).lower()
+            calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
             if calib and calib.get("size") is not None:
                 params = dict(params)
                 raw_flags = params.get("raw_flags", "")

@@ -412,3 +412,74 @@ async def test_gateway_cidr_scope_enforcement(tmp_path):
     assert any("strictly prohibited" in str(i.description) for i in report.issues)
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_gateway_scope_unrestricted_entity_verify_and_flags_normalization(tmp_path):
+    from ether.gateway.scope import EngagementScope
+    from ether.schemas.network import NetworkHost
+
+    store = GraphStore(str(tmp_path / "gate_t2.db"))
+    await store.initialize()
+    ws_id = await store.create_workspace("WS-T2")
+    sess_id = await store.create_session(ws_id, "S-T2")
+
+    # Stored out-of-scope / metadata host entity
+    meta_host = NetworkHost.create(ip="169.254.169.254")
+    meta_id = await store.upsert_finding(sess_id, meta_host)
+
+    scoped_host = NetworkHost.create(ip="10.0.0.5")
+    scoped_id = await store.upsert_finding(sess_id, scoped_host)
+
+    mock_registry = MagicMock()
+    mock_tool = MagicMock()
+    mock_tool.input = {"accepts": ["network.host"]}
+    mock_registry.get_tool.return_value = {"manifest": mock_tool, "adapter": MagicMock()}
+
+    # 1. Scope parameter accepted and synced with allowed_cidrs
+    scope = EngagementScope(allowed_cidrs=["10.0.0.0/8"], allow_loopback=False)
+    gw_unrestricted = ActionGateway(
+        mock_registry, store, scope=scope, policy=GatePolicy.UNRESTRICTED
+    )
+    assert gw_unrestricted.scope.allowed_cidrs == ["10.0.0.0/8"]
+
+    # 2. GatePolicy.UNRESTRICTED allows stored metadata entity target too
+    action_meta_entity = ActionRequest(
+        session_id=sess_id,
+        tool_name="nmap",
+        target_entity_id=meta_id,
+        triggered_by=ActionSource.USER,
+    )
+    assert await gw_unrestricted.validate_action(action_meta_entity) is True
+
+    # 3. Normalizes flags -> raw_flags in validate_action
+    gw_safe = ActionGateway(mock_registry, store, scope=scope, policy=GatePolicy.SAFE)
+    action_flags = ActionRequest(
+        session_id=sess_id,
+        tool_name="nmap",
+        params={"flags": "-sV 172.16.0.10"},
+        triggered_by=ActionSource.USER,
+    )
+    with pytest.raises(ActionValidationError, match="violates authorized engagement CIDR scope"):
+        await gw_safe.validate_action(action_flags)
+    assert action_flags.params["raw_flags"] == "-sV 172.16.0.10"
+
+    # 4. verify_action resolves entity's actual target string (not UUID) before preflight_verify
+    captured_targets = []
+    orig_preflight = gw_safe.preflight_verify
+
+    def spy_preflight(tool_name: str, target: str, flags: str = ""):
+        captured_targets.append(target)
+        return orig_preflight(tool_name, target, flags)
+
+    gw_safe.preflight_verify = spy_preflight  # type: ignore[method-assign]
+    action_entity = ActionRequest(
+        session_id=sess_id,
+        tool_name="nmap",
+        target_entity_id=scoped_id,
+        triggered_by=ActionSource.USER,
+    )
+    await gw_safe.verify_action(action_entity)
+    assert captured_targets == ["10.0.0.5"]
+
+    await store.close()

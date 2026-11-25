@@ -5,6 +5,7 @@ one_line_summary = "native async Certificate Transparency log asset discovery pr
 category = "Asset Discovery"
 categories = ["recon", "osint", "tls", "dns"]
 binary = "crtsh"
+execution_tier = "coroutine"
 theory = """
 ### Protocol Theory & Certificate Transparency (RFC 6962)
 Certificate Authorities must append all publicly issued SSL/TLS certificates to tamper-evident,
@@ -17,6 +18,7 @@ power = true
 
 [input]
 accepts = ["domain.info", "dns.record"]
+target_types = ["domain"]
 
 [output]
 produces = ["domain.info", "tls.certificate"]

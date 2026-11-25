@@ -57,13 +57,18 @@ async def test_http_probe_ssrf_blocked_loopback(adapter):
 
 @pytest.mark.asyncio
 async def test_http_probe_ssrf_bypassed_in_unrestricted(adapter):
-    """Verify that under unrestricted policy, SSRF check does not abort execution."""
+    """Verify that under unrestricted context.policy, SSRF check does not abort execution."""
     spooled = []
 
     async def fake_spool(line, is_error=False):
         spooled.append(line)
 
-    ctx = ExecutionContext(action_id="act-test", session_id="sess-test", spool_fn=fake_spool)
+    ctx = ExecutionContext(
+        action_id="act-test",
+        session_id="sess-test",
+        policy="unrestricted",
+        spool_fn=fake_spool,
+    )
     target = WebEndpoint.create(url="http://127.0.0.1:8080/status")
 
     mock_resp = httpx.Response(
@@ -74,14 +79,36 @@ async def test_http_probe_ssrf_bypassed_in_unrestricted(adapter):
     )
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
-        findings = [
-            f async for f in adapter.execute_action(target, {"policy": "unrestricted"}, ctx)
-        ]
+        findings = [f async for f in adapter.execute_action(target, {}, ctx)]
 
     types = [f.schema_type for f in findings]
     assert "network.service" in types
     assert "web.endpoint" in types
     assert "web.technology" in types
+
+
+@pytest.mark.asyncio
+async def test_http_probe_ignores_params_policy_override(adapter):
+    """Verify params['policy'] cannot bypass context.policy == 'safe'."""
+    ctx = ExecutionContext(action_id="act-test", session_id="sess-test", policy="safe")
+    target = WebEndpoint.create(url="http://127.0.0.1:8080/status")
+
+    with pytest.raises(PolicyViolationError, match="blocked by SSRF policy"):
+        async for _ in adapter.execute_action(target, {"policy": "unrestricted"}, ctx):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_calibrate_fuzzer_baseline_enforces_scope_validator():
+    """Verify calibrate_fuzzer_baseline blocks metadata/loopback pre-connect via ScopeValidator."""
+    from tools.ffuf.adapter import calibrate_fuzzer_baseline
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        with pytest.raises(PolicyViolationError):
+            await calibrate_fuzzer_baseline("http://169.254.169.254/latest/meta-data")
+        with pytest.raises(PolicyViolationError):
+            await calibrate_fuzzer_baseline("http://127.0.0.1:8080/")
+        mock_get.assert_not_called()
 
 
 @pytest.mark.asyncio

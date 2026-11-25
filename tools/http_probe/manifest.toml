@@ -20,6 +20,7 @@ power = true
 
 [input]
 accepts = ["web.endpoint", "network.service", "network.host", "dns.record", "domain.info"]
+target_types = ["url", "ip", "domain"]
 
 [output]
 produces = ["web.endpoint", "network.service", "web.technology"]

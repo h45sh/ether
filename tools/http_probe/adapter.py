@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
-from ether.common.ssrf import check_ssrf_safety
+from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.network import NetworkHost, NetworkService, TLSCertificate
@@ -91,14 +91,16 @@ class HTTPProbeAdapter(ToolAdapter):
         if not url.startswith(("http://", "https://")):
             url = f"http://{url}"
 
-        # 2. SSRF Pre-Connect Defense
-        policy = params.get("policy", "safe")
-        if policy == "safe":
-            try:
-                check_ssrf_safety(url)
-            except PolicyViolationError as e:
-                await context.spool_line(f"[!] SSRF Defense Triggered: {e}", is_error=True)
-                raise
+        # 2. SSRF & Scope Pre-Connect Defense (governed strictly by context.policy)
+        policy_str = str(getattr(context, "policy", "safe")).lower()
+        is_unrestricted = "unrestricted" in policy_str
+        verdict = await ScopeValidator.check_destination(
+            url, policy_is_unrestricted=is_unrestricted
+        )
+        if not verdict.allowed:
+            msg = f"Target '{url}' blocked by SSRF policy ({verdict.reason})."
+            await context.spool_line(f"[!] SSRF Defense Triggered: {msg}", is_error=True)
+            raise PolicyViolationError(msg)
 
         # 3. Request execution with httpx
         timeout_sec = float(params.get("timeout", 10.0))

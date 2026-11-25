@@ -17,6 +17,7 @@ power = true
 
 [input]
 accepts = ["domain.info", "network.netblock"]
+target_types = ["domain", "cidr"]
 
 [output]
 produces = ["domain.info", "network.host"]

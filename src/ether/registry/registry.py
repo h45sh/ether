@@ -104,6 +104,38 @@ class ToolRegistry:
         """Return a list of loaded tool names."""
         return list(self.tools.keys())
 
+    def get_tool_summary(self, name: str) -> Optional[Dict[str, Any]]:
+        """Return a structured metadata and installation summary for a tool, calling validate_install() once."""
+        data = self.tools.get(name)
+        if not data:
+            return None
+        manifest = data["manifest"]
+        adapter = data["adapter"]
+        meta = manifest.meta
+        installed = bool(adapter.validate_install())
+        return {
+            "name": meta.name,
+            "description": meta.description,
+            "one_line_summary": meta.one_line_summary,
+            "category": meta.category,
+            "categories": list(meta.categories),
+            "binary": meta.binary or meta.name,
+            "execution_tier": meta.execution_tier,
+            "target_types": list(manifest.input.get("target_types", [])),
+            "accepts": list(manifest.input.get("accepts", [])),
+            "produces": list(manifest.output.get("produces", [])),
+            "installed": installed,
+        }
+
+    def list_tool_summaries(self) -> List[Dict[str, Any]]:
+        """Return structured summaries for all loaded tools."""
+        summaries: List[Dict[str, Any]] = []
+        for name in self.list_tools():
+            summary = self.get_tool_summary(name)
+            if summary is not None:
+                summaries.append(summary)
+        return summaries
+
     def find_tools_for_input(self, schema_type: str) -> List[str]:
         """Find all tools that accept a specific finding type as input."""
         matching = []

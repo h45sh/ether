@@ -1,93 +1,57 @@
-"""SSRF defense and destination verification primitives."""
+"""SSRF defense and destination verification primitives delegating to ScopeValidator."""
 
 import ipaddress
 import socket
-import urllib.parse
 from typing import Set
 
-from ether.common.algorithms import IPRadixTrie
 from ether.common.exceptions import PolicyViolationError
+from ether.common.scope import METADATA_HOSTNAMES, EngagementScope, ScopeValidator
 
-BLOCKED_TARGET_NAMES: Set[str] = {
-    "metadata.google.internal",
-    "metadata.internal",
-    "instance-data",
-}
-
-BLOCKED_NETWORKS = [
-    ipaddress.ip_network("127.0.0.0/8"),  # IPv4 Loopback
-    ipaddress.ip_network("::1/128"),  # IPv6 Loopback
-    ipaddress.ip_network("169.254.0.0/16"),  # IPv4 Link-Local / Cloud Metadata
-    ipaddress.ip_network("fe80::/10"),  # IPv6 Link-Local
-    ipaddress.ip_network("fd00:ec2::/64"),  # AWS IPv6 IMDSv2 metadata
-    ipaddress.ip_network("100.100.100.200/32"),  # Alibaba Cloud metadata
-]
-
-_BLOCKED_TRIE = IPRadixTrie()
-for _net in BLOCKED_NETWORKS:
-    _BLOCKED_TRIE.insert(_net)
+BLOCKED_TARGET_NAMES: Set[str] = METADATA_HOSTNAMES
 
 
 def parse_ip_or_host(target: str) -> str:
     """Extract host/IP from URL, URI, or host:port string."""
-    target = target.strip()
-    if "://" in target:
-        parsed = urllib.parse.urlparse(target)
-        host = parsed.hostname or parsed.netloc
-    else:
-        host = target.split("/")[0].split("?")[0].split("#")[0]
-        if host.startswith("[") and "]" in host:
-            host = host[1 : host.index("]")]
-        elif ":" in host and host.count(":") == 1:
-            host = host.split(":")[0]
-    return host.strip("[]")
+    return ScopeValidator.parse_host_candidate(target)
 
 
 def is_ip_blocked(ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Check if an IP object falls into any blocked subnet (loopback, metadata, link-local)."""
-    if hasattr(ip_obj, "ipv4_mapped") and ip_obj.ipv4_mapped:
-        ip_obj = ip_obj.ipv4_mapped
-    return _BLOCKED_TRIE.contains(ip_obj)
+    verdict = ScopeValidator.is_in_scope(
+        str(ip_obj), EngagementScope(), policy_is_unrestricted=False
+    )
+    return not verdict.allowed
 
 
 def check_ssrf_safety(target: str) -> None:
-    """Resolve target hostname/IP and enforce SSRF defense.
+    """Resolve target hostname/IP and enforce SSRF defense via ScopeValidator.
 
     Raises:
         PolicyViolationError: If destination resolves to loopback, link-local, or cloud metadata.
     """
-    host = parse_ip_or_host(target).lower()
-    if not host:
-        raise PolicyViolationError("Empty or invalid target destination.")
-
-    if host in BLOCKED_TARGET_NAMES or any(b in host for b in ("169.254.", "metadata.")):
+    verdict = ScopeValidator.is_in_scope(
+        target, EngagementScope(), policy_is_unrestricted=False
+    )
+    if not verdict.allowed:
         raise PolicyViolationError(
-            f"Target '{target}' blocked by SSRF policy (metadata keyword match)."
+            f"Target '{target}' blocked by SSRF policy ({verdict.reason})."
         )
 
-    # Try direct IP parse
-    try:
-        ip_obj = ipaddress.ip_address(host)
-        if is_ip_blocked(ip_obj):
-            raise PolicyViolationError(f"Target '{target}' ({ip_obj}) blocked by SSRF policy.")
+    host = verdict.normalized_target or ""
+    if ScopeValidator._parse_ip(host) is not None:
         return
-    except ValueError:
-        pass
 
-    # Resolve hostname to all IP addresses
     try:
         addr_info = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        # If DNS cannot be resolved, let caller handle or reject
         return
 
     for _, _, _, _, sockaddr in addr_info:
         resolved_ip_str = sockaddr[0]
-        try:
-            ip_obj = ipaddress.ip_address(resolved_ip_str)
-            if is_ip_blocked(ip_obj):
-                raise PolicyViolationError(
-                    f"Target '{target}' resolved to blocked IP {resolved_ip_str} (SSRF defense)."
-                )
-        except ValueError:
-            continue
+        ip_verdict = ScopeValidator.is_in_scope(
+            resolved_ip_str, EngagementScope(), policy_is_unrestricted=False
+        )
+        if not ip_verdict.allowed:
+            raise PolicyViolationError(
+                f"Target '{target}' resolved to blocked IP {resolved_ip_str} ({ip_verdict.reason})."
+            )
