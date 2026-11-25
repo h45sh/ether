@@ -107,6 +107,46 @@ class Executor:
     def __init__(self, store: Optional[GraphStore] = None):
         self.store = store
         self._active_processes: Dict[str, asyncio.subprocess.Process] = {}
+        self._last_exit_codes: Dict[str, int] = {}
+
+    def get_exit_code(self, task_id: str) -> Optional[int]:
+        """Return the last recorded process exit code for a task ID, if available."""
+        return self._last_exit_codes.get(task_id)
+
+    async def run(
+        self,
+        adapter: ToolAdapter,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        task_id: str,
+        cwd: str,
+        env: Optional[Dict[str, str]] = None,
+        use_shell: bool = False,
+        shell_path: Optional[str] = None,
+        on_output: Optional[Callable[[str], Any]] = None,
+        on_error_output: Optional[Callable[[str], Any]] = None,
+        timeout_seconds: Optional[int] = None,
+    ) -> AsyncIterator[BaseFinding]:
+        """Execute a tool adapter via CommandRunner protocol."""
+        async for finding in self.run_tool(
+            adapter=adapter,
+            target=target,
+            params=params,
+            session_id=None,
+            task_id=task_id,
+            cwd=cwd,
+            env=env,
+            use_shell=use_shell,
+            shell_path=shell_path,
+            on_output=on_output,
+            on_error_output=on_error_output,
+            timeout_seconds=timeout_seconds,
+        ):
+            yield finding
+
+    async def stop(self, task_id: str) -> None:
+        """Terminate a running task via CommandRunner protocol."""
+        await self.stop_task(task_id)
 
     async def stop_task(self, task_id: str) -> None:
         """Forcefully terminate a specific running task."""
@@ -183,7 +223,7 @@ class Executor:
         # Internal queue to bridge stream readers and findings generator
         finding_queue: asyncio.Queue[BaseFinding] = asyncio.Queue()
         parsing_context = {"params": params}  # Shared context for the duration of this tool run
-        spooler = LogSpooler(log_file_path)
+        spooler = LogSpooler(log_file_path) if (log_file_path and not on_output) else None
         tarpit_guard = StreamTarpitGuard(window_seconds=15.0)
         tarpit_flag = [False]
 
@@ -196,9 +236,7 @@ class Executor:
                     if not chunk:
                         # Process any remaining text in the buffer as a final line
                         if buffer and is_stdout:
-                            final_line = (
-                                strip_ansi(buffer).replace("\r\n", "\n").split("\r")[-1].strip()
-                            )
+                            final_line = buffer.split("\r")[-1].strip()
                             if final_line:
                                 async for finding in adapter.parse_output(
                                     final_line, target, context=parsing_context
@@ -216,7 +254,8 @@ class Executor:
                             tarpit_flag[0] = True
                             msg = f"\n[TARPIT DETECTED] {tarpit_reason}. Aborting execution...\n"
                             logger.warning(msg.strip())
-                            spooler.write(msg)
+                            if spooler:
+                                spooler.write(msg)
                             if callback:
                                 await callback(msg)
                             elif on_output:
@@ -230,7 +269,8 @@ class Executor:
                             break
 
                     raw_text = chunk.decode(errors="replace")
-                    spooler.write(raw_text)
+                    if spooler:
+                        spooler.write(raw_text)
 
                     if callback:
                         await callback(raw_text)
@@ -338,7 +378,8 @@ class Executor:
                     pass
 
             await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
-            spooler.close()
+            if spooler:
+                spooler.close()
 
             if tarpit_flag[0] and self.store and hasattr(self.store, "upsert_node_belief"):
                 try:
@@ -353,7 +394,15 @@ class Executor:
                 except Exception as store_e:
                     logger.error(f"Failed to record tarpit belief: {store_e}")
 
-        if process.returncode != 0:
+        if tracking_id and process.returncode is not None:
+            self._last_exit_codes[tracking_id] = process.returncode
+
+        if process.returncode is not None and process.returncode != 0:
             logger.error(f"Command failed with exit code {process.returncode}")
             if process.returncode == 127:
                 raise RuntimeError(f"Tool not found: {command[0]}")
+            non_fatal = getattr(adapter, "non_fatal_exit_codes", ())
+            if process.returncode not in non_fatal:
+                raise RuntimeError(
+                    f"Command '{command[0]}' failed with exit code {process.returncode}"
+                )

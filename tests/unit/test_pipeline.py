@@ -157,3 +157,83 @@ async def test_cli_pipeline_run(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert '"count": 3' in captured.out
     assert '"expression": "mock_recon | mock_port"' in captured.out
+
+
+def test_pipeline_engine_defaults_command_runner_to_executor(mock_registry):
+    from ether.core.executor import Executor
+
+    engine = PipelineEngine(registry=mock_registry)
+    assert isinstance(engine.command_runner, Executor)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_engine_executes_tier_b_via_command_runner_and_infers_domain(tmp_path):
+    from ether.core.session import CommandRunner
+
+    seen_targets = []
+    runner_calls = []
+
+    class FakePipelineRunner(CommandRunner):
+        async def run(
+            self,
+            adapter,
+            target,
+            params,
+            task_id,
+            cwd,
+            env=None,
+            use_shell=False,
+            shell_path=None,
+            on_output=None,
+            on_error_output=None,
+            timeout_seconds=None,
+        ):
+            runner_calls.append((adapter.name, target.schema_type, params))
+            yield NetworkHost.create(ip="93.184.216.34")
+
+        async def stop(self, task_id: str) -> None:
+            pass
+
+    class TierBAdapter(ToolAdapter):
+        name = "tier_b_tool"
+        execution_tier = "subprocess"
+
+        def validate_install(self):
+            return True
+
+        def build_command(self, target, params):
+            return ["tier_b", str(target.pik)]
+
+        async def parse_output(self, raw_stdout, target, context=None):
+            raise AssertionError("PipelineEngine must not call parse_output directly for Tier B")
+            yield  # pragma: no cover
+
+        async def execute_action(self, target, params, context):
+            seen_targets.append(target)
+            async for f in super().execute_action(target, params, context):
+                yield f
+
+    reg = ToolRegistry(tools_dir=None)
+    reg.tools["tier_b_tool"] = {"adapter": TierBAdapter(), "manifest": None}
+
+    store = GraphStore(str(tmp_path / "pipe_tier_b.db"))
+    await store.initialize()
+    ws_id = await store.create_workspace("WS")
+    sess_id = await store.create_session(ws_id, "Sess")
+
+    runner = FakePipelineRunner()
+    engine = PipelineEngine(registry=reg, store=store, command_runner=runner)
+
+    findings = []
+    async for f in engine.execute_pipeline("tier_b_tool(target=example.com)", session_id=sess_id):
+        findings.append(f)
+
+    assert len(findings) == 1
+    assert len(runner_calls) == 1
+    assert seen_targets[0].schema_type == "domain.info"
+    assert seen_targets[0].pik["domain"] == "example.com"
+
+    nodes = await store.get_all_nodes(sess_id)
+    assert len(nodes) == 1
+    assert nodes[0]["schema_type"] == "network.host"
+    await store.close()

@@ -308,3 +308,60 @@ class ForensicLogManager:
                 pass
             compressed.append(gz_path)
         return compressed
+
+    @classmethod
+    def find_action_log(
+        cls,
+        action_id: str,
+        session_id: Optional[str] = None,
+        data_dir: Optional[str] = None,
+    ) -> Optional[Path]:
+        """Locate the `.log` or `.log.gz` spool file for an action in `logs/sessions/<session_id>/`."""
+        sessions_root = Path(paths.get_default_logs_dir(data_dir)) / "sessions"
+        if not sessions_root.is_dir():
+            return None
+
+        short_id = str(action_id)[:8]
+        search_dirs: List[Path]
+        if session_id is not None:
+            candidate = sessions_root / session_id
+            if not candidate.is_dir():
+                return None
+            search_dirs = [candidate]
+        else:
+            search_dirs = [d for d in sessions_root.iterdir() if d.is_dir()]
+
+        for d in search_dirs:
+            for ext in (".log", ".log.gz"):
+                matches = sorted(
+                    d.glob(f"*_{short_id}{ext}"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if matches:
+                    return matches[0]
+        return None
+
+    @classmethod
+    def read_action_log(
+        cls,
+        action_id: str,
+        session_id: Optional[str] = None,
+        tail_lines: int = 50,
+        data_dir: Optional[str] = None,
+    ) -> Optional[str]:
+        """Read the tail (or full contents if tail_lines <= 0) of an action's `.log` or `.log.gz`."""
+        log_path = cls.find_action_log(action_id, session_id=session_id, data_dir=data_dir)
+        if log_path is None:
+            return None
+
+        if log_path.suffix == ".gz":
+            with gzip.open(log_path, "rt", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+        else:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+
+        if tail_lines > 0:
+            return "".join(lines[-tail_lines:])
+        return "".join(lines)

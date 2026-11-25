@@ -202,14 +202,14 @@ class ActionGateway:
     ):
         """Factory creating an ExecutionSession governed by this ActionGateway and its configured policies."""
         from ether.core.executor import Executor
-        from ether.core.session import ExecutionSession, SubprocessCommandRunner
+        from ether.core.session import ExecutionSession
 
         if not self.store:
             raise ValueError(
                 "ActionGateway requires a configured GraphStore to spawn an ExecutionSession."
             )
 
-        runner = command_runner or SubprocessCommandRunner(Executor())
+        runner = command_runner or Executor()
         return ExecutionSession(
             store=self.store,
             gateway=self,
@@ -258,32 +258,9 @@ class ActionGateway:
     @staticmethod
     def infer_target_finding(target: str) -> BaseFinding:
         """Infer the typed BaseFinding entity from a raw target string."""
-        import ipaddress
+        from ether.registry.target_inference import infer_target_finding
 
-        from ether.schemas.base import BaseFinding
-        from ether.schemas.dns import DomainInfo
-        from ether.schemas.network import NetworkHost
-        from ether.schemas.web import WebEndpoint
-
-        try:
-            ipaddress.ip_address(target)
-            return NetworkHost.create(ip=target)
-        except ValueError:
-            pass
-
-        if target.startswith("http://") or target.startswith("https://"):
-            return WebEndpoint.create(url=target)
-
-        if "/" in target:
-            try:
-                ipaddress.ip_network(target, strict=False)
-                return BaseFinding(
-                    schema_type="network.netblock", pik={"cidr": target}, data={"cidr": target}
-                )
-            except ValueError:
-                pass
-
-        return DomainInfo.create(domain=target)
+        return infer_target_finding(target)
 
     @staticmethod
     def resolve_entity_variables(

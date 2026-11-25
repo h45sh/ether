@@ -5,9 +5,11 @@ import os
 import shlex
 import shutil
 import subprocess
+from collections import deque
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import (
     Any,
     AsyncIterator,
@@ -110,46 +112,6 @@ class CommandRunner(Protocol):
     async def stop(self, task_id: str) -> None: ...
 
 
-class SubprocessCommandRunner(CommandRunner):
-    """Production CommandRunner delegating to Executor subprocess management."""
-
-    def __init__(self, executor: Executor):
-        self.executor = executor
-
-    async def run(
-        self,
-        adapter: ToolAdapter,
-        target: BaseFinding,
-        params: Dict[str, Any],
-        task_id: str,
-        cwd: str,
-        env: Optional[Dict[str, str]] = None,
-        use_shell: bool = False,
-        shell_path: Optional[str] = None,
-        on_output: Optional[Callable[[str], Any]] = None,
-        on_error_output: Optional[Callable[[str], Any]] = None,
-        timeout_seconds: Optional[int] = None,
-    ) -> AsyncIterator[BaseFinding]:
-        async for finding in self.executor.run_tool(
-            adapter=adapter,
-            target=target,
-            params=params,
-            session_id=None,
-            task_id=task_id,
-            cwd=cwd,
-            env=env,
-            use_shell=use_shell,
-            shell_path=shell_path,
-            on_output=on_output,
-            on_error_output=on_error_output,
-            timeout_seconds=timeout_seconds,
-        ):
-            yield finding
-
-    async def stop(self, task_id: str) -> None:
-        await self.executor.stop_task(task_id)
-
-
 # --- Typed Execution Events ---
 
 
@@ -226,6 +188,7 @@ class ExecutionSession:
         command_runner: CommandRunner,
         user_env: Optional[Dict[str, str]] = None,
         user_shell: Optional[str] = None,
+        data_dir: Optional[str] = None,
     ):
         self.store = store
         self.gateway = gateway
@@ -233,11 +196,19 @@ class ExecutionSession:
         self.runner = command_runner
         self.user_env = user_env or os.environ.copy()
         self.user_shell = user_shell or "/bin/bash"
+        if data_dir is not None:
+            self.data_dir: Optional[str] = data_dir
+        else:
+            db_path = getattr(store, "db_path", None)
+            if db_path and str(db_path) != ":memory:" and not str(db_path).startswith("file:"):
+                self.data_dir = str(Path(str(db_path)).parent)
+            else:
+                self.data_dir = None
 
         # Action tracking
         self._active_jobs: Dict[UUID, JobStatus] = {}
         self._job_actions: Dict[UUID, ActionRequest] = {}
-        self._job_buffers: Dict[UUID, List[str]] = {}
+        self._job_buffers: Dict[UUID, deque[str]] = {}
         self._event_queues: Dict[UUID, List[asyncio.Queue[Optional[ExecutionEvent]]]] = {}
         self._running_tasks: Dict[UUID, asyncio.Task] = {}
         self._status_listeners: List[Callable[[JobStatus], Any]] = []
@@ -254,16 +225,15 @@ class ExecutionSession:
         command_runner: Optional[CommandRunner] = None,
         user_env: Optional[Dict[str, str]] = None,
         user_shell: Optional[str] = None,
+        data_dir: Optional[str] = None,
     ) -> "ExecutionSession":
         """Create an ExecutionSession with standard defaults.
 
-        Automatically instantiates default ToolRegistry, Executor, and SubprocessCommandRunner
+        Automatically instantiates default ToolRegistry and Executor
         if not explicitly provided, eliminating caller assembly boilerplate.
         """
         reg = registry if registry is not None else ToolRegistry()
-        runner = (
-            command_runner if command_runner is not None else SubprocessCommandRunner(Executor())
-        )
+        runner = command_runner if command_runner is not None else Executor()
         gw = gateway if gateway is not None else PassthroughActionValidator()
         return cls(
             store=store,
@@ -272,6 +242,7 @@ class ExecutionSession:
             command_runner=runner,
             user_env=user_env,
             user_shell=user_shell,
+            data_dir=data_dir,
         )
 
     def add_status_listener(self, listener: Callable[[JobStatus], Any]) -> None:
@@ -307,7 +278,7 @@ class ExecutionSession:
 
     def append_job_buffer(self, action_id: UUID, chunk: str) -> None:
         """Append an output chunk to in-memory job buffer."""
-        buf = self._job_buffers.setdefault(action_id, [])
+        buf = self._job_buffers.setdefault(action_id, deque(maxlen=5000))
         buf.append(chunk)
 
     def remove_job(self, action_id: UUID) -> Optional[JobStatus]:
@@ -437,6 +408,15 @@ class ExecutionSession:
                 pik = json.loads(node_data.get("pik_json") or "{}")
 
         resolved_vars = self.gateway.resolve_entity_variables(pik)
+        if action.params is None:
+            action.params = {}
+        if "flags" in action.params and "raw_flags" not in action.params:
+            flags_val = action.params["flags"]
+            if isinstance(flags_val, list):
+                action.params["raw_flags"] = " ".join(str(x) for x in flags_val)
+            elif flags_val is not None:
+                action.params["raw_flags"] = str(flags_val)
+
         raw_flags = action.params.get("raw_flags", "") if action.params else ""
         raw_flags = self.gateway.interpolate_variables(raw_flags, resolved_vars)
         if action.params:
@@ -486,6 +466,7 @@ class ExecutionSession:
             action_id=str(action.action_id),
             tool=action.tool_name,
             target=target_val or "target",
+            data_dir=self.data_dir,
         )
         log_file_path = str(log_path)
         self._job_spoolers[action.action_id] = spooler
@@ -502,7 +483,7 @@ class ExecutionSession:
         )
         self._active_jobs[job.job_id] = job
         self._job_actions[job.job_id] = action
-        self._job_buffers[job.job_id] = []
+        self._job_buffers[job.job_id] = deque(maxlen=5000)
         self._notify_status(job)
 
         # 6. Resolve target finding
@@ -556,10 +537,8 @@ class ExecutionSession:
     async def _append_chunk(
         self, action_id: UUID, text: str, log_file_path: str, is_error: bool = False
     ) -> None:
-        buf = self._job_buffers.setdefault(action_id, [])
+        buf = self._job_buffers.setdefault(action_id, deque(maxlen=5000))
         buf.append(text)
-        if len(buf) > 5000:
-            self._job_buffers[action_id] = buf[-2500:]
 
         spooler = self._job_spoolers.get(action_id)
         if spooler:
@@ -575,6 +554,49 @@ class ExecutionSession:
             action_id, ExecutionChunk(action_id=action_id, text=text, is_error=is_error)
         )
 
+    def _finalize_action_spool(
+        self,
+        action: ActionRequest,
+        job: JobStatus,
+        log_file_path: str,
+        end_label: str,
+        err_msg: Optional[str],
+    ) -> None:
+        """Close action spooler, populate job.exit_code, and record forensic audit completion."""
+        runner_exit: Optional[int] = None
+        get_exit_fn = getattr(self.runner, "get_exit_code", None)
+        if callable(get_exit_fn):
+            runner_exit = get_exit_fn(str(action.action_id))
+
+        if runner_exit is not None:
+            job.exit_code = runner_exit
+        elif job.exit_code is None:
+            job.exit_code = 0 if job.status == JobStatusEnum.DONE else 1
+
+        spooler = self._job_spoolers.pop(action.action_id, None)
+        status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
+        if spooler:
+            spooler.write(
+                f"\n\n=== {end_label}: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            )
+            spooler.close()
+
+        target_str = (
+            str(action.params.get("target") or action.params.get("url") or "")
+            if action.params
+            else ""
+        )
+        ForensicLogManager.record_action_completion(
+            session_id=str(action.session_id),
+            action_id=str(action.action_id),
+            tool=action.tool_name,
+            target=target_str or "target",
+            exit_code=job.exit_code,
+            log_path=Path(log_file_path),
+            data_dir=self.data_dir,
+        )
+        wipe_credentials(job)
+
     async def _run_privileged_action(
         self,
         action: ActionRequest,
@@ -589,16 +611,16 @@ class ExecutionSession:
         cwd = self.get_cwd(str(action.session_id))
         clean_env = sanitize_subprocess_env(self.user_env)
 
-        # Initialize LogSpooler with 64KB buffering
-        spooler = LogSpooler(log_file_path)
-        self._job_spoolers[action.action_id] = spooler
-        spooler.write(
-            f"=== Privileged Execution Start: {datetime.now(UTC).isoformat()} ===\n"
-            f"Tool: sudo\n"
-            f"Session: {action.session_id}\n"
-            f"Action ID: {action.action_id}\n"
-            f"{'=' * 50}\n\n"
-        )
+        # Reuse LogSpooler opened in dispatch()
+        spooler = self._job_spoolers.get(action.action_id)
+        if spooler:
+            spooler.write(
+                f"=== Privileged Execution Start: {datetime.now(UTC).isoformat()} ===\n"
+                f"Tool: sudo\n"
+                f"Session: {action.session_id}\n"
+                f"Action ID: {action.action_id}\n"
+                f"{'=' * 50}\n\n"
+            )
 
         await self._emit_event(
             action.action_id,
@@ -734,30 +756,9 @@ class ExecutionSession:
             elapsed = asyncio.get_event_loop().time() - start_time
             job.completed_at = datetime.now(UTC)
             self._notify_status(job)
-
-            # Record final status in disk log and close spooler
-            status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
-            spooler.write(
-                f"\n\n=== Privileged Execution End: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            self._finalize_action_spool(
+                action, job, log_file_path, "Privileged Execution End", err_msg
             )
-            spooler.close()
-            self._job_spoolers.pop(action.action_id, None)
-
-            try:
-                from pathlib import Path
-                target_str = str(action.params.get("target") or action.params.get("url") or "") if action.params else ""
-                exit_c = job.exit_code if job.exit_code is not None else (0 if job.status == JobStatusEnum.DONE else 1)
-                ForensicLogManager.record_action_completion(
-                    session_id=str(action.session_id),
-                    action_id=str(action.action_id),
-                    tool=action.tool_name,
-                    target=target_str or "target",
-                    exit_code=exit_c,
-                    log_path=Path(log_file_path),
-                )
-            except Exception:
-                pass
-            wipe_credentials(job)
 
             if job.status == JobStatusEnum.DONE:
                 await self._emit_event(
@@ -828,16 +829,16 @@ class ExecutionSession:
         cwd = self.get_cwd(str(action.session_id))
         clean_env = sanitize_subprocess_env(self.user_env)
 
-        # Initialize LogSpooler with 64KB buffering
-        spooler = LogSpooler(log_file_path)
-        self._job_spoolers[action.action_id] = spooler
-        spooler.write(
-            f"=== Execution Start: {datetime.now(UTC).isoformat()} ===\n"
-            f"Tool: {action.tool_name}\n"
-            f"Session: {action.session_id}\n"
-            f"Action ID: {action.action_id}\n"
-            f"{'=' * 50}\n\n"
-        )
+        # Reuse LogSpooler opened in dispatch()
+        spooler = self._job_spoolers.get(action.action_id)
+        if spooler:
+            spooler.write(
+                f"=== Execution Start: {datetime.now(UTC).isoformat()} ===\n"
+                f"Tool: {action.tool_name}\n"
+                f"Session: {action.session_id}\n"
+                f"Action ID: {action.action_id}\n"
+                f"{'=' * 50}\n\n"
+            )
 
         await self._emit_event(
             action.action_id,
@@ -917,30 +918,9 @@ class ExecutionSession:
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
             job.completed_at = datetime.now(UTC)
-
-            # Record final status in disk log and close spooler
-            status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
-            spooler.write(
-                f"\n\n=== Execution End: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            self._finalize_action_spool(
+                action, job, log_file_path, "Execution End", err_msg
             )
-            spooler.close()
-            self._job_spoolers.pop(action.action_id, None)
-
-            try:
-                from pathlib import Path
-                target_str = str(action.params.get("target") or action.params.get("url") or "") if action.params else ""
-                exit_c = job.exit_code if job.exit_code is not None else (0 if job.status == JobStatusEnum.DONE else 1)
-                ForensicLogManager.record_action_completion(
-                    session_id=str(action.session_id),
-                    action_id=str(action.action_id),
-                    tool=action.tool_name,
-                    target=target_str or "target",
-                    exit_code=exit_c,
-                    log_path=Path(log_file_path),
-                )
-            except Exception:
-                pass
-            wipe_credentials(job)
 
             # Persist to database event log
             if not getattr(self.store, "_closed", False):

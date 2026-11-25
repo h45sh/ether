@@ -587,3 +587,166 @@ async def test_execution_session_create_factory():
     assert gateway_session.store is store
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_uses_executor_directly_and_no_subprocess_runner():
+    import ether.core.session as session_mod
+    from ether.core.executor import Executor
+
+    assert not hasattr(session_mod, "SubprocessCommandRunner")
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    session = ExecutionSession.create(store)
+    assert isinstance(session.runner, Executor)
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_normalizes_flags_param_before_validation():
+    from ether.schemas.network import NetworkHost
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id = await store.create_workspace("TestWS")
+    sess_id = await store.create_session(ws_id, "TestSess")
+
+    host = NetworkHost.create(ip="10.10.10.5")
+    host_id = await store.upsert_finding(sess_id, host)
+
+    seen_params = {}
+
+    class InspectingAdapter(ToolAdapter):
+        name = "inspect_tool"
+        execution_tier = "coroutine"
+
+        def validate_install(self):
+            return True
+
+        def build_command(self, target, params):
+            return ["inspect"]
+
+        async def parse_output(self, raw_stdout, target, context=None):
+            if False:
+                yield target
+
+        async def execute_action(self, target, params, context):
+            seen_params.update(params)
+            if False:
+                yield target
+
+    registry = ToolRegistry()
+    registry.tools["inspect_tool"] = {
+        "manifest": None,
+        "adapter": InspectingAdapter(),
+        "execution_tier": "coroutine",
+    }
+
+    validated_raw_flags = []
+
+    class RecordingGateway(ActionGateway):
+        async def validate_action(self, action):
+            validated_raw_flags.append(action.params.get("raw_flags"))
+            return await super().validate_action(action)
+
+    gateway = RecordingGateway(registry, store)
+    session = ExecutionSession.create(store, gateway=gateway, registry=registry)
+
+    action = ActionRequest(
+        action_id=uuid4(),
+        session_id=UUID(sess_id),
+        tool_name="inspect_tool",
+        target_entity_id=host_id,
+        params={"flags": ["-sV", "$TARGET"]},
+        triggered_by=ActionSource.USER,
+    )
+    job_id = await session.dispatch(action)
+    task = session.get_running_task(job_id)
+    if task:
+        await task
+
+    assert validated_raw_flags == ["-sV 10.10.10.5"]
+    assert seen_params["raw_flags"] == "-sV 10.10.10.5"
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_single_spool_deque_and_audit_record(tmp_path):
+    from collections import deque
+
+    from ether.common.forensic_log import ForensicLogManager, LogSpooler
+
+    db_path = str(tmp_path / "ether.db")
+    store = GraphStore(db_path)
+    await store.initialize()
+    ws_id = await store.create_workspace("TestWS")
+    sess_id = await store.create_session(ws_id, "TestSess")
+
+    class EmitAdapter(ToolAdapter):
+        name = "emit_tool"
+        execution_tier = "coroutine"
+
+        def validate_install(self):
+            return True
+
+        def build_command(self, target, params):
+            return ["emit"]
+
+        async def parse_output(self, raw_stdout, target, context=None):
+            if False:
+                yield target
+
+        async def execute_action(self, target, params, context):
+            await context.spool_line("hello-spool\n")
+            if False:
+                yield target
+
+    registry = ToolRegistry()
+    registry.tools["emit_tool"] = {
+        "manifest": None,
+        "adapter": EmitAdapter(),
+        "execution_tier": "coroutine",
+    }
+    session = ExecutionSession.create(store, registry=registry)
+
+    spooler_init_calls = []
+    orig_init = LogSpooler.__init__
+
+    def spy_init(self_spool, *args, **kwargs):
+        spooler_init_calls.append(args)
+        return orig_init(self_spool, *args, **kwargs)
+
+    action = ActionRequest(
+        action_id=uuid4(),
+        session_id=UUID(sess_id),
+        tool_name="emit_tool",
+        params={"target": "10.0.0.1"},
+        triggered_by=ActionSource.USER,
+    )
+
+    with patch.object(LogSpooler, "__init__", spy_init):
+        job_id = await session.dispatch(action)
+        assert isinstance(session._job_buffers[job_id], deque)
+        assert session._job_buffers[job_id].maxlen == 5000
+        task = session.get_running_task(job_id)
+        if task:
+            await task
+
+    assert len(spooler_init_calls) == 1
+    job = session.get_job(job_id)
+    assert job.status == JobStatusEnum.DONE
+    assert job.exit_code == 0
+
+    log_content = ForensicLogManager.read_action_log(
+        str(action.action_id), session_id=sess_id, data_dir=str(tmp_path)
+    )
+    assert log_content is not None
+    assert "hello-spool" in log_content
+
+    is_valid, records = ForensicLogManager.verify_session_audit(sess_id, data_dir=str(tmp_path))
+    assert is_valid
+    assert len(records) == 1
+    assert records[0]["action_id"] == str(action.action_id)
+
+    await store.close()

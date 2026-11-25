@@ -54,6 +54,7 @@ class JobStatus(BaseModel):
     log_file: Optional[str] = None
     command_snippet: Optional[str] = None
     error_snippet: Optional[str] = None
+    exit_code: Optional[int] = None
     tab_id: Optional[str] = None
 
 
