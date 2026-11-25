@@ -141,22 +141,6 @@ def _cached_node_id(schema_type: str, pik_items: tuple) -> str:
     return hashlib.sha256(f"{schema_type}:{pik_str}".encode()).hexdigest()
 
 
-def _hydrate_node_row(row: Any) -> Dict[str, Any]:
-    """Convert a SQLite node row to a dict with hydrated 'pik' and 'data' dicts."""
-    item = dict(row)
-    for json_col, dict_key in (("pik_json", "pik"), ("data_json", "data")):
-        raw = item.get(json_col)
-        if isinstance(raw, str):
-            try:
-                parsed = json.loads(raw)
-                item[dict_key] = parsed if isinstance(parsed, dict) else {}
-            except Exception:
-                item[dict_key] = {}
-        elif dict_key not in item:
-            item[dict_key] = {}
-    return item
-
-
 class GraphStore:
     """Manages workspaces, sessions, and stateful entity graphs."""
 

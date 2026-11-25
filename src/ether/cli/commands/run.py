@@ -60,11 +60,21 @@ async def handle_run(args: Any, context: CliContext) -> int:
         )
 
         if result.get("is_error"):
-            print_error(
-                result.get("stderr_snippet") or result.get("message") or "Execution failed."
-            )
-            if result.get("remediation") and not context.is_json:
-                print(f"      Remedy: {result['remediation']}", file=sys.stderr)
+            if result.get("error") == "PreflightGateRejected" and result.get("errors"):
+                print_error(f"Preflight validation failed for '{tool_name}':")
+                for err in result["errors"]:
+                    cat = err.get("category", "preflight")
+                    title = err.get("title", "Preflight Error")
+                    desc = err.get("description", "")
+                    print(f"  [-] [{cat}] {title}: {desc}", file=sys.stderr)
+                    if err.get("remediation"):
+                        print(f"      Remedy: {err['remediation']}", file=sys.stderr)
+            else:
+                print_error(
+                    result.get("stderr_snippet") or result.get("message") or "Execution failed."
+                )
+                if result.get("remediation") and not context.is_json:
+                    print(f"      Remedy: {result['remediation']}", file=sys.stderr)
             return EXIT_RUNTIME_ERROR
 
         if not context.is_json:

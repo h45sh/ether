@@ -137,8 +137,8 @@ class WriteQueueWorker:
                     grouped[(func, s_id, a_id)].append((f_list, fut))
 
                 for (func, s_id, a_id), items in grouped.items():
-                    combined = []
-                    futs_info = []
+                    combined: List[Any] = []
+                    futs_info: List[Any] = []
                     for f_list, fut in items:
                         s = len(combined)
                         combined.extend(f_list)
