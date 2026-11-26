@@ -104,14 +104,16 @@ class HTTPProbeAdapter(ToolAdapter):
             await context.spool_line(f"[!] SSRF Defense Triggered: {msg}", is_error=True)
             raise PolicyViolationError(msg)
 
-        # 3. Request execution with httpx
+        # 3. Request execution with DNS-pinned PinnedTransport
+        from ether.common.transport import PinnedTransport, SSRFPinnedError
+
         timeout_sec = float(params.get("timeout", 10.0))
-        limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
+        verify_tls = bool(params.get("verify_tls", True))
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        transport = httpx.AsyncHTTPTransport(retries=1, verify=ssl_ctx)
+        if not verify_tls:
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
 
         # Define a response hook to re-validate any redirect location against the SSRF policy
         async def _redirect_hook(response: httpx.Response) -> None:
@@ -173,16 +175,18 @@ class HTTPProbeAdapter(ToolAdapter):
                     f"[-] Could not retrieve TLS certificate directly: {ssl_err}"
                 )
 
-        async with httpx.AsyncClient(
-            transport=transport,
-            verify=ssl_ctx,
-            timeout=httpx.Timeout(timeout_sec, connect=min(timeout_sec, 5.0)),
-            follow_redirects=True,
-            limits=limits,
-            event_hooks={"response": [_redirect_hook]},
+        async with PinnedTransport.create_client(
+            scope=getattr(context, "scope", None),
+            verify_tls=verify_tls,
+            timeout=timeout_sec,
+            policy_is_unrestricted=is_unrestricted,
         ) as client:
             try:
                 response = await asyncio.wait_for(client.get(url), timeout=timeout_sec)
+            except SSRFPinnedError as exc:
+                msg = f"Target blocked by SSRF policy: {exc}"
+                await context.spool_line(f"[!] SSRF Redirect Defense Triggered: {msg}", is_error=True)
+                raise PolicyViolationError(msg) from exc
             except PolicyViolationError:
                 raise
             except Exception as exc:

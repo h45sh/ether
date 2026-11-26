@@ -92,7 +92,7 @@ To understand Ether, consider the role of a traditional supervisory runtime: it 
    Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`, `AZURE_*`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`ByteBoundedRingBuffer`: 2 MB / 5,000 chunks) below **10MB RAM**.
 
 2. **Deterministic Entity State Machine & Decoupled GraphStore**
-   Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter. Concurrency is governed by a dedicated **`WriteQueueWorker`** with adaptive 25ms / 50-operation transaction batching and a read connection pool with `PRAGMA query_only = ON`.
+   Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter. Concurrency is governed by a dedicated **`WriteQueue`** with exact-ownership batch coalescing and a read connection pool with `PRAGMA query_only = ON`.
 
 3. **Cryptographic Identity Anchoring & Temporal State Decay**
    Decouples volatile IP addresses from logical service identities using invariant cryptographic fingerprints (`tls:<sha256>`, `ssh:<fingerprint>`, `favicon:<hash>`). When a service migrates across cloud IPs, Ether automatically links cross-IP identity migration edges (`anchored_identity`). Unseen nodes undergo automatic confidence state decay (`confirmed` $\to$ `flapping` $\to$ `stale`).
@@ -349,7 +349,7 @@ Ether is empirically validated across automated mechanical testbeds and multi-sc
 | **Deception Defenses** | TCP banner-loop tarpit detection, Bayesian deception scoring on port sprawl, automated exclusion of canary ports. | Real-time belief updating |
 | **Stealth & Firewall Accuracy** | Accurate preservation of `filtered` firewall states, native SYN scan flags, >98% token reduction via zero-token deltas. | Exact state fidelity |
 | **Identity Anchoring & Drift** | Cryptographic fingerprinting (`tls:`, `ssh:`, `favicon:`), cross-IP migration tracking, temporal confidence decay. | Cryptographic anchoring |
-| **Storage & Memory Limits** | **1,753.2 upserts/sec** WAL write throughput with `WriteQueueWorker` batching, **0.37MB** RSS delta (<10MB ceiling). | Concurrency & RAM bounds met |
+| **Storage & Memory Limits** | **1,753.2 upserts/sec** WAL write throughput with `WriteQueue` batching, **0.37MB** RSS delta (<10MB ceiling). | Concurrency & RAM bounds met |
 | **Forensic Chain-of-Custody** | Cryptographic SHA-256 block hash chaining, closed session immutability (`PermissionError`), AES-256-GCM encrypted archives. | Tamper-evident verification |
 
 ### Empirical Run 1 Benchmark

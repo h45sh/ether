@@ -62,14 +62,17 @@ Ether operates as a headless reactive process supervisor, AST validator, and det
 6. **Local Filesystem Permissions**:
    Sensitive exported archives, operator state, and credential caches enforce atomic `0o600` permissions (`atomic_create_file` via temp-file + `0o600` + `os.replace`, including overwrites) to prevent TOCTOU permission races. `GraphStore` creates database directories with `0o700` and pre-creates database files atomically with `0o600`.
 
-7. **Forensic Integrity & Audit Chain of Custody**:
-   All executed actions generate cryptographically hash-chained `AuditRecord` entries in `~/.ether/audit/{session_id}.jsonl`. Each record links the previous block hash and verifies raw log file integrity (`SHA-256`), with automatic gzip compaction upon session closure. Tampering with audit logs or manifests is detectable via `ether session verify-audit`.
+7. **Forensic Integrity & Signed Audit Chain of Custody**:
+   All executed actions generate cryptographically hash-chained `AuditRecord` entries in `~/.ether/audit/{session_id}.jsonl`. Session closure is governed by `SessionSealer` (`ether.common.session_sealer`), a two-phase atomic state machine (`ACTIVE` → `SEALING` → `COMPRESSING` → `SEALED`) with a recovery journal and Ed25519 signature over the completed audit manifest (`seal_receipt.json`). Tampering with audit logs, manifests, or receipts is detectable via `ether session verify-audit` and `SessionSealer.verify_seal()`.
 
-8. **HTTP Redirect & Rebinding SSRF Defense**:
-   Per ADR 0013, `tools/http_probe` intercepts all 3xx redirect responses using client response hooks. Redirect target URLs are re-evaluated against the scope boundary (`ScopeValidator.check_destination`) before following, preventing SSRF pivot attacks toward cloud IMDS (`169.254.169.254`), loopback, or unauthorized IP ranges under `GatePolicy.SAFE`.
+8. **DNS-Pinned Socket Transport & Redirect SSRF Defense**:
+   Per ADR 0013 and ADR 0016, `PinnedTransport` (`ether.common.transport`) resolves DNS once, validates resolved IPs against `EngagementScope`, pins the TCP handshake directly to the validated IP (preserving TLS SNI and defaulting `verify_tls=True`), and re-validates every `301`/`302`/`303`/`307`/`308` redirect hop before following.
 
-9. **MCP SSE Authentication & Network Exposure Boundary**:
-   Exposing the Model Context Protocol (MCP) server over SSE to non-loopback interfaces (`--host 0.0.0.0`) under `GatePolicy.SAFE` requires an authentication token (`--auth-token` or `ETHER_MCP_AUTH_TOKEN`). All SSE and message endpoints enforce HTTP Bearer token verification with 401 Unauthorized rejection for missing or invalid credentials.
+9. **Enterprise MCP Gate & Scoped Transport Authentication**:
+   `SecurityMiddleware` (`ether.mcp.security`) protects MCP HTTP/SSE endpoints with constant-time HMAC-SHA256 scoped tokens (`telemetry:read`, `graph:query`, `tool:execute`, `session:mutate`), per-IP leaky-bucket rate limiting (`429`), strict CORS origin allowlisting (`403`), and optional mTLS client certificate verification, while `stdio` runs as a local-operator `AuthContext`.
 
-10. **Container Non-Root Isolation & Minimal Capabilities**:
-    The official Ether container runs as an unprivileged user (`ether`, UID/GID 1000) with private persistent volume permissions (`0o700` on `/home/ether/.ether`). Low-level packet scanning capabilities are granted exclusively via file capabilities (`setcap cap_net_raw,cap_net_admin+eip /usr/bin/nmap`), eliminating the requirement for container root execution.
+10. **FlagFirewall, Plugin Attestation, Database Cryptography & Privilege Isolation**:
+    * **Subprocess Argument Firewall (`ether.gateway.flags.FlagFirewall`):** Derives strict AST flag allowlists/blocklists from each tool's `manifest.toml` `[flags]` contract under `GatePolicy.SAFE` and neutralizes shell metacharacters across all policies.
+    * **Cryptographic Plugin Attestation (`ether.registry.loader.PluginLoader`):** Verifies Ed25519 signatures, SHA-256 manifest hashes, and AST safety (`eval`/`exec`/restricted imports) before loading tool adapters.
+    * **Transparent Field Encryption (`ether.graph.crypto.CryptoEngine`):** Encrypts `CredentialFound` secrets and `raw_data` at rest via ChaCha20-Poly1305 (with `ctypes.memset` memory zeroization, TTL expiration, and optional SQLCipher/OS keyring support).
+    * **Least-Privilege Execution (`ether.core.privilege.PrivilegeGovernor`):** Drops Linux ambient capabilities and enforces `PR_SET_NO_NEW_PRIVS` on the Python supervisor process, with optional rootless netns / UDS isolated scanner worker support. The official container runs as unprivileged user `ether` (UID/GID 1000) with `0o700` persistent volume permissions.

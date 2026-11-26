@@ -36,7 +36,6 @@ def make_tool_manifest(
             "categories": ["recon"],
             "binary": name,
         },
-        "modes": {"learning": True, "power": True},
         "input": {"accepts": accepts},
         "output": {"produces": []},
     }

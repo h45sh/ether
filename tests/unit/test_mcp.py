@@ -668,19 +668,20 @@ async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
 
 @pytest.mark.asyncio
 async def test_mcp_sse_auth_middleware():
-    """Verify that BearerTokenAuthMiddleware rejects unauthenticated requests and permits valid Bearer tokens."""
+    """Verify that SecurityMiddleware rejects unauthenticated requests and permits valid Bearer tokens."""
     from starlette.applications import Starlette
     from starlette.responses import PlainTextResponse
     from starlette.routing import Route
     from starlette.testclient import TestClient
 
-    from ether.mcp.server import BearerTokenAuthMiddleware
+    from ether.mcp.security import SecurityMiddleware
 
     async def sample_endpoint(request):
         return PlainTextResponse("authenticated")
 
     base_app = Starlette(routes=[Route("/test", sample_endpoint)])
-    auth_app = BearerTokenAuthMiddleware(base_app, token="vault-token-xyz")
+    mw = SecurityMiddleware(signing_secret="vault-token-xyz", static_admin_token="vault-token-xyz")
+    auth_app = mw.wrap_asgi(base_app)
 
     client = TestClient(auth_app)
 

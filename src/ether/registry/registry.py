@@ -3,7 +3,6 @@
 """Dynamic tool discovery and loading."""
 
 import tomllib
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -55,8 +54,8 @@ class ToolRegistry:
                             data = tomllib.load(f)
                             manifest = Manifest(**data)
 
-                        # 2. Dynamically load the adapter class
-                        adapter_instance = self._load_adapter(adapter_path)
+                        # 2. Dynamically load and verify the adapter class via PluginLoader
+                        adapter_instance = self._load_adapter(adapter_path, manifest_path)
 
                         if adapter_instance:
                             if hasattr(manifest.meta, "execution_tier"):
@@ -73,28 +72,15 @@ class ToolRegistry:
                     except Exception as e:
                         self.load_errors[tool_path.name] = str(e)
 
-    def _load_adapter(self, adapter_path: Path) -> Optional[ToolAdapter]:
-        """Import the adapter.py module and instantiate the ToolAdapter class."""
-        try:
-            module_name = f"tools.{adapter_path.parent.name}.adapter"
-            spec = spec_from_file_location(module_name, adapter_path)
-            if spec and spec.loader:
-                module = module_from_spec(spec)
-                spec.loader.exec_module(module)
+    def _load_adapter(
+        self, adapter_path: Path, manifest_path: Optional[Path] = None
+    ) -> Optional[ToolAdapter]:
+        """Verify and import the adapter.py module via PluginLoader and instantiate ToolAdapter."""
+        from ether.registry.loader import PluginLoader, PluginTrustMode
 
-                # Look for a subclass of ToolAdapter
-                for attr_name in dir(module):
-                    attr = getattr(module, attr_name)
-                    if (
-                        isinstance(attr, type)
-                        and issubclass(attr, ToolAdapter)
-                        and attr is not ToolAdapter
-                    ):
-                        return attr()
-            return None
-        except Exception:
-            # Re-raise to let load_tools capture the full context
-            raise
+        m_path = manifest_path or (adapter_path.parent / "manifest.toml")
+        loader = PluginLoader(trust_mode=PluginTrustMode.DEV)
+        return loader.load_verified_adapter(adapter_path, m_path)
 
     def get_tool(self, name: str) -> Optional[Dict]:
         """Return the manifest and adapter instance for a named tool."""

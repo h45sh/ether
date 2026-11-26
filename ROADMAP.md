@@ -361,7 +361,7 @@ Directly addressing every deficiency, UX friction point, security edge case, and
 #### 8. Architectural Assurance, Zero-Trust Hardening & Supply-Chain Integrity
 Directly addressing the 14 architectural, cryptographic, and operational risks identified in rigorous external and container security reviews:
 
-- [ ] **Subprocess Argument Allowlisting & Flag Injection Firewall (`ether.gateway.flags`):**
+- [x] **Subprocess Argument Allowlisting & Flag Injection Firewall (`ether.gateway.flags`):**
   - *Problem*: Preflight validates target strings, but malicious or compromised MCP callers can inject dangerous flags via `flags` or `raw_flags` (e.g. `-oG`, `--script`, `--proxy`, `-oN`, `-iL`, `--config`, or shell metacharacters), bypassing the scope boundary.
   - *Deep Module Design*: Create a deep `FlagFirewall` module placed at the gateway preflight seam.
   - *Seam Placement*: Execution preflight seam (`ether.gateway.flags.FlagFirewall`).
@@ -380,7 +380,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: One centralized module protects every subprocess invocation across CLI, MCP, and autonomous pipelines without per-adapter manual regex checks.
   - *The Deletion Test*: Deleting this module allows callers to bypass scope enforcement by smuggling malicious targets inside arbitrary CLI flags.
 
-- [ ] **Enterprise MCP Gate & Scoped Transport Authentication (`ether.mcp.security`):**
+- [x] **Enterprise MCP Gate & Scoped Transport Authentication (`ether.mcp.security`):**
   - *Problem*: Current MCP SSE authentication relies on a single Bearer token string equality check without brute-force rate-limiting, token rotation, mutual TLS (mTLS), scoped permissions (RBAC), request auditing, CORS origin policy, or segregation of read-only vs destructive operations.
   - *Deep Module Design*: Create a deep `SecurityMiddleware` placed at the transport ingress seam.
   - *Seam Placement*: Transport middleware seam (`ether.mcp.security.SecurityMiddleware`).
@@ -403,7 +403,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: Protects stdio, SSE, and HTTP transports identically behind a single authentication context.
   - *The Deletion Test*: Deleting this module scatters transport authentication, rate-limiting, and authorization checks across every individual MCP tool handler.
 
-- [ ] **Cryptographic Plugin Attestation & Sandboxed Loader (`ether.registry.loader`):**
+- [x] **Cryptographic Plugin Attestation & Sandboxed Loader (`ether.registry.loader`):**
   - *Problem*: `ToolRegistry` dynamically imports and executes arbitrary Python adapter modules from disk without digital signatures or integrity attestation, creating arbitrary code execution risks.
   - *Deep Module Design*: Create a deep `PluginLoader` module placed at the registry seam.
   - *Seam Placement*: Adapter registry seam (`ether.registry.loader.PluginLoader`).
@@ -420,7 +420,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: Third-party and enterprise community adapters can be safely installed and loaded without risking host compromise.
   - *The Deletion Test*: Deleting this module allows untrusted or tampered adapter scripts to execute arbitrary code within the supervisor process.
 
-- [ ] **Transparent Database Cryptography & Credential Protection (`ether.graph.crypto`):**
+- [x] **Transparent Database Cryptography & Credential Protection (`ether.graph.crypto`):**
   - *Problem*: Lossless credential findings are stored in plaintext SQLite databases at rest, protected only by filesystem permissions without transparent encryption, OS keyring integration, or per-field ACLs.
   - *Deep Module Design*: Create a deep `CryptoEngine` module placed at the storage persistence seam.
   - *Seam Placement*: Storage persistence seam (`ether.graph.crypto.CryptoEngine`).
@@ -437,7 +437,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: All finding queries and mutations operate transparently while data at rest is mathematically protected against physical or disk-level compromise.
   - *The Deletion Test*: Deleting this module leaves discovered passwords, API keys, and private keys exposed in plaintext SQLite files.
 
-- [ ] **Exact-Ownership WriteQueue Serialization & Mutation Integrity (`ether.graph.write_queue`):**
+- [x] **Exact-Ownership WriteQueue Serialization & Mutation Integrity (`ether.graph.write_queue`):**
   - *Problem*: `WriteQueue` batch coalescing slices results by input offset (`all_nids[s:e]`), which breaks caller attribution when findings are deduplicated or share nodes. Furthermore, `export_session` and `import_session` perform direct SQL operations bypassing the write queue.
   - *Deep Module Design*: Deepen `WriteQueue` to eliminate offset slicing and serialize all mutations.
   - *Seam Placement*: SQLite write serialization seam (`ether.graph.write_queue.WriteQueue`).
@@ -457,7 +457,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: Guarantees zero database deadlocks, zero lock timeouts, and 100% correct result attribution across 50+ concurrent agents.
   - *The Deletion Test*: Deleting this module re-introduces SQLite write lock contention and corrupts finding attribution in multi-agent workflows.
 
-- [ ] **Two-Phase Atomic Session Sealer & Signed Audit Trail (`ether.common.session_sealer`):**
+- [x] **Two-Phase Atomic Session Sealer & Signed Audit Trail (`ether.common.session_sealer`):**
   - *Problem*: Session closure runs log compression before the SQLite status update; a crash leaves inconsistent states. The SHA-256 hash chain is append-only by convention and can be altered by a local attacker with filesystem write access.
   - *Deep Module Design*: Create a deep `SessionSealer` module placed at the session lifecycle seam.
   - *Seam Placement*: Session lifecycle seam (`ether.common.session_sealer.SessionSealer`).
@@ -474,7 +474,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: Forensic session closure is guaranteed atomic and cryptographically tamper-evident even across power loss or process crashes.
   - *The Deletion Test*: Deleting this module allows partial compression crashes to corrupt session archives and leaves audit trails vulnerable to local tampering.
 
-- [ ] **DNS-Pinned Socket Transport & Rebinding Defense (`ether.common.transport`):**
+- [x] **DNS-Pinned Socket Transport & Rebinding Defense (`ether.common.transport`):**
   - *Problem*: Pre-connect target validation does not pin IP addresses to TCP sockets; a malicious server can return an approved public IP on initial DNS resolution and redirect to an internal IP (e.g. `169.254.169.254` or `127.0.0.1`) via DNS rebinding.
   - *Deep Module Design*: Create a deep `PinnedTransport` module placed at the HTTP transport seam.
   - *Seam Placement*: HTTP network client seam (`ether.common.transport.PinnedTransport`).
@@ -489,7 +489,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: Completely eliminates DNS rebinding and redirect SSRF across all web and API tools.
   - *The Deletion Test*: Deleting this module leaves every HTTP probe and web adapter vulnerable to Time-of-Check to Time-of-Use (TOCTOU) DNS rebinding attacks.
 
-- [ ] **Least-Privilege Scanner Isolation & Capability Sandboxing (`ether.core.privilege`):**
+- [x] **Least-Privilege Scanner Isolation & Capability Sandboxing (`ether.core.privilege`):**
   - *Problem*: Granting `cap_net_raw,cap_net_admin` to `/usr/bin/nmap` via `setcap` inside containers creates a capability escalation target if the Python supervisor is compromised.
   - *Deep Module Design*: Create a deep `PrivilegeGovernor` module placed at the execution isolation seam.
   - *Seam Placement*: Execution isolation seam (`ether.core.privilege.PrivilegeGovernor`).
@@ -499,7 +499,7 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Leverage & Locality*: Eliminates capability escape vectors while preserving high-speed raw packet scanning.
   - *The Deletion Test*: A compromised Python dependency can access ambient raw network capabilities on the host.
 
-- [ ] **Supply-Chain Security, Provenance Attestation & Reproducible Benchmarks:**
+- [x] **Supply-Chain Security, Provenance Attestation & Reproducible Benchmarks:**
   - Enforce cryptographic dependency lockfile verification (`uv.lock` with hashes).
   - Generate automated Software Bill of Materials (SBOM in CycloneDX / SPDX format) and Sigstore/Cosign container image signatures.
   - Provide a reproducible benchmark harness capturing exact commit, hardware, kernel, Python version, workload, variance, and CI test artifacts.

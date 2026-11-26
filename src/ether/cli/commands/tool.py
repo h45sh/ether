@@ -110,20 +110,9 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
     from ether.gateway.preflight import get_tool_target_guidance
 
     recommended_flags: list[dict[str, Any]] = []
-    power_cfg = getattr(manifest, "power", None)
-    if power_cfg and getattr(power_cfg, "suggests", None):
-        recommended_flags.extend(dict(s) for s in power_cfg.suggests)
-    learning_cfg = getattr(manifest, "learning", None)
-    if learning_cfg and getattr(learning_cfg, "recipes", None):
-        for r in learning_cfg.recipes:
-            recommended_flags.append(
-                {
-                    "name": r.name,
-                    "difficulty": r.difficulty,
-                    "description": r.description,
-                    "flags": r.flags,
-                }
-            )
+    profiles = getattr(manifest, "profiles", None) or {}
+    for profile_name, flag_vec in profiles.items():
+        recommended_flags.append({"profile": profile_name, "flags": list(flag_vec)})
 
     info = {
         "name": tool_name,

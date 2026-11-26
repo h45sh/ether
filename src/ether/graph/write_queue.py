@@ -1,17 +1,49 @@
-"""Async serialization queue and batch commit worker for SQLite writes in Ether."""
+"""Async serialization queue and exact-ownership batch commit worker for SQLite writes."""
+
+from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any, Callable, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger("ether.graph.write_queue")
 
-# Type alias: (function, args, kwargs, future)
-WriteTask = Tuple[Callable[..., Any], Tuple[Any, ...], dict[str, Any], asyncio.Future]
+# Type alias: (function, args, kwargs, future, is_upsert, transactional)
+WriteTask = Tuple[
+    Callable[..., Any],
+    Tuple[Any, ...],
+    dict[str, Any],
+    asyncio.Future[Any],
+    bool,
+    bool,
+]
 
 
-class WriteQueueWorker:
-    """Dedicated background single-writer worker with adaptive transaction batching."""
+@dataclass(frozen=True)
+class UpsertResult:
+    """Exact per-caller finding upsert result with reverse PIK lookup."""
+
+    node_ids: List[str]
+    unique_node_ids: List[str]
+    parent_nodes: Dict[str, tuple] = field(default_factory=dict)
+    assoc_nodes: Dict[str, tuple] = field(default_factory=dict)
+    pik_to_node_id: Dict[str, str] = field(default_factory=dict)
+
+
+def _pik_lookup_key(finding: Any) -> str:
+    """Compute a deterministic lookup key for a finding's Primary Identity Key."""
+    compute_fn = getattr(finding, "compute_node_id", None)
+    if callable(compute_fn):
+        return str(compute_fn())
+    schema_type = getattr(finding, "schema_type", "")
+    pik = getattr(finding, "pik", {}) or {}
+    return f"{schema_type}:{json.dumps(pik, sort_keys=True, separators=(',', ':'))}"
+
+
+class WriteQueue:
+    """Dedicated background single-writer worker with exact-ownership batch coalescing."""
 
     def __init__(
         self,
@@ -23,7 +55,7 @@ class WriteQueueWorker:
         self._batch_window = batch_window_seconds
         self._max_batch_size = max_batch_size
         self._queue: Optional[asyncio.Queue[WriteTask]] = None
-        self._task: Optional[asyncio.Task] = None
+        self._task: Optional[asyncio.Task[None]] = None
         self._closed = False
         self._closing = False
 
@@ -33,7 +65,7 @@ class WriteQueueWorker:
         return self._queue
 
     @property
-    def task(self) -> Optional[asyncio.Task]:
+    def task(self) -> Optional[asyncio.Task[None]]:
         """Return the underlying worker asyncio Task."""
         return self._task
 
@@ -45,16 +77,47 @@ class WriteQueueWorker:
             self._queue = asyncio.Queue()
             self._task = asyncio.create_task(self._writer_loop())
 
-    async def enqueue(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        """Enqueue a write operation to be executed in the batch writer."""
+    async def enqueue_upsert(
+        self,
+        session_id: str,
+        findings: Sequence[Any],
+        action_id: Optional[str] = None,
+        upsert_fn: Optional[Callable[..., Any]] = None,
+    ) -> UpsertResult:
+        """Serialize a finding batch upsert and return exact per-caller node ownership."""
+        if upsert_fn is None:
+            raise ValueError("upsert_fn must be provided for enqueue_upsert.")
         if self._closed:
             raise ValueError("Cannot operate on a closed database.")
         self.ensure_started()
         loop = asyncio.get_running_loop()
-        fut = loop.create_future()
+        fut: asyncio.Future[UpsertResult] = loop.create_future()
         assert self._queue is not None
-        await self._queue.put((func, args, kwargs, fut))
+        await self._queue.put(
+            (upsert_fn, (session_id, list(findings), action_id), {}, fut, True, True)
+        )
         return await fut
+
+    async def enqueue_mutation(
+        self,
+        operation_callable: Callable[..., Any],
+        *args: Any,
+        transactional: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Serialize an arbitrary SQLite mutation through the single-writer worker."""
+        if self._closed:
+            raise ValueError("Cannot operate on a closed database.")
+        self.ensure_started()
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[Any] = loop.create_future()
+        assert self._queue is not None
+        await self._queue.put((operation_callable, args, kwargs, fut, False, transactional))
+        return await fut
+
+    async def enqueue(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Enqueue a transactional write operation on the serialized writer."""
+        return await self.enqueue_mutation(func, *args, transactional=True, **kwargs)
 
     async def _writer_loop(self) -> None:
         """Background worker loop pulling and batching write operations."""
@@ -98,13 +161,38 @@ class WriteQueueWorker:
                 await asyncio.sleep(0.01)
 
     async def _process_write_batch(self, batch: List[WriteTask]) -> None:
-        """Execute a batch of write operations in a single atomic BEGIN IMMEDIATE transaction."""
+        """Execute transactional and non-transactional serialized operations."""
+        tx_batch = [item for item in batch if item[5]]
+        non_tx_batch = [item for item in batch if not item[5]]
+
+        if tx_batch:
+            await self._execute_tx_batch(tx_batch)
+
+        for func, args, kwargs, fut, _is_upsert, _tx in non_tx_batch:
+            if fut.cancelled():
+                if self._queue:
+                    self._queue.task_done()
+                continue
+            try:
+                async with self._get_conn_factory() as db:
+                    res = await func(db, *args, **kwargs)
+                if not fut.cancelled() and not fut.done():
+                    fut.set_result(res)
+            except Exception as ex:
+                if not fut.cancelled() and not fut.done():
+                    fut.set_exception(ex)
+            finally:
+                if self._queue:
+                    self._queue.task_done()
+
+    async def _execute_tx_batch(self, batch: List[WriteTask]) -> None:
+        """Execute a batch of transactional writes inside a single BEGIN IMMEDIATE transaction."""
         async with self._get_conn_factory() as db:
             try:
                 if not db.in_transaction:
                     await db.execute("BEGIN IMMEDIATE")
             except Exception as begin_err:
-                for _, _, _, fut in batch:
+                for _, _, _, fut, _, _ in batch:
                     if not fut.cancelled() and not fut.done():
                         fut.set_exception(begin_err)
                 for _ in batch:
@@ -113,68 +201,87 @@ class WriteQueueWorker:
                 return
 
             results: List[Tuple[asyncio.Future[Any], Any, Optional[Exception]]] = []
-
-            upserts: List[Tuple[Any, Any, Any, asyncio.Future[Any]]] = []
+            upserts: List[WriteTask] = []
             others: List[WriteTask] = []
+
             for item in batch:
-                func, args, kwargs, fut = item
+                func, _args, _kwargs, fut, is_upsert, _tx = item
                 if (
-                    getattr(func, "__name__", "") == "_raw_upsert_findings_batch"
-                    and not fut.cancelled()
-                ):
+                    is_upsert or getattr(func, "__name__", "") == "_raw_upsert_findings_batch"
+                ) and not fut.cancelled():
                     upserts.append(item)
                 else:
                     others.append(item)
 
-            if len(upserts) > 1:
+            if upserts:
                 from collections import defaultdict
 
                 grouped = defaultdict(list)
-                for func, args, kwargs, fut in upserts:
+                for func, args, kwargs, fut, is_upsert, _tx in upserts:
                     s_id = args[0] if len(args) > 0 else kwargs.get("session_id")
                     f_list = args[1] if len(args) > 1 else kwargs.get("findings", [])
                     a_id = args[2] if len(args) > 2 else kwargs.get("action_id")
-                    grouped[(func, s_id, a_id)].append((f_list, fut))
+                    grouped[(func, s_id, a_id)].append((list(f_list), fut, is_upsert))
 
                 for (func, s_id, a_id), items in grouped.items():
                     combined: List[Any] = []
-                    futs_info: List[Any] = []
-                    for f_list, fut in items:
-                        s = len(combined)
+                    for f_list, _fut, _is_upsert in items:
                         combined.extend(f_list)
-                        futs_info.append((fut, s, len(combined)))
                     try:
                         res = await func(db, s_id, combined, a_id)
-                        all_nids, u_nids, p_nodes, a_nodes = res
-                        for fut, s, e in futs_info:
-                            if not fut.cancelled() and not fut.done():
-                                results.append(
-                                    (fut, (all_nids[s:e], u_nids, p_nodes, a_nodes), None)
+                        all_nids, _u_nids, parent_nodes, assoc_nodes = res
+
+                        # Build reverse PIK -> NodeId map for exact per-caller ownership
+                        pik_to_nid: Dict[str, str] = {}
+                        for finding_obj, nid in zip(combined, all_nids, strict=True):
+                            pik_to_nid[_pik_lookup_key(finding_obj)] = nid
+
+                        for f_list, fut, is_upsert in items:
+                            if fut.cancelled() or fut.done():
+                                continue
+                            caller_nids: List[str] = []
+                            caller_unique: List[str] = []
+                            seen_caller: set[str] = set()
+                            caller_pik_map: Dict[str, str] = {}
+                            for f_obj in f_list:
+                                key = _pik_lookup_key(f_obj)
+                                nid = pik_to_nid[key]
+                                caller_nids.append(nid)
+                                caller_pik_map[key] = nid
+                                if nid not in seen_caller:
+                                    seen_caller.add(nid)
+                                    caller_unique.append(nid)
+
+                            if is_upsert:
+                                caller_res: Any = UpsertResult(
+                                    node_ids=caller_nids,
+                                    unique_node_ids=caller_unique,
+                                    parent_nodes=parent_nodes,
+                                    assoc_nodes=assoc_nodes,
+                                    pik_to_node_id=caller_pik_map,
                                 )
+                            else:
+                                caller_res = (
+                                    caller_nids,
+                                    caller_unique,
+                                    parent_nodes,
+                                    assoc_nodes,
+                                )
+                            results.append((fut, caller_res, None))
                     except Exception as ex:
-                        for fut, _, _ in futs_info:
+                        for _f_list, fut, _is_upsert in items:
                             if not fut.cancelled() and not fut.done():
                                 results.append((fut, None, ex))
 
-                for func, args, kwargs, fut in others:
-                    if fut.cancelled():
-                        results.append((fut, None, None))
-                        continue
-                    try:
-                        res = await func(db, *args, **kwargs)
-                        results.append((fut, res, None))
-                    except Exception as ex:
-                        results.append((fut, None, ex))
-            else:
-                for func, args, kwargs, fut in batch:
-                    if fut.cancelled():
-                        results.append((fut, None, None))
-                        continue
-                    try:
-                        res = await func(db, *args, **kwargs)
-                        results.append((fut, res, None))
-                    except Exception as ex:
-                        results.append((fut, None, ex))
+            for func, args, kwargs, fut, _is_upsert, _tx in others:
+                if fut.cancelled():
+                    results.append((fut, None, None))
+                    continue
+                try:
+                    res = await func(db, *args, **kwargs)
+                    results.append((fut, res, None))
+                except Exception as ex:
+                    results.append((fut, None, ex))
 
             try:
                 await db.commit()
@@ -220,6 +327,4 @@ class WriteQueueWorker:
         self._closed = True
 
 
-# Backwards compatibility and SDK ergonomics alias
-WriteQueue = WriteQueueWorker
-
+WriteQueueWorker = WriteQueue

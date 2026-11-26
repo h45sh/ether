@@ -2,7 +2,6 @@
 
 import ipaddress
 import json
-import re
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -331,10 +330,14 @@ class ActionGateway:
         raw_flags = action.params.get("raw_flags", "") if action.params else ""
         if isinstance(raw_flags, list):
             raw_flags = " ".join(str(f) for f in raw_flags)
-        if re.search(r"[|;&$`\n]", raw_flags):
-            raise ActionValidationError(
-                "Shell metacharacters are prohibited in command arguments."
-            )
+        if raw_flags:
+            from ether.gateway.flags import FlagFirewall, FlagFirewallError
+
+            firewall = FlagFirewall(registry=self.registry)
+            try:
+                firewall.validate_arguments(action.tool_name, raw_flags, self.policy)
+            except FlagFirewallError as fw_err:
+                raise ActionValidationError(str(fw_err)) from fw_err
         if self.policy != GatePolicy.UNRESTRICTED:
             allow_loopback = (
                 getattr(self.scope, "allow_loopback", False)
