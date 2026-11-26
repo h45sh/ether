@@ -85,14 +85,16 @@ class TemporalDecayEngine:
             )
             has_flapped = oscillations >= 2 or is_flapping_indicator
 
-            # Adaptive Volatility Scoring V_n in [0.1, 1.0] (ADR 0014)
-            raw_volatility = 0.1 + (0.2 * oscillations)
+            # Adaptive Volatility Scoring V_n in [0.0, 1.0] (ADR 0014)
             is_ephemeral = bool(data.get("ephemeral", False)) or bool(data.get("container", False))
-            if is_ephemeral:
-                raw_volatility += 0.3
-            volatility = round(min(1.0, max(0.1, raw_volatility)), 2)
-            floor_ttl = min(ttl, 300)
-            effective_ttl = max(floor_ttl, int(ttl * (1.0 - 0.75 * volatility)))
+            if oscillations == 0 and not is_ephemeral:
+                volatility = 0.0
+                effective_ttl = ttl
+            else:
+                raw_volatility = 0.1 + (0.2 * oscillations) + (0.3 if is_ephemeral else 0.0)
+                volatility = round(min(1.0, max(0.1, raw_volatility)), 2)
+                floor_ttl = min(ttl, 300)
+                effective_ttl = max(floor_ttl, int(ttl * (1.0 - 0.75 * volatility)))
 
             data_updated = False
             if isinstance(data, dict) and data.get("volatility") != volatility:

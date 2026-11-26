@@ -52,10 +52,20 @@ class ToolAdapter(ABC):
                 f"Cannot execute subprocess tool '{self.name or self.__class__.__name__}' without a CommandRunner in ExecutionContext."
             )
 
-        stdout_lines: List[str] = []
+        from collections import deque
+
+        max_history_bytes = 2 * 1024 * 1024
+        stdout_lines: deque[str] = deque()
+        history_bytes = 0
 
         async def _on_stdout(chunk: str) -> None:
+            nonlocal history_bytes
+            chunk_bytes = len(chunk.encode("utf-8", errors="replace"))
             stdout_lines.append(chunk)
+            history_bytes += chunk_bytes
+            while stdout_lines and history_bytes > max_history_bytes:
+                evicted = stdout_lines.popleft()
+                history_bytes -= len(evicted.encode("utf-8", errors="replace"))
             await context.spool_line(chunk, is_error=False)
 
         async def _on_stderr(chunk: str) -> None:

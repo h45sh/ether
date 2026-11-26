@@ -753,7 +753,7 @@ class ExecutionSession:
         job.completed_at = datetime.now(UTC)
         self._finalize_action_spool(action, job, log_file_path, end_label, err_msg)
 
-        if not getattr(self.store, "_closed", False):
+        if self.store is not None:
             try:
                 buf_output = "".join(self.get_output_history(action.action_id))
                 if len(buf_output) > 200_000:
@@ -1024,7 +1024,7 @@ class ExecutionSession:
             to_flush = list(finding_buffer)
             finding_buffer.clear()
             last_flush = asyncio.get_event_loop().time()
-            if not getattr(self.store, "_closed", False):
+            if self.store is not None:
                 try:
                     await self.store.upsert_findings_batch(
                         str(action.session_id), to_flush, action_id=str(action.action_id)

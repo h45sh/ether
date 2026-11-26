@@ -14,7 +14,7 @@ class ContainerizedToolRunner:
     while enforcing strict capability dropping and read-only host containment.
     """
 
-    DEFAULT_IMAGE: str = "ghcr.io/ether/arsenal:latest"
+    DEFAULT_IMAGE: str = "ghcr.io/ether/arsenal:0.1.3"
 
     @classmethod
     def is_enabled(cls) -> bool:
@@ -91,9 +91,10 @@ class ContainerizedToolRunner:
         ]
 
         if env:
-            for k, v in env.items():
-                if k.startswith(("ETHER_", "CYGUIDE_", "AWS_", "SSH_")):
-                    continue
+            from ether.core.executor import sanitize_subprocess_env
+
+            cleaned_env = sanitize_subprocess_env(env)
+            for k, v in cleaned_env.items():
                 container_cmd.extend(["-e", f"{k}={v}"])
 
         container_cmd.append(image)

@@ -92,6 +92,24 @@ class NmapAdapter(ToolAdapter):
     ) -> AsyncIterator[BaseFinding]:
         """Dual-format streaming parser for Nmap XML and plain text output with firewall reason classification."""
         context = context or {}
+        if context.get("is_partial") and "<nmaprun" in raw_stdout:
+            from ether.common.recovery import salvage_xml_elements
+
+            for elem_str in salvage_xml_elements(raw_stdout, "port"):
+                port_m = _XML_PORT_PATTERN.search(elem_str)
+                if port_m:
+                    proto = port_m.group(1) or port_m.group(4)
+                    pid = port_m.group(2) or port_m.group(3)
+                    state_m = _XML_STATE_PATTERN.search(elem_str)
+                    state = state_m.group(1) if state_m else "open"
+                    if state == "open" and pid:
+                        host_ip = target.pik.get("ip") or target.data.get("ip") or "0.0.0.0"
+                        yield NetworkService.create(
+                            host_ip=host_ip,
+                            port=int(pid),
+                            protocol=proto or "tcp",
+                            service_name="unknown",
+                        )
 
         for line in raw_stdout.splitlines():
             clean_line = self.strip_ansi(line).strip()

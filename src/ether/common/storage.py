@@ -53,11 +53,11 @@ class StorageLifecycleManager:
                             record = json.loads(line)
                             log_file = record.get("log_file")
                             if log_file:
-                                lp = Path(log_file).resolve()
-                                protected_paths.add(lp)
-                                # Also protect manifest's directory files
-                                if not lp.is_absolute():
-                                    protected_paths.add((manifest_path.parent / log_file).resolve())
+                                raw_path = Path(log_file)
+                                if raw_path.is_absolute():
+                                    protected_paths.add(raw_path.resolve())
+                                else:
+                                    protected_paths.add((manifest_path.parent / raw_path).resolve())
                         except Exception:
                             continue
             except Exception as e:
@@ -105,7 +105,10 @@ class StorageLifecycleManager:
         for fpath in list(all_files):
             if not fpath.exists():
                 continue
-            if fpath.suffix == ".log" and fpath.name != "audit_manifest.jsonl":
+            is_log_candidate = (
+                fpath.suffix == ".log" or fpath.name.startswith("system.log.")
+            ) and not fpath.name.endswith((".gz", ".zst")) and fpath.name != "audit_manifest.jsonl"
+            if is_log_candidate:
                 if fpath in protected:
                     report.skipped_forensic_files += 1
                     continue
