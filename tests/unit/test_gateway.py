@@ -43,7 +43,7 @@ async def test_gateway_user_explicit_shell():
     # 1. USER with explicit shell prefix '!' is allowed
     action = ActionRequest(
         session_id=uuid4(),
-        tool_name="ping 127.0.0.1",
+        tool_name="ping 10.0.0.1",
         is_explicit_shell=True,
         triggered_by=ActionSource.USER,
     )
@@ -52,7 +52,7 @@ async def test_gateway_user_explicit_shell():
     # 2. USER without explicit shell prefix on unregistered tool is rejected
     action_no_prefix = ActionRequest(
         session_id=uuid4(),
-        tool_name="ping 127.0.0.1",
+        tool_name="ping 10.0.0.1",
         is_explicit_shell=False,
         triggered_by=ActionSource.USER,
     )

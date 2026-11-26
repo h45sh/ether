@@ -19,6 +19,9 @@ _XML_PORT_PATTERN = re.compile(
 )
 _XML_STATE_PATTERN = re.compile(r'<state\s+[^>]*state="([^"]+)"(?:\s+[^>]*reason="([^"]+)")?')
 _XML_SERVICE_PATTERN = re.compile(r'<service\s+[^>]*name="([^"]+)"')
+_XML_PRODUCT_PATTERN = re.compile(r'product="([^"]+)"')
+_XML_VERSION_PATTERN = re.compile(r'version="([^"]+)"')
+_XML_EXTRAINFO_PATTERN = re.compile(r'extrainfo="([^"]+)"')
 _XML_EXTRAREASONS_PATTERN = re.compile(r'<extrareasons\s+[^>]*reason="([^"]+)"')
 
 
@@ -89,6 +92,24 @@ class NmapAdapter(ToolAdapter):
     ) -> AsyncIterator[BaseFinding]:
         """Dual-format streaming parser for Nmap XML and plain text output with firewall reason classification."""
         context = context or {}
+        if context.get("is_partial") and "<nmaprun" in raw_stdout:
+            from ether.common.recovery import salvage_xml_elements
+
+            for elem_str in salvage_xml_elements(raw_stdout, "port"):
+                port_m = _XML_PORT_PATTERN.search(elem_str)
+                if port_m:
+                    proto = port_m.group(1) or port_m.group(4)
+                    pid = port_m.group(2) or port_m.group(3)
+                    state_m = _XML_STATE_PATTERN.search(elem_str)
+                    state = state_m.group(1) if state_m else "open"
+                    if state == "open" and pid:
+                        host_ip = target.pik.get("ip") or target.data.get("ip") or "0.0.0.0"
+                        yield NetworkService.create(
+                            host_ip=host_ip,
+                            port=int(pid),
+                            protocol=proto or "tcp",
+                            service_name="unknown",
+                        )
 
         for line in raw_stdout.splitlines():
             clean_line = self.strip_ansi(line).strip()
@@ -125,6 +146,12 @@ class NmapAdapter(ToolAdapter):
                 service_match = _XML_SERVICE_PATTERN.search(clean_line)
                 service_name = service_match.group(1) if service_match else "unknown"
 
+                prod_m = _XML_PRODUCT_PATTERN.search(clean_line)
+                ver_m = _XML_VERSION_PATTERN.search(clean_line)
+                extra_m = _XML_EXTRAINFO_PATTERN.search(clean_line)
+                banner_parts = [m.group(1) for m in (prod_m, ver_m, extra_m) if m]
+                banner = " ".join(banner_parts) if banner_parts else None
+
                 fw_reason = _classify_firewall_reason(state, reason)
 
                 include_all = bool(
@@ -142,6 +169,7 @@ class NmapAdapter(ToolAdapter):
                         protocol=proto or "tcp",
                         service_name=service_name,
                         firewall_reason=fw_reason,
+                        banner=banner,
                     )
                 continue
 
@@ -169,6 +197,8 @@ class NmapAdapter(ToolAdapter):
                     protocol = port_match.group(2)
                     state = port_match.group(3)
                     service = port_match.group(4)
+                    rest_tokens = clean_line.split(None, 4)
+                    banner = rest_tokens[4].strip() if len(rest_tokens) > 4 else None
                     fw_reason = _classify_firewall_reason(state, "")
 
                     include_all = bool(
@@ -188,4 +218,5 @@ class NmapAdapter(ToolAdapter):
                         protocol=protocol,
                         service_name=service,
                         firewall_reason=fw_reason,
+                        banner=banner,
                     )

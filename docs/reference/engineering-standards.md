@@ -14,7 +14,7 @@ These standards are mechanically enforced via automated linting, property-based 
 - **Rule:** Never use `shell=True`, `os.system()`, or string concatenation to build commands.
 - **Rule:** Always spawn binaries via argument vectors (`List[str]`) using `asyncio.create_subprocess_exec`.
 - **Rule:** Never spawn child processes without passing through `sanitize_subprocess_env()` to strip system and cloud secrets.
-- **Rule:** Stream process stdout/stderr directly to disk (`LogSpooler` with 64KB buffering) and maintain bounded memory ring buffers (`collections.deque(maxlen=5000)`) to cap RAM usage (<10MB per active job).
+- **Rule:** Stream process stdout/stderr directly to disk (`LogSpooler` with 64KB buffering) and maintain byte- and chunk-bounded memory ring buffers (`ByteBoundedRingBuffer`, 2 MB and 5,000 chunks per active job) to cap RAM usage (<10MB per active job).
 
 ---
 

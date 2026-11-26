@@ -141,8 +141,8 @@ def sanitize_untrusted_output(raw_text: str) -> str:
     if not raw_text:
         return "<untrusted_scan_output>\n</untrusted_scan_output>"
     neutralized = re.sub(
-        r"</untrusted_scan_output>",
-        r"<\/untrusted_scan_output>",
+        r"<\s*(/?)\s*untrusted_scan_output\b([^>]*)>",
+        lambda m: rf"<\{m.group(1)}untrusted_scan_output{m.group(2)}>",
         raw_text,
         flags=re.IGNORECASE,
     )

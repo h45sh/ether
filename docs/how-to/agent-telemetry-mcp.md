@@ -107,6 +107,7 @@ Supervise and execute a security tool scan. If execution exceeds `timeout_second
   * `session_id` (str, optional): Target session ID (defaults to active session).
   * `timeout_seconds` (int, default: 60): Execution timeout before background fallback.
 * **Returns:** Structured JSON execution status, discovered findings count, and sanitized terminal preview.
+* **Security Policy & Scope:** Enforces the server's active `GatePolicy` (`safe` by default, or `unrestricted`). Under `safe`, cloud metadata endpoints and loopback addresses (`127.0.0.1`, `::1`) are blocked unless `EngagementScope(allow_loopback=True)` or `GatePolicy.UNRESTRICTED` is configured on the server/gateway. Server `server_info.version` is populated dynamically from package metadata.
 
 #### 2. `abort_action`
 Safely cancel a running or stalled background scan task (`SIGTERM` $\to$ `SIGKILL`).

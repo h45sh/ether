@@ -200,7 +200,17 @@ class GraphStore:
                 if self.db_path != ":memory:":
                     db_dir = os.path.dirname(os.path.abspath(self.db_path))
                     if db_dir:
-                        os.makedirs(db_dir, exist_ok=True)
+                        os.makedirs(db_dir, mode=0o700, exist_ok=True)
+                        try:
+                            os.chmod(db_dir, 0o700)
+                        except OSError:
+                            pass
+                    if not os.path.exists(self.db_path):
+                        try:
+                            fd = os.open(self.db_path, os.O_CREAT | os.O_WRONLY, 0o600)
+                            os.close(fd)
+                        except OSError:
+                            pass
                 self._conn = await aiosqlite.connect(self.db_path)
                 await self.vector_index.load_extension(self._conn)
                 await self._conn.execute("PRAGMA foreign_keys = ON")
@@ -214,6 +224,12 @@ class GraphStore:
                         os.chmod(self.db_path, 0o600)
                     except OSError:
                         pass
+                cursor = await self._conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions' LIMIT 1"
+                )
+                if not await cursor.fetchone():
+                    await self._conn.executescript(SCHEMA_DDL)
+                    await self._conn.commit()
             yield self._conn
 
     def get_read_conn(self):
@@ -275,6 +291,10 @@ class GraphStore:
             async with self._get_conn() as conn:
                 yield conn
             return
+
+        if self._conn is None:
+            async with self._get_conn():
+                pass
 
         conn = None
         async with self._get_read_pool_lock():
@@ -794,6 +814,39 @@ class GraphStore:
                     "{}",
                 )
                 parent_edges.add((session_id, parent_id, node_id, p.via))
+            else:
+                # Deterministic automatic edge wiring (Ticket 08)
+                if finding.schema_type == "network.service":
+                    hip = finding.pik.get("host_ip") or finding.data.get("host_ip") or finding.pik.get("ip")
+                    if hip:
+                        p_id = self.generate_node_id("network.host", {"ip": hip})
+                        parent_nodes[p_id] = (session_id, p_id, "network.host", json.dumps({"ip": hip}), "{}")
+                        parent_edges.add((session_id, p_id, node_id, "hosts_service"))
+                elif finding.schema_type == "web.endpoint":
+                    hip = finding.data.get("host_ip") or finding.pik.get("host_ip")
+                    port = finding.data.get("port") or finding.pik.get("port")
+                    if hip and port:
+                        svc_pik = {"host_ip": hip, "port": int(port), "protocol": "tcp"}
+                        p_id = self.generate_node_id("network.service", svc_pik)
+                        parent_nodes[p_id] = (session_id, p_id, "network.service", json.dumps(svc_pik), "{}")
+                        parent_edges.add((session_id, p_id, node_id, "hosts_endpoint"))
+                elif finding.schema_type in ("vulnerability", "cve"):
+                    hip = finding.data.get("host_ip") or finding.pik.get("host_ip") or finding.data.get("ip")
+                    port = finding.data.get("port") or finding.pik.get("port")
+                    url = finding.data.get("url") or finding.pik.get("url")
+                    if url:
+                        ep_id = self.generate_node_id("web.endpoint", {"url": url})
+                        parent_nodes[ep_id] = (session_id, ep_id, "web.endpoint", json.dumps({"url": url}), "{}")
+                        parent_edges.add((session_id, ep_id, node_id, "has_vulnerability"))
+                    elif hip and port:
+                        svc_pik = {"host_ip": hip, "port": int(port), "protocol": "tcp"}
+                        p_id = self.generate_node_id("network.service", svc_pik)
+                        parent_nodes[p_id] = (session_id, p_id, "network.service", json.dumps(svc_pik), "{}")
+                        parent_edges.add((session_id, p_id, node_id, "has_vulnerability"))
+                    elif hip:
+                        p_id = self.generate_node_id("network.host", {"ip": hip})
+                        parent_nodes[p_id] = (session_id, p_id, "network.host", json.dumps({"ip": hip}), "{}")
+                        parent_edges.add((session_id, p_id, node_id, "has_vulnerability"))
 
             for assoc in finding.associations:
                 assoc_id = self.generate_node_id(assoc.target_type, assoc.target_pik)

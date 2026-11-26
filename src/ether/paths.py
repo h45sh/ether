@@ -158,13 +158,36 @@ def get_git_branch(target_dir: Optional[str] = None) -> str:
 
 def atomic_create_file(path: str, content: str = "") -> None:
     """Atomically create a private file with mode 0o600 (-rw-------) preventing TOCTOU vulnerabilities."""
-    base_dir = os.path.dirname(os.path.abspath(path))
+    abs_path = os.path.abspath(path)
+    base_dir = os.path.dirname(abs_path)
     if base_dir:
         os.makedirs(base_dir, mode=0o700, exist_ok=True)
-    flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
-    fd = os.open(path, flags, 0o600)
+        try:
+            os.chmod(base_dir, 0o700)
+        except OSError:
+            pass
+
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(dir=base_dir or None, prefix=".atomic_")
     try:
+        os.chmod(tmp_path, 0o600)
         if content:
             os.write(fd, content.encode("utf-8"))
-    finally:
         os.close(fd)
+        os.replace(tmp_path, abs_path)
+        try:
+            os.chmod(abs_path, 0o600)
+        except OSError:
+            pass
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise

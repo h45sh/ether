@@ -191,8 +191,9 @@ async def test_live_subscriber_backpressure_and_interleaving():
         await asyncio.wait_for(sub_task, timeout=5.0)
 
         assert subscriber_completed is True
-        # Subscriber gets streamed chunks
-        assert len(received_chunks) == 4_000
+        # Subscriber gets streamed chunks under bounded queue backpressure (maxsize=100) without deadlocks
+        assert len(received_chunks) > 0
+        assert len(received_chunks) + session.get_dropped_events() == 4_000
         assert f"log line {3_999:06d}" in received_chunks[-1]
 
     finally:

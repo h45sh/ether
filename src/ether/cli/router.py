@@ -69,12 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
         "-j",
         "--json",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Output in machine-readable JSON format",
     )
     common_options.add_argument(
         "-v",
         "--verbose",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Enable verbose debug logging to stderr",
     )
     common_options.add_argument(
@@ -499,6 +501,17 @@ def normalize_cli_args(argv: Optional[List[str]] = None) -> List[str]:
     prefix = argv[: subcmd_idx + 1]
     rest = argv[subcmd_idx + 1 :]
 
+    # Hoist boolean flags (-j, --json, -v, --verbose) appearing before sub-actions to preserve symmetry
+    if subcmd in ("session", "tool", "graph", "telemetry", "drift") and rest:
+        hoisted_flags = []
+        cleaned_rest = []
+        for t in rest:
+            if t in ("-j", "--json", "-v", "--verbose"):
+                hoisted_flags.append(t)
+            else:
+                cleaned_rest.append(t)
+        rest = cleaned_rest + hoisted_flags
+
     if subcmd == "run":
         new_rest = []
         tool_val = None
@@ -578,6 +591,29 @@ def normalize_cli_args(argv: Optional[List[str]] = None) -> List[str]:
             if name_val:
                 return prefix + sub_prefix + [name_val] + new_sub_rest
             return prefix + rest
+        elif rest and rest[0] in ("verify-audit", "close"):
+            sub_action = rest[0]
+            sub_prefix = [sub_action]
+            sub_rest = rest[1:]
+            sess_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
 
     elif subcmd == "tool":
         if rest and rest[0] == "info":
@@ -604,7 +640,7 @@ def normalize_cli_args(argv: Optional[List[str]] = None) -> List[str]:
             return prefix + rest
 
     elif subcmd == "graph":
-        if rest and rest[0] in ("list-nodes", "prune", "search"):
+        if rest and rest[0] in ("list-nodes", "prune", "search", "belief", "crown-jewels"):
             sub_action = rest[0]
             sub_prefix = [sub_action]
             sub_rest = rest[1:]

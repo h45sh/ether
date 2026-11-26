@@ -218,3 +218,8 @@ class WriteQueueWorker:
             self._task = None
 
         self._closed = True
+
+
+# Backwards compatibility and SDK ergonomics alias
+WriteQueue = WriteQueueWorker
+

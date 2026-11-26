@@ -170,4 +170,28 @@ _Avoid_: Write thread, database queue, batch runner
 A modular subsystem (`VectorIndex`) encapsulating `sqlite-vec` extension loading, `vec_findings` virtual table lifecycle, batch embeddings, and cosine similarity queries.
 _Avoid_: Vector helper, embedding module, search wrapper
 
+**Byte-Bounded Ring Buffer**:
+A memory-capped streaming buffer (`ByteBoundedRingBuffer`) in `ExecutionSession` that evicts oldest chunks when total buffered bytes exceed 2 MB or chunk count exceeds 5,000, guaranteeing <10 MB RSS overhead per active job.
+_Avoid_: Unbounded buffer, raw deque
+
+**Containerized Tool Runner**:
+An execution supervisor module (`ContainerizedToolRunner`) that transparently falls back to an isolated OCI container (`podman`/`docker`) when a required security binary is absent from the host `$PATH`.
+_Avoid_: Docker wrapper, container shim
+
+**Raw Network Governor**:
+A network execution module (`RawNetworkGovernor`) that performs asynchronous TCP SYN sweeps using ambient `CAP_NET_RAW` capabilities, automatically falling back to non-blocking `asyncio.open_connection` pools when raw sockets are unavailable.
+_Avoid_: Port scanner, raw socket helper
+
+**Stream Recovery Engine**:
+A parser-pipeline module (`StreamRecoveryEngine`) that salvages valid JSON/XML entities from truncated or timed-out scanner output buffers rather than discarding partial findings.
+_Avoid_: Regex fallback, error ignorer
+
+**Storage Lifecycle Manager**:
+A background filesystem module (`StorageLifecycleManager`) that enforces configurable disk quotas and Zstandard (`zstd`) compression on historical console logs while preserving `ForensicLogManager` SHA-256 audit chains.
+_Avoid_: Log rotator, cleanup cron
+
+**Adaptive Volatility Scoring**:
+A `TemporalDecayEngine` mechanism that dynamically scales entity TTL windows using a historical flapping coefficient ($V_n \in [0.1, 1.0]$) so ephemeral cloud containers decay faster than stable hosts.
+_Avoid_: Static TTL, fixed expiry
+
 

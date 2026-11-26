@@ -1,10 +1,12 @@
 """Pure-Python HTTP Probe tool adapter with SSRF defense."""
 
+import asyncio
 import re
 import ssl
 import urllib.parse
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from ether.common import sanitize_untrusted_output
 from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
 from ether.common.scope import ScopeValidator
@@ -174,13 +176,13 @@ class HTTPProbeAdapter(ToolAdapter):
         async with httpx.AsyncClient(
             transport=transport,
             verify=ssl_ctx,
-            timeout=httpx.Timeout(timeout_sec, connect=5.0),
+            timeout=httpx.Timeout(timeout_sec, connect=min(timeout_sec, 5.0)),
             follow_redirects=True,
             limits=limits,
             event_hooks={"response": [_redirect_hook]},
         ) as client:
             try:
-                response = await client.get(url)
+                response = await asyncio.wait_for(client.get(url), timeout=timeout_sec)
             except PolicyViolationError:
                 raise
             except Exception as exc:
@@ -194,6 +196,15 @@ class HTTPProbeAdapter(ToolAdapter):
             headers = dict(response.headers)
             server = headers.get("server", "").strip()
             x_powered = headers.get("x-powered-by", "").strip()
+            body_preview = (
+                sanitize_untrusted_output(response.text[:2048]) if response.text else None
+            )
+            if response.history:
+                redirect_location = response.history[0].headers.get("location") or str(response.url)
+            elif 300 <= status < 400:
+                redirect_location = headers.get("location")
+            else:
+                redirect_location = None
 
             await context.spool_line(f"[+] HTTP {status} {response.reason_phrase} - {url}")
             for h_name, h_val in headers.items():
@@ -258,6 +269,8 @@ class HTTPProbeAdapter(ToolAdapter):
                 server=server,
                 favicon_hash=favicon_hash,
                 anchor_hash=endpoint_anchor,
+                body_preview=body_preview,
+                redirect_location=redirect_location,
             )
             yield endpoint
 

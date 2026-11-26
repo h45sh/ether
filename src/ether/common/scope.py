@@ -73,6 +73,9 @@ class ScopeValidator:
     @classmethod
     def parse_ip(cls, host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
         """Parse standard IP, CIDR network address, or alternate numerical IP (hex/decimal/octal)."""
+        if host.isdigit() and int(host) <= 65535:
+            return None
+
         ip_obj: Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = None
         try:
             if "/" in host:
@@ -236,18 +239,29 @@ class ScopeValidator:
         host = verdict.normalized_target
         resolved_ips: List[str] = []
         if dns_resolver is not None:
-            resolved_ips = await dns_resolver(host)
+            try:
+                resolved_ips = await asyncio.wait_for(dns_resolver(host), timeout=1.0)
+            except (OSError, asyncio.TimeoutError):
+                if not policy_is_unrestricted:
+                    return ScopeVerdict(
+                        allowed=False, reason="UNRESOLVABLE_DOMAIN", normalized_target=host
+                    )
+                return verdict
         else:
             try:
                 loop = asyncio.get_running_loop()
-                addr_info = await loop.getaddrinfo(host, None)
+                addr_info = await asyncio.wait_for(loop.getaddrinfo(host, None), timeout=1.0)
                 seen = set()
                 for entry in addr_info:
                     ip_str = str(entry[4][0])
                     if ip_str not in seen:
                         seen.add(ip_str)
                         resolved_ips.append(ip_str)
-            except OSError:
+            except (OSError, asyncio.TimeoutError):
+                if not policy_is_unrestricted:
+                    return ScopeVerdict(
+                        allowed=False, reason="UNRESOLVABLE_DOMAIN", normalized_target=host
+                    )
                 return verdict
 
         warning_verdict: Optional[ScopeVerdict] = None

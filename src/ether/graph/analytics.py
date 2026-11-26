@@ -334,6 +334,8 @@ class GraphAnalyticsEngine:
         "honeyd",
         "artillery",
         "snort",
+        "honeypot",
+        "ssh-2.0-cowrie",
     ]
 
     def compute_bayesian_beliefs(self) -> List[Dict[str, Any]]:
@@ -445,13 +447,29 @@ class GraphAnalyticsEngine:
                         base_confidence = 0.05 if parent_svc_count >= 500 else 0.20
 
                 # Factor B: Banner signature matching
-                data_str = json.dumps(data).lower()
+                pik_raw = node.get("pik") if "pik" in node else node.get("pik_json", "{}")
+                try:
+                    pik_dict = json.loads(pik_raw) if isinstance(pik_raw, str) else (pik_raw or {})
+                except Exception:
+                    pik_dict = {}
+                data_str = (json.dumps(data) + " " + json.dumps(pik_dict)).lower()
                 for sig in self.HONEYPOT_SIGNATURES:
                     if sig in data_str:
                         is_honeypot = True
                         indicators.append(f"honeypot_signature:{sig}")
                         base_confidence = min(base_confidence, 0.15)
                         break
+
+                # Factor B.2: Tarpit timing anomalies on service
+                latency = data.get("latency_sec") or data.get("duration") or data.get("connect_time")
+                try:
+                    lat_val = float(latency) if latency is not None else 0.0
+                except (ValueError, TypeError):
+                    lat_val = 0.0
+                if lat_val >= 15.0 or data.get("is_tarpit") or "tarpit" in data_str:
+                    is_tarpit = True
+                    indicators.append("inline_delay_tarpit")
+                    base_confidence = min(base_confidence, 0.10)
 
                 # Factor C: Cross-tool corroboration
                 obs_count = node.get("observation_count", 1)

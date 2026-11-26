@@ -33,7 +33,8 @@ class TemporalDecayEngine:
             now = now.replace(tzinfo=UTC)
 
         transitions: List[Dict[str, str]] = []
-        updates: List[Tuple[str, str, str, str]] = []
+        status_updates: List[Tuple[str, str, str, str]] = []
+        metadata_updates: List[Tuple[str, str, str]] = []
 
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -85,14 +86,16 @@ class TemporalDecayEngine:
             )
             has_flapped = oscillations >= 2 or is_flapping_indicator
 
-            # Adaptive Volatility Scoring V_n in [0.1, 1.0] (ADR 0014)
-            raw_volatility = 0.1 + (0.2 * oscillations)
+            # Adaptive Volatility Scoring V_n in [0.0, 1.0] (ADR 0014)
             is_ephemeral = bool(data.get("ephemeral", False)) or bool(data.get("container", False))
-            if is_ephemeral:
-                raw_volatility += 0.3
-            volatility = round(min(1.0, max(0.1, raw_volatility)), 2)
-            floor_ttl = min(ttl, 300)
-            effective_ttl = max(floor_ttl, int(ttl * (1.0 - 0.75 * volatility)))
+            if oscillations == 0 and not is_ephemeral:
+                volatility = 0.0
+                effective_ttl = ttl
+            else:
+                raw_volatility = 0.1 + (0.2 * oscillations) + (0.3 if is_ephemeral else 0.0)
+                volatility = round(min(1.0, max(0.1, raw_volatility)), 2)
+                floor_ttl = min(ttl, 300)
+                effective_ttl = max(floor_ttl, int(ttl * (1.0 - 0.75 * volatility)))
 
             data_updated = False
             if isinstance(data, dict) and data.get("volatility") != volatility:
@@ -116,14 +119,22 @@ class TemporalDecayEngine:
             else:
                 status_counts[current_status] = status_counts.get(current_status, 0) + 1
 
-            if new_status != current_status or data_updated:
+            if new_status != current_status:
                 data_json_str = json.dumps(data) if isinstance(data, dict) else row["data_json"]
-                updates.append((new_status, data_json_str, session_id, nid))
+                status_updates.append((new_status, data_json_str, session_id, nid))
+            elif data_updated:
+                data_json_str = json.dumps(data) if isinstance(data, dict) else row["data_json"]
+                metadata_updates.append((data_json_str, session_id, nid))
 
-        if updates:
+        if status_updates:
             await db.executemany(
                 "UPDATE nodes SET status = ?, data_json = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id = ?",
-                updates,
+                status_updates,
+            )
+        if metadata_updates:
+            await db.executemany(
+                "UPDATE nodes SET data_json = ? WHERE session_id = ? AND id = ?",
+                metadata_updates,
             )
 
         return {

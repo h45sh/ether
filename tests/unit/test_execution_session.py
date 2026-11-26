@@ -673,8 +673,6 @@ async def test_execution_session_normalizes_flags_param_before_validation():
 
 @pytest.mark.asyncio
 async def test_execution_session_single_spool_deque_and_audit_record(tmp_path):
-    from collections import deque
-
     from ether.common.forensic_log import ForensicLogManager, LogSpooler
 
     db_path = str(tmp_path / "ether.db")
@@ -726,9 +724,11 @@ async def test_execution_session_single_spool_deque_and_audit_record(tmp_path):
     )
 
     with patch.object(LogSpooler, "__init__", spy_init):
+        from ether.core.session import ByteBoundedRingBuffer
+
         job_id = await session.dispatch(action)
-        assert isinstance(session._job_buffers[job_id], deque)
-        assert session._job_buffers[job_id].maxlen == 5000
+        assert isinstance(session._job_buffers[job_id], ByteBoundedRingBuffer)
+        assert session._job_buffers[job_id].max_chunks == 5000
         task = session.get_running_task(job_id)
         if task:
             await task

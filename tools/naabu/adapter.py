@@ -38,6 +38,22 @@ class NaabuAdapter(ToolAdapter):
     async def parse_output(
         self, raw_stdout: str, target: BaseFinding, context: Dict[str, Any] = None
     ) -> AsyncIterator[BaseFinding]:
+        context = context or {}
+        if context.get("is_partial"):
+            from ether.common.recovery import salvage_ndjson_lines
+
+            for data in salvage_ndjson_lines(raw_stdout):
+                ip = data.get("ip") or data.get("host")
+                port = data.get("port")
+                if ip and port:
+                    yield NetworkService.create(
+                        host_ip=str(ip),
+                        port=int(port),
+                        protocol="tcp",
+                        service_name="unknown",
+                        firewall_reason="allowed",
+                    )
+
         for line in raw_stdout.splitlines():
             clean = self.strip_ansi(line).strip()
             if not clean:

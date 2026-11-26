@@ -64,6 +64,13 @@ class EtherMCPServer(MCPServer):
     """Subclass of MCPServer supporting optional Bearer token authentication on SSE endpoints."""
 
     def __init__(self, *args: Any, auth_token: Optional[str] = None, **kwargs: Any) -> None:
+        if "version" not in kwargs:
+            try:
+                import ether
+
+                kwargs["version"] = ether.__version__
+            except Exception:
+                kwargs["version"] = "0.1.3"
         super().__init__(*args, **kwargs)
         self.auth_token = auth_token
 
@@ -328,6 +335,12 @@ def create_mcp_server(
             session_id: Target investigation session ID.
             timeout_seconds: Seconds to await execution before detaching to background (default: 120).
             include_raw: Whether to include sanitized untrusted stdout inside <untrusted_scan_output> tags.
+
+        Security Policy & Scope:
+            Enforces the server's active GatePolicy ('safe' by default, or 'unrestricted').
+            Under 'safe' policy, cloud metadata endpoints (169.254.169.254) and loopback addresses
+            (127.0.0.1, ::1) are blocked unless EngagementScope(allow_loopback=True) or
+            GatePolicy.UNRESTRICTED is configured on the server/gateway.
         """
         sess_id = await _resolve_session(session_id)
         exec_service = SupervisedExecutionService(gw, store, execution_session=exec_sess)

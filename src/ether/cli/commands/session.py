@@ -3,7 +3,7 @@
 from typing import Any
 
 from ether.cli.context import EXIT_SUCCESS, CliContext
-from ether.cli.formatters import print_json, print_table
+from ether.cli.formatters import print_error, print_json, print_table
 
 
 async def handle_session_list(args: Any, context: CliContext) -> int:
@@ -60,7 +60,7 @@ async def handle_session_verify_audit(args: Any, context: CliContext) -> int:
 
     session_id = getattr(args, "session_id", None)
     if not session_id:
-        print("[!] Missing required session_id.")
+        print_error("Missing required session_id.")
         return 1
 
     is_valid, records = ForensicLogManager.verify_session_audit(
@@ -103,7 +103,7 @@ async def handle_session_close(args: Any, context: CliContext) -> int:
 
     session_id = getattr(args, "session_id", None)
     if not session_id:
-        print("[!] Missing required session_id.")
+        print_error("Missing required session_id.")
         return 1
 
     async with context.open_store() as store:
