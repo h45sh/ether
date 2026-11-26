@@ -23,10 +23,14 @@ async def main():
             server_cmd = sys.executable
             server_args = ["-m", "ether.cli.router", "mcp", "--db", db_path, "--data-dir", tmp_dir]
 
+        import os
+
+        server_env = dict(os.environ)
+        server_env.setdefault("ETHER_PLUGIN_TRUST_MODE", "dev")
         server_params = StdioServerParameters(
             command=server_cmd,
             args=server_args,
-            env=None,
+            env=server_env,
         )
 
         async with stdio_client(server_params) as (read_stream, write_stream):

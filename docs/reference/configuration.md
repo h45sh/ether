@@ -76,6 +76,8 @@ Model Context Protocol (MCP) server, transport, and RBAC security settings.
 | `allowed_origins` | `[]` | `ETHER_MCP__ALLOWED_ORIGINS` | Strict CORS origin allowlist for MCP SSE transport. |
 | `require_mtls` | `False` | `ETHER_MCP__REQUIRE_MTLS` | Require verified mTLS client certificate fingerprints on MCP SSE. |
 | `trusted_mtls_fingerprints` | `[]` | `ETHER_MCP__TRUSTED_MTLS_FINGERPRINTS` | Allowlisted SHA-256 client certificate fingerprints for MCP mTLS. |
+| `allow_static_admin` | `False` | `ETHER_MCP__ALLOW_STATIC_ADMIN` | Explicitly enable static-admin bearer token authentication for MCP SSE. |
+| `static_admin_scopes` | `[]` | `ETHER_MCP__STATIC_ADMIN_SCOPES` | Scope ceiling applied when static-admin token authentication is enabled. |
 
 ## `[graph]`
 GraphStore, WriteQueue, cryptography, temporal decay, and analytics settings.
@@ -98,7 +100,7 @@ ToolRegistry and PluginLoader attestation settings.
 
 | Key | Default | Env Override | Description |
 | :--- | :--- | :--- | :--- |
-| `trust_mode` | `'dev'` | `ETHER_PLUGIN_TRUST_MODE` | Plugin attestation trust mode ('dev' or 'strict'; env: ETHER_PLUGIN_TRUST_MODE). |
+| `trust_mode` | `'strict'` | `ETHER_PLUGIN_TRUST_MODE` | Plugin attestation trust mode ('dev' or 'strict'; env: ETHER_PLUGIN_TRUST_MODE). |
 | `trusted_public_keys` | `[]` | `ETHER_REGISTRY__TRUSTED_PUBLIC_KEYS` | Base64/hex Ed25519 public keys trusted for strict adapter verification. |
 | `lazy_load_adapters` | `True` | `ETHER_REGISTRY__LAZY_LOAD_ADAPTERS` | Defer importing and verifying adapter.py until a tool is executed. |
 

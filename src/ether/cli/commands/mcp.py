@@ -57,7 +57,9 @@ async def handle_mcp(args: Any, context: CliContext) -> int:
                 capacity=mcp_cfg.rate_limit_capacity,
                 refill_per_sec=mcp_cfg.rate_limit_refill_per_sec,
             ),
-            static_admin_token=auth_token,
+            static_admin_token=auth_token if mcp_cfg.allow_static_admin else None,
+            allow_static_admin=mcp_cfg.allow_static_admin,
+            static_admin_scopes=mcp_cfg.static_admin_scopes,
         )
 
     registry = context.get_registry()

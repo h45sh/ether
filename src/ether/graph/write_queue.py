@@ -71,7 +71,7 @@ class WriteQueue:
 
     def ensure_started(self) -> None:
         """Ensure the background writer queue and worker task are running."""
-        if self._closed:
+        if self._closed or self._closing:
             raise ValueError("Cannot operate on a closed database.")
         if self._queue is None:
             self._queue = asyncio.Queue()
@@ -87,7 +87,7 @@ class WriteQueue:
         """Serialize a finding batch upsert and return exact per-caller node ownership."""
         if upsert_fn is None:
             raise ValueError("upsert_fn must be provided for enqueue_upsert.")
-        if self._closed:
+        if self._closed or self._closing:
             raise ValueError("Cannot operate on a closed database.")
         self.ensure_started()
         loop = asyncio.get_running_loop()
@@ -106,7 +106,7 @@ class WriteQueue:
         **kwargs: Any,
     ) -> Any:
         """Serialize an arbitrary SQLite mutation through the single-writer worker."""
-        if self._closed:
+        if self._closed or self._closing:
             raise ValueError("Cannot operate on a closed database.")
         self.ensure_started()
         loop = asyncio.get_running_loop()
@@ -231,43 +231,78 @@ class WriteQueue:
                         res = await func(db, s_id, combined, a_id)
                         all_nids, _u_nids, parent_nodes, assoc_nodes = res
 
-                        # Build reverse PIK -> NodeId map for exact per-caller ownership
-                        pik_to_nid: Dict[str, str] = {}
-                        for finding_obj, nid in zip(combined, all_nids, strict=True):
-                            pik_to_nid[_pik_lookup_key(finding_obj)] = nid
+                        if len(all_nids) == len(combined):
+                            offset = 0
+                            for f_list, fut, is_upsert in items:
+                                count = len(f_list)
+                                caller_nids = list(all_nids[offset : offset + count])
+                                offset += count
+                                if fut.cancelled() or fut.done():
+                                    continue
+                                caller_unique: List[str] = []
+                                seen_caller: set[str] = set()
+                                caller_pik_map: Dict[str, str] = {}
+                                for f_obj, nid in zip(f_list, caller_nids, strict=True):
+                                    caller_pik_map[_pik_lookup_key(f_obj)] = nid
+                                    if nid not in seen_caller:
+                                        seen_caller.add(nid)
+                                        caller_unique.append(nid)
 
-                        for f_list, fut, is_upsert in items:
-                            if fut.cancelled() or fut.done():
-                                continue
-                            caller_nids: List[str] = []
-                            caller_unique: List[str] = []
-                            seen_caller: set[str] = set()
-                            caller_pik_map: Dict[str, str] = {}
-                            for f_obj in f_list:
-                                key = _pik_lookup_key(f_obj)
-                                nid = pik_to_nid[key]
-                                caller_nids.append(nid)
-                                caller_pik_map[key] = nid
-                                if nid not in seen_caller:
-                                    seen_caller.add(nid)
-                                    caller_unique.append(nid)
+                                if is_upsert:
+                                    caller_res: Any = UpsertResult(
+                                        node_ids=caller_nids,
+                                        unique_node_ids=caller_unique,
+                                        parent_nodes=parent_nodes,
+                                        assoc_nodes=assoc_nodes,
+                                        pik_to_node_id=caller_pik_map,
+                                    )
+                                else:
+                                    caller_res = (
+                                        caller_nids,
+                                        caller_unique,
+                                        parent_nodes,
+                                        assoc_nodes,
+                                    )
+                                results.append((fut, caller_res, None))
+                        else:
+                            # Fallback if upsert_fn returned deduplicated IDs rather than 1:1 per input
+                            pik_to_nid: Dict[str, str] = {}
+                            for finding_obj, nid in zip(combined, all_nids, strict=False):
+                                pik_to_nid[_pik_lookup_key(finding_obj)] = nid
 
-                            if is_upsert:
-                                caller_res: Any = UpsertResult(
-                                    node_ids=caller_nids,
-                                    unique_node_ids=caller_unique,
-                                    parent_nodes=parent_nodes,
-                                    assoc_nodes=assoc_nodes,
-                                    pik_to_node_id=caller_pik_map,
-                                )
-                            else:
-                                caller_res = (
-                                    caller_nids,
-                                    caller_unique,
-                                    parent_nodes,
-                                    assoc_nodes,
-                                )
-                            results.append((fut, caller_res, None))
+                            for f_list, fut, is_upsert in items:
+                                if fut.cancelled() or fut.done():
+                                    continue
+                                caller_nids = []
+                                caller_unique = []
+                                seen_caller = set()
+                                caller_pik_map = {}
+                                for f_obj in f_list:
+                                    key = _pik_lookup_key(f_obj)
+                                    nid = pik_to_nid.get(key, "")
+                                    if nid:
+                                        caller_nids.append(nid)
+                                        caller_pik_map[key] = nid
+                                        if nid not in seen_caller:
+                                            seen_caller.add(nid)
+                                            caller_unique.append(nid)
+
+                                if is_upsert:
+                                    caller_res = UpsertResult(
+                                        node_ids=caller_nids,
+                                        unique_node_ids=caller_unique,
+                                        parent_nodes=parent_nodes,
+                                        assoc_nodes=assoc_nodes,
+                                        pik_to_node_id=caller_pik_map,
+                                    )
+                                else:
+                                    caller_res = (
+                                        caller_nids,
+                                        caller_unique,
+                                        parent_nodes,
+                                        assoc_nodes,
+                                    )
+                                results.append((fut, caller_res, None))
                     except Exception as ex:
                         for _f_list, fut, _is_upsert in items:
                             if not fut.cancelled() and not fut.done():

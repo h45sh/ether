@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import shlex
-from typing import Any, List, Optional, Sequence
+import urllib.parse
+from dataclasses import dataclass
+from typing import Any, List, Literal, Optional, Sequence
 
 from ether.gateway.gate import GatePolicy
 
@@ -12,6 +15,16 @@ SHELL_METACHAR_RE = re.compile(r"[|;&$`\n\r\x00]")
 DEFAULT_DANGEROUS_FLAGS = frozenset(
     {"-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"}
 )
+
+
+@dataclass(frozen=True)
+class ParsedArgument:
+    """Typed AST node representing a single parsed CLI argument token."""
+
+    raw: str
+    kind: Literal["flag", "flag_value", "positional"]
+    head: str
+    embedded_values: tuple[str, ...] = ()
 
 
 class FlagFirewallError(ValueError):
@@ -72,6 +85,49 @@ class FlagFirewall:
                     values.extend(p.strip() for p in token.split(",") if p.strip())
         return values
 
+    @staticmethod
+    def _is_valid_positional_target(token: str) -> bool:
+        """Return True if a standalone positional token is a well-formed IP, CIDR, URL, or host."""
+        if not token or token.startswith("/") or token.startswith("file:"):
+            return False
+        try:
+            ipaddress.ip_network(token, strict=False)
+            return True
+        except ValueError:
+            pass
+        if "://" in token:
+            parsed = urllib.parse.urlparse(token)
+            return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+        # Hostname, host:port, or numeric/octal/hex IP literal (canonicalized by ActionGateway/ScopeValidator)
+        host_part = token.split(":", 1)[0]
+        if re.match(r"^(?:0x[0-9a-fA-F]+|\d+)(?:\.(?:0x[0-9a-fA-F]+|\d+))*$", host_part):
+            return True
+        return bool(re.match(r"^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}$", host_part))
+
+    def parse_ast(self, tokens: Sequence[str], delimiters: Sequence[str]) -> List[ParsedArgument]:
+        """Parse CLI tokens into a typed argument AST."""
+        ast_nodes: List[ParsedArgument] = []
+        expect_value = False
+        for tok in tokens:
+            embedded = tuple(self._extract_embedded_values(tok, delimiters))
+            if tok.startswith("-"):
+                head = self._extract_flag_head(tok, delimiters)
+                ast_nodes.append(
+                    ParsedArgument(raw=tok, kind="flag", head=head, embedded_values=embedded)
+                )
+                # Standalone flag without inline '=' may consume the next non-flag token as its value
+                expect_value = "=" not in tok and head == tok
+            elif expect_value:
+                ast_nodes.append(
+                    ParsedArgument(raw=tok, kind="flag_value", head=tok, embedded_values=embedded)
+                )
+                expect_value = False
+            else:
+                ast_nodes.append(
+                    ParsedArgument(raw=tok, kind="positional", head=tok, embedded_values=embedded)
+                )
+        return ast_nodes
+
     def validate_arguments(
         self,
         tool_name: str,
@@ -100,24 +156,51 @@ class FlagFirewall:
 
         manifest = self._get_manifest(tool_name)
         flags_cfg = getattr(manifest, "flags", None) if manifest is not None else None
-        allowed = set(getattr(flags_cfg, "allowed", []) or [])
-        blocked = set(getattr(flags_cfg, "blocked", []) or [])
-        delimiters = list(
-            getattr(flags_cfg, "compound_delimiters", ["=", ":", ","]) or ["=", ":", ","]
+        raw_allowed = getattr(flags_cfg, "allowed", None) if flags_cfg is not None else None
+        is_concrete_allowed = isinstance(raw_allowed, (list, tuple, set, frozenset))
+        if is_concrete_allowed and hasattr(flags_cfg, "model_fields_set"):
+            has_allowed_contract = "allowed" in flags_cfg.model_fields_set
+        else:
+            has_allowed_contract = is_concrete_allowed
+        allowed = set(raw_allowed) if is_concrete_allowed else set()
+        raw_blocked = getattr(flags_cfg, "blocked", None) if flags_cfg is not None else None
+        blocked = set(raw_blocked) if isinstance(raw_blocked, (list, tuple, set, frozenset)) else set()
+        raw_delims = (
+            getattr(flags_cfg, "compound_delimiters", None) if flags_cfg is not None else None
+        )
+        delimiters = (
+            list(raw_delims)
+            if isinstance(raw_delims, (list, tuple, set, frozenset)) and raw_delims
+            else ["=", ":", ","]
         )
 
         effective_blocked = (DEFAULT_DANGEROUS_FLAGS - allowed) | blocked
+        ast_nodes = self.parse_ast(sanitized, delimiters)
 
-        for tok in sanitized:
-            if tok.startswith("-"):
-                head = self._extract_flag_head(tok, delimiters)
-                if head in effective_blocked or tok in effective_blocked:
+        for idx, node in enumerate(ast_nodes):
+            for val in node.embedded_values:
+                if SHELL_METACHAR_RE.search(val):
                     raise FlagFirewallError(
-                        f"Flag '{head}' is explicitly blocked for tool '{tool_name}' under SAFE policy."
+                        f"Blocked shell metacharacter in embedded value '{val}' for tool '{tool_name}'."
                     )
-                if allowed and head not in allowed and tok not in allowed:
+
+            if node.kind == "flag":
+                if node.head in effective_blocked or node.raw in effective_blocked:
                     raise FlagFirewallError(
-                        f"Flag '{head}' is not in manifest [flags].allowed for '{tool_name}' under SAFE policy."
+                        f"Flag '{node.head}' is explicitly blocked for tool '{tool_name}' under SAFE policy."
+                    )
+                if has_allowed_contract and node.head not in allowed and node.raw not in allowed:
+                    raise FlagFirewallError(
+                        f"Flag '{node.head}' is not in manifest [flags].allowed for '{tool_name}' under SAFE policy."
+                    )
+            elif node.kind == "positional":
+                if idx == 0 and node.raw == tool_name:
+                    continue
+                if tool_name == "sudo":
+                    continue
+                if not self._is_valid_positional_target(node.raw):
+                    raise FlagFirewallError(
+                        f"Unvalidated positional argument '{node.raw}' rejected for '{tool_name}' under SAFE policy."
                     )
 
         return sanitized

@@ -75,8 +75,8 @@ class GobusterAdapter(ToolAdapter):
 
         # Try to extract base url from command params if not available
         if not base_url:
-            raw_flags = " ".join(self.normalize_flags(context.get("params")))
-            url_match = self.URL_FLAG_RE.search(raw_flags)
+            flag_str = " ".join(self.normalize_flags(context.get("params")))
+            url_match = self.URL_FLAG_RE.search(flag_str)
             if url_match:
                 base_url = url_match.group(1).rstrip("/")
 

@@ -48,7 +48,7 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
         if not verdict.allowed:
             raise SSRFPinnedError(f"Pinned transport blocked '{host}': {verdict.reason}")
 
-        pinned_ip = host
+        candidates: list[str] = [host]
         if ScopeValidator.parse_ip(host) is None:
             loop = asyncio.get_running_loop()
             try:
@@ -75,15 +75,50 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
                     for ip in resolved
                     if isinstance(ipaddress.ip_address(ip), ipaddress.IPv4Address)
                 ]
-                pinned_ip = v4[0] if v4 else resolved[0]
+                v6 = [
+                    ip
+                    for ip in resolved
+                    if isinstance(ipaddress.ip_address(ip), ipaddress.IPv6Address)
+                ]
+                candidates = v4 + v6
 
-        return await self._inner.connect_tcp(
-            host=pinned_ip,
-            port=port,
-            timeout=timeout,
-            local_address=local_address,
-            socket_options=socket_options,
-        )
+        last_err: Optional[Exception] = None
+        for candidate_ip in candidates:
+            try:
+                stream = await self._inner.connect_tcp(
+                    host=candidate_ip,
+                    port=port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except Exception as exc:
+                last_err = exc
+                continue
+
+            peer = stream.get_extra_info("peername")
+            if isinstance(peer, tuple) and peer:
+                peer_ip = str(peer[0]).split("%", 1)[0]
+                if ScopeValidator.parse_ip(candidate_ip) is not None and peer_ip != candidate_ip:
+                    await stream.aclose()
+                    raise SSRFPinnedError(
+                        f"Socket peer IP '{peer_ip}' did not match pinned IP '{candidate_ip}'."
+                    )
+                peer_verdict = ScopeValidator.is_in_scope(
+                    peer_ip,
+                    scope=self._scope,
+                    policy_is_unrestricted=self._policy_is_unrestricted,
+                )
+                if not peer_verdict.allowed:
+                    await stream.aclose()
+                    raise SSRFPinnedError(
+                        f"Socket peer IP '{peer_ip}' blocked by EngagementScope: {peer_verdict.reason}"
+                    )
+            return stream
+
+        if last_err is not None:
+            raise last_err
+        raise SSRFPinnedError(f"Pinned transport failed to connect to '{host}'.")
 
     async def connect_unix_socket(
         self,

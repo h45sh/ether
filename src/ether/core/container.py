@@ -65,6 +65,7 @@ class ContainerizedToolRunner:
         command: List[str],
         cwd: str,
         env: Optional[Dict[str, str]] = None,
+        allow_network: bool = False,
     ) -> List[str]:
         """Construct a hardened, non-root OCI container execution argument vector.
 
@@ -72,14 +73,16 @@ class ContainerizedToolRunner:
         - Pure argument vector (shell=False).
         - --rm: Container is destroyed immediately on termination.
         - --read-only: Root filesystem is immutable.
-        - --cap-drop=ALL: All Linux capabilities dropped.
-        - No host ~/.ether bind mount (forensic isolation).
+        - --cap-drop=ALL & --security-opt=no-new-privileges: Drop capabilities and privilege escalation.
+        - --network=none by default (--network=bridge only when allow_network=True; never host).
+        - --pids-limit, --memory, --cpus: Resource exhaustion bounds.
         """
         runtime = cls.get_runtime()
         if not runtime:
             raise RuntimeError("No OCI container runtime (podman or docker) found on system PATH.")
 
         image = cls.get_image()
+        network_flag = "--network=bridge" if allow_network else "--network=none"
 
         container_cmd = [
             runtime,
@@ -87,7 +90,11 @@ class ContainerizedToolRunner:
             "--rm",
             "--read-only",
             "--cap-drop=ALL",
-            "--network=host",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=256",
+            "--memory=512m",
+            "--cpus=1.0",
+            network_flag,
             "-w",
             cwd,
             "-v",

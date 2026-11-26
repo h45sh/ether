@@ -218,6 +218,19 @@ class McpSettings(BaseModel):
         default_factory=list,
         description="Allowlisted SHA-256 client certificate fingerprints for MCP mTLS.",
     )
+    allow_static_admin: bool = Field(
+        default=False,
+        description="Explicitly enable static-admin bearer token authentication for MCP SSE.",
+    )
+    static_admin_scopes: List[str] = Field(
+        default_factory=lambda: [
+            "telemetry:read",
+            "graph:query",
+            "tool:execute",
+            "session:mutate",
+        ],
+        description="Scope ceiling applied when static-admin token authentication is enabled.",
+    )
 
 
 class GraphSettings(BaseModel):
@@ -282,7 +295,7 @@ class RegistrySettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     trust_mode: Literal["dev", "strict"] = Field(
-        default="dev",
+        default="strict",
         description="Plugin attestation trust mode ('dev' or 'strict'; env: ETHER_PLUGIN_TRUST_MODE).",
     )
     trusted_public_keys: List[str] = Field(

@@ -401,6 +401,9 @@ def create_mcp_server(
             produces: Filter by output finding schema (e.g. 'network.service', 'vuln.finding').
             include_profiles: Include executable preset profiles (default: True).
         """
+        from ether.mcp.security import OperationType, require_operation
+
+        require_operation(OperationType.GRAPH_QUERY)
         matches = reg.search_tools(
             query=query,
             accepts=accepts,
@@ -416,6 +419,9 @@ def create_mcp_server(
         Args:
             tool_name: Registered tool name (e.g. 'nmap', 'http_probe', 'nuclei').
         """
+        from ether.mcp.security import OperationType, require_operation
+
+        require_operation(OperationType.GRAPH_QUERY)
         data = reg.get_tool(tool_name)
         if not data or not data.get("manifest"):
             return _compact_json(
@@ -585,6 +591,9 @@ def create_mcp_server(
             session_id: Target session ID (for 'info').
         """
         if action == "list":
+            from ether.mcp.security import OperationType, require_operation
+
+            require_operation(OperationType.GRAPH_QUERY)
             all_sessions = await store.list_all_sessions()
             return _compact_json(
                 {
@@ -593,6 +602,9 @@ def create_mcp_server(
                 }
             )
         elif action == "create":
+            from ether.mcp.security import OperationType, require_operation
+
+            require_operation(OperationType.SESSION_MUTATE)
             sess_name = name or "agent-session"
             workspaces = await store.list_workspaces()
             if workspaces:
@@ -611,7 +623,7 @@ def create_mcp_server(
         elif action == "info":
             from ether.mcp.security import OperationType, require_operation
 
-            require_operation(OperationType.SESSION_MUTATE)
+            require_operation(OperationType.GRAPH_QUERY)
             sess_id = await _resolve_session(session_id)
             sess_data = await store.get_session(sess_id)
             nodes = await store.get_all_nodes(sess_id)
@@ -893,7 +905,7 @@ def create_mcp_server(
         """Structured workflow prompt for autonomous external perimeter reconnaissance."""
         return (
             f"Conduct a structured perimeter reconnaissance against '{target}' using Ether:\n"
-            "1. Call `list_tools` and `get_tool_info` to verify available tools, target formats, and recommended flags.\n"
+            "1. Call `search_tools` and `get_tool_info` to verify available tools, target formats, and recommended flags.\n"
             "2. For multi-stage discovery, use `execute_pipeline` (e.g. `subfinder(target=<domain>) | dnspython | http_probe`) "
             "or run individual tools via `execute_tool`.\n"
             "3. Inspect newly discovered entities via `get_diff` (do not set `include_raw=True` unless debugging).\n"

@@ -111,11 +111,19 @@ class ToolRegistry:
         self, adapter_path: Path, manifest_path: Optional[Path] = None
     ) -> Optional[ToolAdapter]:
         """Verify and import the adapter.py module via PluginLoader and instantiate ToolAdapter."""
+        import os
+
         from ether.registry.loader import PluginLoader, PluginTrustMode
 
         m_path = manifest_path or (adapter_path.parent / "manifest.toml")
         reg_cfg = getattr(self._settings, "registry", None)
-        mode_str = str(getattr(reg_cfg, "trust_mode", "dev")).lower()
+        env_mode = os.environ.get("ETHER_PLUGIN_TRUST_MODE", "").strip().lower()
+        if reg_cfg is not None and (
+            "trust_mode" in getattr(reg_cfg, "model_fields_set", set()) or not env_mode
+        ):
+            mode_str = str(getattr(reg_cfg, "trust_mode", "strict")).lower()
+        else:
+            mode_str = env_mode or "strict"
         trust_mode = PluginTrustMode.STRICT if mode_str == "strict" else PluginTrustMode.DEV
         raw_keys = getattr(reg_cfg, "trusted_public_keys", None) or []
         trusted_keys = [
@@ -171,8 +179,7 @@ class ToolRegistry:
         if adapter_obj is not None:
             installed = bool(adapter_obj.validate_install())
         elif tier == "coroutine":
-            loaded = self._ensure_adapter(name)
-            installed = bool(loaded and loaded["adapter"].validate_install())
+            installed = True
         else:
             installed = bool(is_binary_available(binary))
 

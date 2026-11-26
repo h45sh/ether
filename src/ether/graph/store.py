@@ -598,7 +598,8 @@ class GraphStore:
         """Atomically seal session via two-phase SessionSealer and mark CLOSED."""
         from ether.common.session_sealer import SessionSealer
 
-        sealer = SessionSealer(store=self)
+        data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
+        sealer = SessionSealer(store=self, data_dir=data_dir)
         await sealer.seal_session(session_id)
 
     async def is_session_closed(self, session_id: str) -> bool:
@@ -607,7 +608,7 @@ class GraphStore:
         return bool(session and session.get("status") == "CLOSED")
 
     async def reopen_session(self, session_id: str) -> None:
-        """Reopen an archived session back to ACTIVE."""
+        """Reopen an archived session back to ACTIVE and invalidate any prior seal receipt."""
 
         async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
@@ -617,6 +618,24 @@ class GraphStore:
 
         self._session_status_cache[session_id] = "ACTIVE"
         await self._run_write(_op, session_id=session_id, enforce_open=False)
+
+        if self.db_path != ":memory:":
+            from ether.common.session_sealer import SessionSealer
+
+            data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
+            sealer = SessionSealer(store=self, data_dir=data_dir)
+            receipt_path = sealer._receipt_path(session_id)
+            if receipt_path.exists():
+                try:
+                    receipt_path.unlink()
+                except OSError:
+                    pass
+            journal_path = sealer._journal_path(session_id)
+            if journal_path.exists():
+                try:
+                    journal_path.unlink()
+                except OSError:
+                    pass
 
     async def delete_workspace(self, workspace_id: str):
         """Delete a workspace and all its sessions/graphs (cascade)."""
@@ -1340,7 +1359,12 @@ class GraphStore:
         """Append an audit lifecycle event (e.g. session closed/reopened) to event_log."""
         await self.timeline.log_audit_event(session_id, action_name, message, status)
 
-    async def export_session(self, session_id: str, dest_db_path: str) -> None:
+    async def export_session(
+        self,
+        session_id: str,
+        dest_db_path: str,
+        redact_credentials: bool = True,
+    ) -> None:
         """Export session metadata, nodes, edges, and event_log rows to a new SQLite database."""
         dest_store = GraphStore(dest_db_path)
         await dest_store.initialize()
@@ -1349,6 +1373,7 @@ class GraphStore:
         async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("ATTACH DATABASE ? AS dest", (dest_db_path,))
             try:
+                await db.execute("BEGIN IMMEDIATE")
                 # 1. Copy workspace row
                 await db.execute(
                     """
@@ -1417,6 +1442,26 @@ class GraphStore:
                     (session_id, session_id),
                 )
 
+                if redact_credentials:
+                    from ether.graph.crypto import CryptoEngine
+
+                    cursor_export = await db.execute(
+                        "SELECT id, data_json FROM dest.nodes WHERE session_id = ?",
+                        (session_id,),
+                    )
+                    for row_id, raw_json in await cursor_export.fetchall():
+                        try:
+                            parsed = json.loads(raw_json)
+                        except Exception:
+                            continue
+                        if isinstance(parsed, dict):
+                            redacted = CryptoEngine.redact_finding_data(parsed)
+                            if redacted != parsed:
+                                await db.execute(
+                                    "UPDATE dest.nodes SET data_json = ? WHERE session_id = ? AND id = ?",
+                                    (json.dumps(redacted), session_id, row_id),
+                                )
+
                 await db.commit()
                 if os.path.exists(dest_db_path):
                     try:
@@ -1447,6 +1492,7 @@ class GraphStore:
             db.row_factory = aiosqlite.Row
             await db.execute("ATTACH DATABASE ? AS src", (src_db_path,))
             try:
+                await db.execute("BEGIN IMMEDIATE")
                 cursor = await db.execute("SELECT * FROM src.sessions LIMIT 1")
                 src_session = await cursor.fetchone()
                 if not src_session:

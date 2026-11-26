@@ -505,6 +505,48 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - Provide a reproducible benchmark harness capturing exact commit, hardware, kernel, Python version, workload, variance, and CI test artifacts.
   - Adversarial boundary test suite: file permission races, DNS rebinding, redirect chains, container breakout assumptions, SSE concurrency timeouts, and audit tampering.
 
+---
+
+### Pre-Epoch 4 Gate: Controlled-Production Hardening & Seam Repairs
+*Target: v0.4.x (Before Epoch 4/5)*
+*Focus: Closing verified authorization, firewall, transport, sealing, write-ownership, container, and supply-chain gaps in the existing substrate.*
+
+- [ ] **Complete MCP Authorization Seam (`ether.mcp.server` / `ether.mcp.security`):**
+  - *Interface & Seam*: Bind every MCP tool, resource, and prompt (including `search_tools`, `get_tool_info`, and `manage_session(action="list"|"create")`) to an explicit `OperationType` at the handler seam instead of inheriting the ASGI wrapper's `GRAPH_QUERY` default.
+  - Constrain `static_admin_token` behind an explicit configuration ceiling rather than unconditionally granting `ALL_SCOPES`.
+  - Fix the `perimeter_recon` prompt reference from `list_tools` to `search_tools`.
+
+- [ ] **Typed Argument AST & Policy Seam (`ether.gateway.flags.FlagFirewall`):**
+  - *Deep Module*: Replace partial token filtering in `FlagFirewall.validate_arguments()` with a typed argument AST that validates positional targets, split compound values, and embedded targets (`_extract_embedded_values()`) uniformly under `GatePolicy.SAFE`.
+  - Fix `manifest.toml` `allowed = []` semantics to mean "allow no optional flags" rather than "allow all non-blocked flags", and align manifest allowlists with adapter `normalize_flags()`.
+  - Remove residual `raw_flags` shims across `ether.services.execution`, `ether.core.session`, `ether.core.executor`, `ether.gateway.gate`, and `tools/gobuster/adapter.py`.
+
+- [ ] **Socket-Pinned HTTP Transport Seam (`ether.common.transport.PinnedTransport`):**
+  - *Seam & Locality*: Move DNS resolution, scope validation, and TCP/TLS dialing behind a single socket/SSL factory adapter inside `_PinnedNetworkBackend` so peer IP and TLS SNI/certificate hostname are verified atomically on the connected socket, eliminating the redirect-hook TOCTOU window and supporting Happy Eyeballs / IPv6.
+
+- [ ] **Plugin Isolation & Strict Trust Defaults (`ether.registry.loader` / `ether.config`):**
+  - *Interface*: Treat `_check_adapter_ast()` strictly as a static pre-check (until Epoch 5 WASM sandboxing lands).
+  - Change `RegistrySettings.trust_mode` default to `"strict"` for installed builds (keeping `"dev"` opt-in for local source checkouts), and remove eager `_ensure_adapter()` calls in `ToolRegistry.get_tool_summary()` for coroutine tools.
+
+- [ ] **Credential Key Lifecycle & Redaction (`ether.graph.crypto.CryptoEngine`):**
+  - Add key ID/version metadata to `ENC_PREFIX`, key rotation with batch re-encryption, credential redaction in `export_session()`, and TTL enforcement on reads (beyond OS keyring-first / `keys/db_master.key` fallback).
+
+- [ ] **Forensic Sealing Trust Anchor (`ether.common.session_sealer` / `ether.graph.store`):**
+  - Pass `data_dir` and external signing key configuration from `GraphStore.close_session()` into `SessionSealer`.
+  - Cryptographically bind SQLite `sessions.status` transitions to `seal_receipt.json` (so `reopen_session()` cannot leave valid stale receipts) and require an explicit trusted public key in `verify_seal()` for production verification.
+
+- [ ] **Write Queue Ownership & Store Lifecycle (`ether.graph.write_queue` / `ether.graph.store`):**
+  - Track per-batch-call PIK ownership maps in `WriteQueue._execute_tx_batch()` so duplicate PIKs or count mismatches cannot corrupt or raise in `zip(..., strict=True)`, and reject new enqueues immediately when `close()` begins draining.
+  - Add explicit transaction/rollback semantics around `ATTACH DATABASE` in `export_session()` / `import_session()`, separate schema auto-init from `GraphStore.initialize()`, and remove the duplicate `test_reconcile_state_decay_adaptive_volatility()` in `tests/unit/test_graph_decay.py`.
+
+- [ ] **Hardened Container Execution Adapter (`ether.core.container.ContainerizedToolRunner`):**
+  - Replace `--network=host`, `-v {cwd}:{cwd}:rw`, and mutable `ghcr.io/ether/arsenal:0.1.3` with digest-pinned images, `--network=none` by default, dedicated read-only staging mounts, `--pids-limit`, memory/CPU limits, seccomp, and `--security-opt=no-new-privileges`.
+
+- [ ] **Supply-Chain Provenance & Pinning (`.github/workflows/` & `Dockerfile`):**
+  - Pin all GitHub Actions in `.github/workflows/*.yml` to immutable commit SHAs, digest-pin the `Dockerfile` base image and commit-pin cloned tools (`nikto`, `exploitdb`), and add release artifact/wheel attestation verification.
+
+---
+
 ### Epoch 4: The Unrestricted Virtual PTY & Enterprise Identity Engine
 *Target: v0.5.0*
 *Focus: POSIX pseudo-terminal virtualization, in-memory VT102 screen emulation, Active Directory & Cloud IAM graph calculus, and autonomous background daemonization.*

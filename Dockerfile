@@ -30,9 +30,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     tar \
     git \
-    && git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
+    && git init /opt/nikto \
+    && git -C /opt/nikto fetch --depth 1 https://github.com/sullo/nikto.git 312645d873478a77986627ab1fc8cffe595e85d4 \
+    && git -C /opt/nikto checkout --detach FETCH_HEAD \
     && ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
-    && git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb \
+    && git init /opt/exploitdb \
+    && git -C /opt/exploitdb fetch --depth 1 https://gitlab.com/exploit-database/exploitdb.git 8a926a9b85beb3bccd6e8016211fdb73e904b52b \
+    && git -C /opt/exploitdb checkout --detach FETCH_HEAD \
     && ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit \
     && apt-get purge -y --auto-remove git \
     && rm -rf /var/lib/apt/lists/* \

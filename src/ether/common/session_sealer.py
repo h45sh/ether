@@ -272,8 +272,11 @@ class SessionSealer:
         session_id: str,
         data_dir: Optional[str | Path] = None,
         public_key: Optional[bytes] = None,
+        require_trusted_key: bool = False,
     ) -> Tuple[bool, str]:
         """Verify a sealed session's Ed25519 receipt and underlying SHA-256 audit chain."""
+        if require_trusted_key and public_key is None:
+            return False, "Trusted public key is required for strict seal verification."
         data_dir_str = str(data_dir) if data_dir is not None else None
         receipt_path = (
             ForensicLogManager.get_session_dir(session_id, data_dir=data_dir_str)

@@ -102,6 +102,8 @@ class SecurityMiddleware:
         require_mtls: bool = False,
         rate_limiter: Optional[LeakyBucketRateLimiter] = None,
         static_admin_token: Optional[str] = None,
+        allow_static_admin: bool = True,
+        static_admin_scopes: Optional[Iterable[OperationType | str]] = None,
     ) -> None:
         self._secrets: list[bytes] = [
             s.encode("utf-8") if isinstance(s, str) else s
@@ -111,7 +113,14 @@ class SecurityMiddleware:
         self.trusted_mtls_fingerprints = {fp.lower() for fp in trusted_mtls_fingerprints}
         self.require_mtls = require_mtls
         self.rate_limiter = rate_limiter or LeakyBucketRateLimiter()
-        self.static_admin_token = static_admin_token
+        self.allow_static_admin = allow_static_admin
+        self.static_admin_token = static_admin_token if allow_static_admin else None
+        if static_admin_scopes is not None:
+            self.static_admin_scopes: FrozenSet[str] = frozenset(
+                s.value if isinstance(s, OperationType) else str(s) for s in static_admin_scopes
+            )
+        else:
+            self.static_admin_scopes = ALL_SCOPES
 
     @staticmethod
     def stdio_context(scopes: Iterable[str] = ALL_SCOPES) -> AuthContext:
@@ -215,10 +224,14 @@ class SecurityMiddleware:
             raise AuthError("Missing or invalid Bearer token", status_code=401)
         token = auth_val[7:].strip()
 
-        if self.static_admin_token and hmac.compare_digest(token, self.static_admin_token):
+        if (
+            self.allow_static_admin
+            and self.static_admin_token
+            and hmac.compare_digest(token, self.static_admin_token)
+        ):
             ctx = AuthContext(
                 subject="static-admin",
-                scopes=ALL_SCOPES,
+                scopes=self.static_admin_scopes,
                 transport="http",
                 client_ip=client_ip,
                 mtls_fingerprint=mtls_fp,

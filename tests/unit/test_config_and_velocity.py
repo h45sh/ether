@@ -39,7 +39,7 @@ def test_ether_settings_precedence(tmp_path):
 
 @pytest.mark.fast
 def test_lazy_tool_registry_and_search():
-    settings = EtherSettings()
+    settings = EtherSettings.load()
     reg = ToolRegistry(settings=settings)
     reg.load_tools()
 
