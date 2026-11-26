@@ -588,13 +588,35 @@ class GraphStore:
         self._session_status_cache[session_id] = "CLOSED"
         await self._run_write(_op, session_id=session_id, enforce_open=False)
 
-    async def close_session(self, session_id: str) -> None:
+    async def close_session(self, session_id: str, private_key: Optional[bytes] = None) -> None:
         """Atomically seal session via two-phase SessionSealer and mark CLOSED."""
         from ether.common.session_sealer import SessionSealer
 
         data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
         sealer = SessionSealer(store=self, data_dir=data_dir)
-        await sealer.seal_session(session_id)
+        await sealer.seal_session(session_id, private_key=private_key)
+
+    async def verify_session_seal(
+        self,
+        session_id: str,
+        public_key: Optional[bytes] = None,
+        require_trusted_key: bool = False,
+    ) -> Tuple[bool, str]:
+        """Verify that a closed persistent session is bound to a valid Ed25519 seal receipt."""
+        session = await self.get_session(session_id)
+        if not session or session.get("status") != "CLOSED":
+            return False, f"Session '{session_id}' is not CLOSED."
+        data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
+        if self.db_path == ":memory:" and data_dir is None:
+            return True, "In-memory closed session verified."
+        from ether.common.session_sealer import SessionSealer
+
+        return SessionSealer.verify_seal(
+            session_id,
+            data_dir=data_dir,
+            public_key=public_key,
+            require_trusted_key=require_trusted_key,
+        )
 
     async def is_session_closed(self, session_id: str) -> bool:
         """Check if a session is forensically closed."""

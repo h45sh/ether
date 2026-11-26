@@ -114,6 +114,7 @@ Forensic log spooling, retention, and timeline compaction settings.
 | `compress_older_than_sec` | `3600.0` | `ETHER_STORAGE__COMPRESS_OLDER_THAN_SEC` | Compress raw log files older than this many seconds. |
 | `log_spool_buffering_bytes` | `65536` | `ETHER_STORAGE__LOG_SPOOL_BUFFERING_BYTES` | Write buffer size in bytes for LogSpooler. |
 | `timeline_keep_closed_events` | `500` | `ETHER_STORAGE__TIMELINE_KEEP_CLOSED_EVENTS` | Number of recent closed events retained during ActionTimelineRepository compaction. |
+| `audit_signing_key_path` | `None` | `ETHER_STORAGE__AUDIT_SIGNING_KEY_PATH` | External Ed25519 private key path or hex/base64 key (env: ETHER_AUDIT_SIGNING_KEY). |
 
 ## `[logging]`
 System logging and FlightRecorder breadcrumb settings.

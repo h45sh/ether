@@ -17,7 +17,14 @@ from ether.common.crypto import derive_key_argon2id
 from ether.common.secure_memory import wipe_buffer as zeroize_bytes
 
 ENC_PREFIX = "enc:chacha20v1:"
-SENSITIVE_CREDENTIAL_FIELDS = ("password", "token", "secret", "private_key", "api_key")
+SENSITIVE_CREDENTIAL_FIELDS = (
+    "password",
+    "secret_value",
+    "token",
+    "secret",
+    "private_key",
+    "api_key",
+)
 
 
 def is_credential_expired(data: Dict[str, Any], now: Optional[float] = None) -> bool:

@@ -533,6 +533,9 @@ def build_parser() -> argparse.ArgumentParser:
     status_p.add_argument(
         "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
     )
+    status_p.add_argument(
+        "-s", "--session-id", dest="session_id_opt", default=None, help="Session ID"
+    )
 
     ps_p = subparsers.add_parser(
         "ps",
@@ -542,6 +545,7 @@ def build_parser() -> argparse.ArgumentParser:
     ps_p.add_argument(
         "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
     )
+    ps_p.add_argument("-s", "--session-id", dest="session_id_opt", default=None, help="Session ID")
     ps_p.add_argument("--limit", type=int, default=25, help="Maximum actions to list (default: 25)")
 
     kill_p = subparsers.add_parser(
@@ -559,6 +563,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report_p.add_argument(
         "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    report_p.add_argument(
+        "-s", "--session-id", dest="session_id_opt", default=None, help="Session ID"
     )
     report_p.add_argument(
         "--format", choices=["md", "json"], default="md", help="Report format (default: md)"

@@ -338,6 +338,10 @@ class StorageSettings(BaseModel):
         ge=0,
         description="Number of recent closed events retained during ActionTimelineRepository compaction.",
     )
+    audit_signing_key_path: Optional[str] = Field(
+        default=None,
+        description="External Ed25519 private key path or hex/base64 key (env: ETHER_AUDIT_SIGNING_KEY).",
+    )
 
 
 class LoggingSettings(BaseModel):
@@ -450,6 +454,7 @@ class EtherSettings(BaseModel):
         """Apply flat legacy ETHER_* env vars and structured ETHER_<SECTION>__<KEY> overrides."""
         legacy_map: Dict[str, tuple[str, str, Callable[[str], Any]]] = {
             "ETHER_DATA_DIR": ("paths", "data_dir", str),
+            "ETHER_AUDIT_SIGNING_KEY": ("storage", "audit_signing_key_path", str),
             "ETHER_WORDLISTS_DIR": ("paths", "wordlists_dir", str),
             "ETHER_MCP_AUTH_TOKEN": ("mcp", "auth_token", str),
             "ETHER_ONNX_MODEL_PATH": ("graph", "onnx_model_path", str),

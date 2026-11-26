@@ -87,12 +87,39 @@ def _write_json_atomic(path: Path, payload: Dict[str, Any]) -> None:
     os.replace(tmp_path, path)
 
 
+def _resolve_external_private_key(key_spec: Optional[str]) -> Optional[bytes]:
+    """Resolve an external Ed25519 private key from a file path, hex string, or base64 string."""
+    if not key_spec:
+        return None
+    spec = key_spec.strip()
+    if not spec:
+        return None
+    p = Path(spec)
+    if p.is_file():
+        return p.read_bytes()
+    if len(spec) == 64:
+        try:
+            return bytes.fromhex(spec)
+        except ValueError:
+            pass
+    try:
+        decoded = base64.b64decode(spec, validate=True)
+        if len(decoded) == 32 or b"PRIVATE KEY" in decoded:
+            return decoded
+    except Exception:
+        pass
+    return spec.encode("utf-8")
+
+
 def _load_or_provision_keypair(
     private_key: Optional[bytes],
     data_dir: Optional[str | Path],
     is_memory_store: bool,
+    external_key_spec: Optional[str] = None,
 ) -> Tuple[Ed25519PrivateKey, bytes]:
     """Load an explicit Ed25519 key, or auto-provision a 0o600 node key for persistent stores."""
+    if private_key is None and external_key_spec:
+        private_key = _resolve_external_private_key(external_key_spec)
     if private_key is not None:
         if len(private_key) == 32:
             priv = Ed25519PrivateKey.from_private_bytes(private_key)
@@ -228,10 +255,16 @@ class SessionSealer:
             record_count = 0
 
         # Sign receipt with Ed25519
+        ext_key_spec = getattr(
+            getattr(getattr(self.store, "_settings", None), "storage", None),
+            "audit_signing_key_path",
+            None,
+        ) or os.environ.get("ETHER_AUDIT_SIGNING_KEY")
         priv_key, pub_bytes = _load_or_provision_keypair(
             private_key=private_key,
             data_dir=self.data_dir,
             is_memory_store=is_memory,
+            external_key_spec=ext_key_spec,
         )
         payload = _canonical_receipt_payload(
             session_id=session_id,
@@ -289,6 +322,12 @@ class SessionSealer:
             receipt = SealReceipt.from_dict(json.loads(receipt_path.read_text(encoding="utf-8")))
         except Exception as e:
             return False, f"Corrupt seal receipt: {e}"
+
+        if receipt.session_id != session_id or receipt.state != SealState.SEALED.value:
+            return False, (
+                f"Seal receipt session/state mismatch: expected ({session_id}, SEALED), "
+                f"got ({receipt.session_id}, {receipt.state})."
+            )
 
         # Verify underlying hash chain and compressed logs
         chain_ok, chain_msg = ForensicLogManager.verify_session_audit(

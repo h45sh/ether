@@ -5,17 +5,29 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ether import paths
 from ether.cli.commands.graph import _mask_credential_node
-from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
+from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, EXIT_USAGE_ERROR, CliContext
 from ether.cli.formatters import print_error, print_json, print_table
+
+
+def _resolve_session_arg(args: Any) -> tuple[bool, Optional[str]]:
+    """Unify positional `session_id` and `-s`/`--session-id` across operational commands."""
+    pos = getattr(args, "session_id", None)
+    opt = getattr(args, "session_id_opt", None)
+    if pos and opt and pos != opt:
+        print_error(f"Conflicting session IDs provided: '{pos}' vs '{opt}'.")
+        return False, None
+    return True, opt or pos
 
 
 async def handle_status(args: Any, context: CliContext) -> int:
     """Display one-glance operational status for the active or specified session."""
-    session_id_arg = getattr(args, "session_id", None)
+    ok, session_id_arg = _resolve_session_arg(args)
+    if not ok:
+        return EXIT_USAGE_ERROR
     async with context.open_store() as store:
         session_id = await context.resolve_session_id(store, session_id_arg)
         sess = await store.get_session(session_id) or {}
@@ -73,7 +85,9 @@ async def handle_status(args: Any, context: CliContext) -> int:
 
 async def handle_ps(args: Any, context: CliContext) -> int:
     """List running and recent actions in the active or specified session."""
-    session_id_arg = getattr(args, "session_id", None)
+    ok, session_id_arg = _resolve_session_arg(args)
+    if not ok:
+        return EXIT_USAGE_ERROR
     limit = int(getattr(args, "limit", 25))
 
     async with context.open_store() as store:
@@ -133,7 +147,9 @@ async def handle_kill(args: Any, context: CliContext) -> int:
 
 async def handle_report(args: Any, context: CliContext) -> int:
     """Compile a Markdown or JSON engagement report from the session graph."""
-    session_id_arg = getattr(args, "session_id", None)
+    ok, session_id_arg = _resolve_session_arg(args)
+    if not ok:
+        return EXIT_USAGE_ERROR
     fmt = str(getattr(args, "format", "md")).lower()
     out_path = getattr(args, "output", None)
     unmask = bool(getattr(args, "unmask", False))

@@ -249,11 +249,15 @@ class ActionGateway:
             )
 
         runner = command_runner or Executor()
+        data_dir = getattr(
+            getattr(getattr(self.store, "_settings", None), "paths", None), "data_dir", None
+        )
         return ExecutionSession(
             store=self.store,
             gateway=self,
             registry=self.registry,
             command_runner=runner,
+            data_dir=data_dir,
             user_env=user_env,
             user_shell=user_shell,
         )

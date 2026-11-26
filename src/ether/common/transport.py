@@ -30,7 +30,7 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
     ) -> None:
         self._scope = scope
         self._policy_is_unrestricted = policy_is_unrestricted
-        self._inner = inner or httpcore.AsyncNetworkBackend()
+        self._inner = inner or httpcore.AnyIOBackend()
 
     async def connect_tcp(
         self,

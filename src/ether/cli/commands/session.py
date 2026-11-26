@@ -68,7 +68,17 @@ async def handle_session_verify_audit(args: Any, context: CliContext) -> int:
         session_id, data_dir=context.data_dir
     )
     if context.is_json:
-        print_json({"session_id": session_id, "valid": is_valid, "entries": records})
+        status_label = (
+            "empty" if (is_valid and not records) else ("valid" if is_valid else "invalid")
+        )
+        print_json(
+            {
+                "session_id": session_id,
+                "valid": is_valid,
+                "status": status_label,
+                "entries": records,
+            }
+        )
         return EXIT_SUCCESS if is_valid else 1
 
     if not records:

@@ -529,9 +529,9 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
 - [x] **Credential Key Lifecycle & Redaction (`ether.graph.crypto.CryptoEngine`):**
   - Added `key_id` versioning to `ENC_PREFIX`, `rotate_key()` / `reencrypt_field()`, `export_session(redact_credentials=True)` redaction, and expired-credential TTL redaction (`[EXPIRED]`) on read.
 
-- [ ] **Forensic Sealing Trust Anchor (`ether.common.session_sealer` / `ether.graph.store`):**
+- [x] **Forensic Sealing Trust Anchor (`ether.common.session_sealer` / `ether.graph.store`, [ADR 0018](docs/adr/0018-pre-epoch4-sealing-audit-identity-and-cli-seams.md)):**
   - [x] Passed `data_dir` from `GraphStore.close_session()` into `SessionSealer`, invalidated `seal_receipt.json` / `seal_journal.json` on `reopen_session()`, and added `require_trusted_key` to `verify_seal()`.
-  - [ ] Pass external signing key configuration from `GraphStore.close_session()` and cryptographically bind SQLite `sessions.status` transitions to `seal_receipt.json`.
+  - [x] Passed external signing key configuration (`StorageSettings.audit_signing_key_path` / `ETHER_AUDIT_SIGNING_KEY`) from `GraphStore.close_session()` and cryptographically bound SQLite `sessions.status == 'CLOSED'` to `seal_receipt.json`.
 
 - [x] **Write Queue Ownership & Store Lifecycle (`ether.graph.write_queue` / `ether.graph.store`):**
   - Sliced per-caller `UpsertResult` ownership directly in `WriteQueue._execute_tx_batch()`, rejected new enqueues once `close()` begins draining, added `BEGIN IMMEDIATE` to `export_session()` / `import_session()`, enforced strict `GraphStore.initialize()` (no schema auto-init in `_get_conn()`), and removed the duplicate `test_reconcile_state_decay_adaptive_volatility()` in `tests/unit/test_graph_decay.py`.
@@ -541,6 +541,18 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
 
 - [x] **Supply-Chain Provenance & Pinning (`.github/workflows/` & `Dockerfile`):**
   - Pinned all GitHub Actions in `.github/workflows/*.yml` to immutable commit SHAs, digest-pinned `python:3.12-slim-bookworm` in `Dockerfile`, and commit-pinned cloned tools (`nikto`, `exploitdb`).
+
+- [x] **Identity Migration & Endpoint Path Disambiguation (`ether.graph.identity`, [ADR 0018](docs/adr/0018-pre-epoch4-sealing-audit-identity-and-cli-seams.md)):**
+  - *Problem*: Probing multiple distinct URL paths on the same `host:port` (e.g., `/`, `/metrics`, `/ftp`, `/rest/admin/application-configuration`) causes `GraphStore` to match all endpoints on the shared `favicon_hash` anchor, emit false-positive `anchored_identity` migration edges, and mark earlier valid endpoints on that same service as `stale`.
+  - *Deep Module Design*: Encapsulated `(host_ip, port)` / `netloc` origin disambiguation inside `IdentityAnchoringEngine.resolve_migrations()` so distinct URL paths on the same origin remain `confirmed` while host or port changes emit `anchored_identity`.
+
+- [x] **Unified Forensic Audit Trail Seam (`ether.common.forensic_log` / `ether.gateway.gate`, [ADR 0018](docs/adr/0018-pre-epoch4-sealing-audit-identity-and-cli-seams.md)):**
+  - *Problem*: `ether session verify-audit <SESSION_ID> -j` returned `{"valid": true, "entries": []}` for CLI/MCP runs because `ActionGateway.create_session()` did not propagate `data_dir` into `ExecutionSession`, and `verify_session_audit()` returned `True` when spool logs existed without a manifest.
+  - *Deep Module Design*: Wired `data_dir` through `ActionGateway.create_session()` → `ExecutionSession` → `ForensicLogManager.record_action_completion()` and made `verify_session_audit()` fail closed when unmanifested `.log`/`.log.gz` files exist.
+
+- [x] **Symmetric CLI Session-Binding Interface (`ether.cli.router` / `ether.cli.commands.ops`, [ADR 0018](docs/adr/0018-pre-epoch4-sealing-audit-identity-and-cli-seams.md)):**
+  - *Problem*: `ether report` only accepted an optional positional `session_id` ([router.py:560-562](src/ether/cli/router.py#L560-L562)) and failed with `unrecognized arguments: -s`.
+  - *Deep Module Design*: Added shared `_resolve_session_arg()` across `report`, `status`, and `ps` supporting both optional positional `session_id` and `-s`/`--session-id` uniformly.
 
 ---
 

@@ -246,6 +246,10 @@ class ForensicLogManager:
         manifest_path = cls.get_manifest_path(session_id, data_dir)
         session_dir = cls.get_session_dir(session_id, data_dir)
         if not manifest_path.is_file():
+            if session_dir.is_dir() and (
+                any(session_dir.glob("*.log")) or any(session_dir.glob("*.log.gz"))
+            ):
+                return False, []
             return True, []
 
         records = cls.query_session_audit(session_id, data_dir)

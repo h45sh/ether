@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import urllib.parse
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import aiosqlite
@@ -41,13 +42,33 @@ class IdentityAnchoringEngine:
         return anchor_hash
 
     @staticmethod
+    def _extract_origin(
+        pik: Dict[str, Any], data: Dict[str, Any]
+    ) -> Optional[Tuple[str, Optional[int]]]:
+        """Extract canonical (host_or_netloc, port) service origin for migration disambiguation."""
+        host_ip = pik.get("host_ip") or data.get("host_ip")
+        port = pik.get("port") if pik.get("port") is not None else data.get("port")
+        url = pik.get("url") or data.get("url")
+        if url and (not host_ip or port is None):
+            parsed = urllib.parse.urlparse(str(url))
+            if not host_ip and parsed.hostname:
+                host_ip = parsed.hostname
+            if port is None and parsed.port is not None:
+                port = parsed.port
+            elif port is None and parsed.scheme in ("http", "https"):
+                port = 443 if parsed.scheme == "https" else 80
+        if not host_ip:
+            return None
+        return (str(host_ip), int(port) if port is not None else None)
+
+    @staticmethod
     async def resolve_migrations(
         db: aiosqlite.Connection,
         session_id: str,
         node_metadata: Dict[str, Dict[str, Any]],
         action_id: Optional[str] = None,
     ) -> Tuple[Set[Tuple[str, str, str, str]], Set[str], List[Tuple[Any, ...]]]:
-        """Detect cross-IP migrations for entities sharing invariant cryptographic anchors.
+        """Detect cross-origin migrations for entities sharing invariant cryptographic anchors.
 
         Returns:
             Tuple of:
@@ -63,10 +84,13 @@ class IdentityAnchoringEngine:
             anchor = meta.get("anchor_hash")
             if not anchor:
                 continue
+            new_origin = IdentityAnchoringEngine._extract_origin(
+                meta.get("pik") or {}, meta.get("data") or {}
+            )
 
             cursor = await db.execute(
                 """
-                SELECT n.id, n.status,
+                SELECT n.id, n.status, n.pik_json, n.data_json,
                        (SELECT 1 FROM edges e
                         WHERE e.session_id = n.session_id
                           AND e.source_id = n.id
@@ -79,7 +103,18 @@ class IdentityAnchoringEngine:
                 (nid, session_id, anchor, nid),
             )
             matching_nodes = await cursor.fetchall()
-            for old_id, old_status, has_edge in matching_nodes:
+            for old_id, old_status, old_pik_raw, old_data_raw, has_edge in matching_nodes:
+                if new_origin is not None:
+                    try:
+                        old_pik = json.loads(old_pik_raw) if old_pik_raw else {}
+                        old_data = json.loads(old_data_raw) if old_data_raw else {}
+                    except Exception:
+                        old_pik, old_data = {}, {}
+                    old_origin = IdentityAnchoringEngine._extract_origin(old_pik, old_data)
+                    if old_origin is not None and old_origin == new_origin:
+                        # Distinct URL paths on the same (host_ip, port) are not migrations
+                        continue
+
                 migration_edges.add((session_id, old_id, nid, "anchored_identity"))
                 if old_status != "stale":
                     stale_migrated_node_ids.add(old_id)
