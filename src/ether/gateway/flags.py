@@ -157,12 +157,15 @@ class FlagFirewall:
         manifest = self._get_manifest(tool_name)
         flags_cfg = getattr(manifest, "flags", None) if manifest is not None else None
         raw_allowed = getattr(flags_cfg, "allowed", None) if flags_cfg is not None else None
-        is_concrete_allowed = isinstance(raw_allowed, (list, tuple, set, frozenset))
-        if is_concrete_allowed and hasattr(flags_cfg, "model_fields_set"):
-            has_allowed_contract = "allowed" in flags_cfg.model_fields_set
+        if isinstance(raw_allowed, (list, tuple, set, frozenset)):
+            if flags_cfg is not None and hasattr(flags_cfg, "model_fields_set"):
+                has_allowed_contract = "allowed" in flags_cfg.model_fields_set
+            else:
+                has_allowed_contract = True
+            allowed = set(raw_allowed)
         else:
-            has_allowed_contract = is_concrete_allowed
-        allowed = set(raw_allowed) if is_concrete_allowed else set()
+            has_allowed_contract = False
+            allowed = set()
         raw_blocked = getattr(flags_cfg, "blocked", None) if flags_cfg is not None else None
         blocked = (
             set(raw_blocked) if isinstance(raw_blocked, (list, tuple, set, frozenset)) else set()
