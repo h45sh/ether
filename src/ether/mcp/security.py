@@ -104,7 +104,8 @@ class SecurityMiddleware:
         static_admin_token: Optional[str] = None,
     ) -> None:
         self._secrets: list[bytes] = [
-            s.encode("utf-8") if isinstance(s, str) else s for s in (signing_secret, *previous_secrets)
+            s.encode("utf-8") if isinstance(s, str) else s
+            for s in (signing_secret, *previous_secrets)
         ]
         self.allowed_origins = set(allowed_origins)
         self.trusted_mtls_fingerprints = {fp.lower() for fp in trusted_mtls_fingerprints}
@@ -135,9 +136,13 @@ class SecurityMiddleware:
             "scopes": scope_strs,
             "exp": int(time.time()) + ttl_seconds,
         }
-        payload_b64 = base64.urlsafe_b64encode(
-            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        ).decode("ascii").rstrip("=")
+        payload_b64 = (
+            base64.urlsafe_b64encode(
+                json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            )
+            .decode("ascii")
+            .rstrip("=")
+        )
         sig = hmac.new(self._secrets[0], payload_b64.encode("ascii"), hashlib.sha256).digest()
         sig_b64 = base64.urlsafe_b64encode(sig).decode("ascii").rstrip("=")
         return f"v1.{payload_b64}.{sig_b64}"
@@ -165,7 +170,9 @@ class SecurityMiddleware:
 
         pad_payload = payload_b64 + "=" * (-len(payload_b64) % 4)
         try:
-            payload = json.loads(base64.urlsafe_b64decode(pad_payload.encode("ascii")).decode("utf-8"))
+            payload = json.loads(
+                base64.urlsafe_b64decode(pad_payload.encode("ascii")).decode("utf-8")
+            )
         except Exception:
             return None
 
@@ -254,8 +261,7 @@ class SecurityMiddleware:
             async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
                 if scope.get("type") == "http":
                     headers = {
-                        k.decode("latin1"): v.decode("latin1")
-                        for k, v in scope.get("headers", [])
+                        k.decode("latin1"): v.decode("latin1") for k, v in scope.get("headers", [])
                     }
                     client = scope.get("client")
                     client_ip = client[0] if client else "127.0.0.1"
@@ -271,7 +277,9 @@ class SecurityMiddleware:
                         from starlette.responses import Response
 
                         resp = Response(
-                            content=f"Unauthorized: {err}\n" if err.status_code == 401 else f"{err}\n",
+                            content=f"Unauthorized: {err}\n"
+                            if err.status_code == 401
+                            else f"{err}\n",
                             status_code=err.status_code,
                             media_type="text/plain",
                             headers={"WWW-Authenticate": 'Bearer realm="ether-mcp"'}

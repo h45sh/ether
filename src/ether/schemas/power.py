@@ -38,7 +38,7 @@ class ActionRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
     triggered_by: ActionSource = ActionSource.USER
     is_explicit_shell: bool = False  # True if prefix '!' was used
-    timeout_seconds: Optional[int] = None
+    timeout_seconds: Optional[float] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

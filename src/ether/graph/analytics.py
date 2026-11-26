@@ -461,7 +461,9 @@ class GraphAnalyticsEngine:
                         break
 
                 # Factor B.2: Tarpit timing anomalies on service
-                latency = data.get("latency_sec") or data.get("duration") or data.get("connect_time")
+                latency = (
+                    data.get("latency_sec") or data.get("duration") or data.get("connect_time")
+                )
                 try:
                     lat_val = float(latency) if latency is not None else 0.0
                 except (ValueError, TypeError):

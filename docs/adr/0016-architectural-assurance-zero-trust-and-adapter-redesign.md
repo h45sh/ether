@@ -63,9 +63,7 @@ class SecurityMiddleware:
 ### 4. Cryptographic Plugin Attestation & Sandboxed Loader (`ether.registry.loader`)
 ```python
 class PluginLoader:
-    def load_verified_adapter(
-        self, adapter_path: Path, manifest_path: Path
-    ) -> ToolAdapter: ...
+    def load_verified_adapter(self, adapter_path: Path, manifest_path: Path) -> ToolAdapter: ...
 ```
 - **Pure-Python Defense-in-Depth (No Wasm Runtime):** Uses `cryptography` (already in `pyproject.toml`) for Ed25519 signature verification against trusted keys and SHA-256 manifest hash verification.
 - **AST Static Gate & Namespace Isolation:** Parses `adapter.py` AST to reject unauthorized `eval`, `exec`, raw `socket`, or `subprocess` calls before loading into an isolated module namespace.
@@ -74,9 +72,7 @@ class PluginLoader:
 ### 5. Transparent Database Cryptography & Credential Protection (`ether.graph.crypto`)
 ```python
 class CryptoEngine:
-    def open_encrypted_store(
-        self, db_path: Path, passphrase_or_key: bytes
-    ) -> GraphStore: ...
+    def open_encrypted_store(self, db_path: Path, passphrase_or_key: bytes) -> GraphStore: ...
 ```
 - **Zero-Dependency Default:** Pure-Python ChaCha20-Poly1305 field-level encryption (via `cryptography`) protecting `CredentialFound` secrets, `raw_data`, and sensitive `event_log` payloads, with `0o600` keyfile fallback, credential TTL expiration, and `ctypes.memset` memory zeroization.
 - **Optional Integrations:** Auto-enable full-page SQLCipher and OS keyring (`secretstorage` / `keyring`) backends when those optional packages are installed, keeping `pip install ether-core` free of mandatory native C build dependencies.

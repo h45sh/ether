@@ -185,7 +185,9 @@ class HTTPProbeAdapter(ToolAdapter):
                 response = await asyncio.wait_for(client.get(url), timeout=timeout_sec)
             except SSRFPinnedError as exc:
                 msg = f"Target blocked by SSRF policy: {exc}"
-                await context.spool_line(f"[!] SSRF Redirect Defense Triggered: {msg}", is_error=True)
+                await context.spool_line(
+                    f"[!] SSRF Redirect Defense Triggered: {msg}", is_error=True
+                )
                 raise PolicyViolationError(msg) from exc
             except PolicyViolationError:
                 raise

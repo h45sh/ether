@@ -21,9 +21,7 @@ async def test_calibrate_fuzzer_baseline_success():
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
-        result = await calibrate_fuzzer_baseline(
-            "http://target.local", policy_is_unrestricted=True
-        )
+        result = await calibrate_fuzzer_baseline("http://target.local", policy_is_unrestricted=True)
 
         assert result is not None
         assert result["status_code"] == 200
@@ -72,7 +70,8 @@ async def test_ffuf_adapter_injects_filter_size():
             findings.append(f)
 
         call_kwargs = mock_context.runner.run.call_args[1]
-        assert "-fs 1337" in call_kwargs["params"]["raw_flags"]
+        assert "-fs" in call_kwargs["params"]["flags"]
+        assert "1337" in call_kwargs["params"]["flags"]
 
 
 @pytest.mark.asyncio
@@ -104,4 +103,5 @@ async def test_gobuster_adapter_injects_exclude_length():
             findings.append(f)
 
         call_kwargs = mock_context.runner.run.call_args[1]
-        assert "--exclude-length 2048" in call_kwargs["params"]["raw_flags"]
+        assert "--exclude-length" in call_kwargs["params"]["flags"]
+        assert "2048" in call_kwargs["params"]["flags"]

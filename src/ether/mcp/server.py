@@ -196,7 +196,9 @@ def create_mcp_server(
         sess_id = await _resolve_session(session_id)
         node = await store.get_node(sess_id, entity_id)
         if not node:
-            return _compact_json({"error": "NotFound", "message": f"Entity '{entity_id}' not found."})
+            return _compact_json(
+                {"error": "NotFound", "message": f"Entity '{entity_id}' not found."}
+            )
 
         # Fetch incident edges
         all_edges = await store.get_all_edges(sess_id)
@@ -768,7 +770,7 @@ def create_mcp_server(
             mode=mode,
             record_findings=record_findings,
         )
-        return _compact_json(report.to_dict(), indent=2)
+        return _compact_json(report.to_dict())
 
     @server.tool()
     async def get_telemetry_snapshot(
@@ -873,7 +875,7 @@ def create_mcp_server(
                         }
                     )
         schema_entries.sort(key=lambda x: str(x["schema_type"]))
-        return _compact_json({"total": len(schema_entries), "schemas": schema_entries}, indent=2)
+        return _compact_json({"total": len(schema_entries), "schemas": schema_entries})
 
     @server.resource("ether://tools/{tool_name}/guidance")
     def resource_tool_guidance(tool_name: str) -> str:

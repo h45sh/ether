@@ -33,7 +33,7 @@ async def test_mcp_server_creation_and_tool_listing():
         "get_telemetry_snapshot",
         "search_findings_semantic",
         # Arsenal Introspection
-        "list_tools",
+        "search_tools",
         "get_tool_info",
         # Graph Intelligence
         "get_attack_path",
@@ -358,8 +358,8 @@ async def test_mcp_list_tools_and_get_tool_info():
     await store.initialize()
     server = create_mcp_server(store)
 
-    # 1. list_tools
-    res_list = await server.call_tool("list_tools", {})
+    # 1. search_tools
+    res_list = await server.call_tool("search_tools", {})
     assert res_list.is_error is False
     data_list = json.loads(res_list.content[0].text)
     assert data_list["total"] >= 10
@@ -659,7 +659,7 @@ async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
     )
     assert res.is_error is False
     data = json.loads(res.content[0].text)
-    assert captured_params.get("raw_flags") == "-sV -p80"
+    assert captured_params.get("flags") == ["-sV", "-p80"]
     assert data["is_error"] is True
     assert data["error_category"] == "NON_ZERO_EXIT"
 

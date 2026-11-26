@@ -89,9 +89,7 @@ class SupervisedExecutionService:
                 avail = ", ".join(sorted(profiles.keys()))
                 return {
                     "is_error": True,
-                    "error_category": ExecutionErrorCategory.INVALID_ARGUMENT.value
-                    if hasattr(ExecutionErrorCategory, "INVALID_ARGUMENT")
-                    else "invalid_argument",
+                    "error_category": "invalid_argument",
                     "exit_code": 2,
                     "stderr_snippet": f"Unknown profile '{resolved_profile}' for '{tool_name}'. Available: {avail}",
                     "error": "UnknownProfile",

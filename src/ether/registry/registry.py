@@ -116,9 +116,7 @@ class ToolRegistry:
         m_path = manifest_path or (adapter_path.parent / "manifest.toml")
         reg_cfg = getattr(self._settings, "registry", None)
         mode_str = str(getattr(reg_cfg, "trust_mode", "dev")).lower()
-        trust_mode = (
-            PluginTrustMode.STRICT if mode_str == "strict" else PluginTrustMode.DEV
-        )
+        trust_mode = PluginTrustMode.STRICT if mode_str == "strict" else PluginTrustMode.DEV
         raw_keys = getattr(reg_cfg, "trusted_public_keys", None) or []
         trusted_keys = [
             bytes.fromhex(k) if len(k) == 64 else k.encode("utf-8") for k in raw_keys
@@ -157,7 +155,9 @@ class ToolRegistry:
         """Return a list of loaded tool names."""
         return list(self.tools.keys())
 
-    def get_tool_summary(self, name: str, include_profiles: bool = True) -> Optional[Dict[str, Any]]:
+    def get_tool_summary(
+        self, name: str, include_profiles: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """Return a structured metadata and installation summary without forcing lazy adapter imports for CLI binaries."""
         data = self.tools.get(name)
         if not data:
@@ -167,8 +167,9 @@ class ToolRegistry:
         tier = getattr(meta, "execution_tier", "subprocess")
         binary = meta.binary or meta.name
 
-        if dict.get(data, "adapter") is not None:
-            installed = bool(dict.get(data, "adapter").validate_install())
+        adapter_obj = dict.get(data, "adapter")
+        if adapter_obj is not None:
+            installed = bool(adapter_obj.validate_install())
         elif tier == "coroutine":
             loaded = self._ensure_adapter(name)
             installed = bool(loaded and loaded["adapter"].validate_install())

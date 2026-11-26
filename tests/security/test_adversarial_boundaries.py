@@ -93,7 +93,9 @@ async def test_session_sealer_ed25519_tamper_detection(tmp_path: Path):
 async def test_crypto_engine_encrypts_credentials_at_rest(tmp_path: Path):
     """CryptoEngine encrypts CredentialFound passwords in SQLite and zeroizes memory."""
     db_path = tmp_path / "enc.db"
-    store = CryptoEngine.open_encrypted_store(db_path, passphrase_or_key=b"k" * 32, data_dir=tmp_path)
+    store = CryptoEngine.open_encrypted_store(
+        db_path, passphrase_or_key=b"k" * 32, data_dir=tmp_path
+    )
     await store.initialize()
     ws = await store.create_workspace("EncWS")
     sess = await store.create_session(ws, "EncSess")
@@ -246,7 +248,9 @@ def test_plugin_loader_ed25519_and_ast_sandbox(tmp_path: Path):
 
     manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     loader = PluginLoader(trust_mode=PluginTrustMode.STRICT, trusted_public_keys=[pub_bytes])
-    adapter = loader.load_verified_adapter(adapter_path, manifest_path, expected_manifest_sha256=manifest_sha)
+    adapter = loader.load_verified_adapter(
+        adapter_path, manifest_path, expected_manifest_sha256=manifest_sha
+    )
     assert adapter.validate_install() is True
 
     # AST rejection of eval() even in DEV mode

@@ -114,7 +114,9 @@ def render_tools_catalog_doc() -> str:
 
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate or verify Ether reference docs.")
-    parser.add_argument("--check", action="store_true", help="Exit non-zero if docs are out of sync.")
+    parser.add_argument(
+        "--check", action="store_true", help="Exit non-zero if docs are out of sync."
+    )
     args = parser.parse_args(argv)
 
     cfg_text = render_configuration_doc()

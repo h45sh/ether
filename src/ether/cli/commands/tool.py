@@ -10,7 +10,28 @@ from ether.cli.formatters import print_error, print_json, print_table
 def handle_tool_list(args: Any, context: CliContext) -> int:
     """List all available tool adapters in ToolRegistry."""
     registry = context.get_registry()
-    entries = registry.list_tool_summaries()
+    if hasattr(registry, "list_tool_summaries"):
+        entries = registry.list_tool_summaries()
+    else:
+        entries = []
+        for name in sorted(registry.list_tools()):
+            data = registry.get_tool(name) or {}
+            manifest = data.get("manifest")
+            adapter = data.get("adapter")
+            meta = getattr(manifest, "meta", None)
+            tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+            binary = getattr(meta, "binary", name) if meta else name
+            installed = bool(adapter.validate_install()) if adapter else False
+            entries.append(
+                {
+                    "name": name,
+                    "binary": binary,
+                    "tier": tier,
+                    "installed": installed,
+                    "category": getattr(meta, "category", "general") if meta else "general",
+                    "description": getattr(meta, "description", "") if meta else "",
+                }
+            )
 
     if context.is_json:
         print_json(entries)

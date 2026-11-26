@@ -86,13 +86,13 @@ class CryptoEngine:
     def resolve_master_key(
         cls,
         passphrase_or_key: Optional[bytes] = None,
-        data_dir: Optional[Path] = None,
+        data_dir: Optional[str | Path] = None,
     ) -> bytes:
         """Resolve a 32-byte master key from explicit bytes, OS keyring, or 0o600 keyfile."""
+        base_dir = Path(data_dir) if data_dir is not None else Path(paths.get_default_data_dir())
         if passphrase_or_key is not None:
             if len(passphrase_or_key) == 32:
                 return passphrase_or_key
-            base_dir = data_dir or Path(paths.get_default_data_dir())
             salt_path = base_dir / "keys" / "db_salt.bin"
             if salt_path.exists():
                 salt = salt_path.read_bytes()
@@ -110,7 +110,6 @@ class CryptoEngine:
         if keyring_key and len(keyring_key) == 32:
             return keyring_key
 
-        base_dir = data_dir or Path(paths.get_default_data_dir())
         key_path = base_dir / "keys" / "db_master.key"
         if key_path.exists():
             return key_path.read_bytes()

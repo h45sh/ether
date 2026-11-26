@@ -24,6 +24,7 @@ def test_storage_lifecycle_manager_compression_and_pruning(tmp_path: Path):
     old_time = time.time() - 7200  # 2 hours old
     old_log.touch()
     import os
+
     os.utime(old_log, (old_time, old_time))
 
     # 2. Create a protected forensic log tracked in audit_manifest.jsonl
@@ -75,6 +76,7 @@ def test_storage_lifecycle_manager_quota_prune(tmp_path: Path):
     f2.write_bytes(b"Y" * 600)
 
     import os
+
     now = time.time()
     os.utime(f1, (now - 100, now - 100))  # older
     os.utime(f2, (now - 10, now - 10))
@@ -102,6 +104,7 @@ def test_cli_logs_prune(tmp_path: Path, capsys):
     f1 = logs_dir / "old.log"
     f1.write_text("data")
     import os
+
     old_time = time.time() - 10000
     os.utime(f1, (old_time, old_time))
 

@@ -774,9 +774,7 @@ class PreflightVerifier:
                 manifest_uses_wordlist = True
             elif profiles:
                 manifest_uses_wordlist = any(
-                    "-w" in vec
-                    or "--wordlist" in vec
-                    or any("{wordlist:" in f for f in vec)
+                    "-w" in vec or "--wordlist" in vec or any("{wordlist:" in f for f in vec)
                     for vec in profiles.values()
                 )
 

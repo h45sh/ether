@@ -58,7 +58,9 @@ def test_lazy_tool_registry_and_search():
 
 @pytest.mark.fast
 def test_mcp_per_tool_rbac_enforcement():
-    readonly_ctx = AuthContext(subject="reader", scopes=frozenset({OperationType.GRAPH_QUERY.value}))
+    readonly_ctx = AuthContext(
+        subject="reader", scopes=frozenset({OperationType.GRAPH_QUERY.value})
+    )
     tok = _CURRENT_AUTH_CONTEXT.set(readonly_ctx)
     try:
         require_operation(OperationType.GRAPH_QUERY)

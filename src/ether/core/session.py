@@ -448,9 +448,7 @@ class ExecutionSession:
         # Replay backlog if already started
         buffer_chunks = self.get_output_history(action_id)
         for chunk in buffer_chunks:
-            self._queue_put_with_backpressure(
-                q, ExecutionChunk(action_id=action_id, text=chunk)
-            )
+            self._queue_put_with_backpressure(q, ExecutionChunk(action_id=action_id, text=chunk))
 
         job = self.get_job(action_id)
         if job and job.status != JobStatusEnum.RUNNING:

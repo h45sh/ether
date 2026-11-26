@@ -35,12 +35,16 @@ def test_container_runner_should_use_container(monkeypatch):
     monkeypatch.setenv("ETHER_CONTAINER_FALLBACK", "1")
 
     # In-process coroutines and shell must never use container
-    assert ContainerizedToolRunner.should_use_container("stealth_scan", execution_tier="coroutine") is False
+    assert (
+        ContainerizedToolRunner.should_use_container("stealth_scan", execution_tier="coroutine")
+        is False
+    )
     assert ContainerizedToolRunner.should_use_container("sudo") is False
     assert ContainerizedToolRunner.should_use_container("bash") is False
 
     # External binary when runtime exists and local binary is missing
     with patch("shutil.which") as mock_which:
+
         def _mock_which(name):
             if name in ("podman", "docker"):
                 return f"/usr/bin/{name}"
@@ -99,10 +103,12 @@ def test_preflight_verifier_container_fallback_warning(monkeypatch):
     verifier = PreflightVerifier(registry=reg, policy=GatePolicy.SAFE)
 
     with patch("shutil.which") as mock_which:
+
         def _mock_which(name):
             if name == "podman":
                 return "/usr/bin/podman"
             return None
+
         mock_which.side_effect = _mock_which
 
         report = verifier.verify("mock_missing", target="scanme.nmap.org")

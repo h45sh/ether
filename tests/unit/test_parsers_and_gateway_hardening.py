@@ -40,7 +40,9 @@ def test_target_inference_ip_port():
 
 
 def test_preflight_flag_smuggling_and_metachars():
-    verifier = PreflightVerifier(policy=GatePolicy.SAFE, scope=EngagementScope(allow_loopback=False))
+    verifier = PreflightVerifier(
+        policy=GatePolicy.SAFE, scope=EngagementScope(allow_loopback=False)
+    )
 
     # Smuggled loopback in joined flag
     r1 = verifier.verify("nmap", "scanme.nmap.org", flags="-uhttp://127.0.0.1")
@@ -63,7 +65,10 @@ async def test_action_gateway_flag_smuggling_rejection():
     from uuid import uuid4
 
     from ether.registry.registry import ToolRegistry
-    gateway = ActionGateway(registry=ToolRegistry(), policy=GatePolicy.SAFE, scope=EngagementScope(allow_loopback=False))
+
+    gateway = ActionGateway(
+        registry=ToolRegistry(), policy=GatePolicy.SAFE, scope=EngagementScope(allow_loopback=False)
+    )
     action = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
@@ -87,7 +92,7 @@ async def test_imds_probe_open_redirect():
     target = BaseFinding(
         schema_type="web.endpoint",
         pik={"url": "http://127.0.0.1/redirect-imds"},
-        data={"url": "http://127.0.0.1/redirect-imds"}
+        data={"url": "http://127.0.0.1/redirect-imds"},
     )
     ctx = ExecutionContext(action_id="test", session_id="test", policy="unrestricted")
 
@@ -99,7 +104,7 @@ async def test_imds_probe_open_redirect():
     mock_resp = httpx.Response(
         status_code=302,
         headers={"Location": "http://169.254.169.254/latest/meta-data/"},
-        request=httpx.Request("GET", "http://127.0.0.1/redirect-imds")
+        request=httpx.Request("GET", "http://127.0.0.1/redirect-imds"),
     )
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:

@@ -855,10 +855,20 @@ class GraphStore:
             else:
                 # Deterministic automatic edge wiring (Ticket 08)
                 if finding.schema_type == "network.service":
-                    hip = finding.pik.get("host_ip") or finding.data.get("host_ip") or finding.pik.get("ip")
+                    hip = (
+                        finding.pik.get("host_ip")
+                        or finding.data.get("host_ip")
+                        or finding.pik.get("ip")
+                    )
                     if hip:
                         p_id = self.generate_node_id("network.host", {"ip": hip})
-                        parent_nodes[p_id] = (session_id, p_id, "network.host", json.dumps({"ip": hip}), "{}")
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.host",
+                            json.dumps({"ip": hip}),
+                            "{}",
+                        )
                         parent_edges.add((session_id, p_id, node_id, "hosts_service"))
                 elif finding.schema_type == "web.endpoint":
                     hip = finding.data.get("host_ip") or finding.pik.get("host_ip")
@@ -866,24 +876,52 @@ class GraphStore:
                     if hip and port:
                         svc_pik = {"host_ip": hip, "port": int(port), "protocol": "tcp"}
                         p_id = self.generate_node_id("network.service", svc_pik)
-                        parent_nodes[p_id] = (session_id, p_id, "network.service", json.dumps(svc_pik), "{}")
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.service",
+                            json.dumps(svc_pik),
+                            "{}",
+                        )
                         parent_edges.add((session_id, p_id, node_id, "hosts_endpoint"))
                 elif finding.schema_type in ("vulnerability", "cve"):
-                    hip = finding.data.get("host_ip") or finding.pik.get("host_ip") or finding.data.get("ip")
+                    hip = (
+                        finding.data.get("host_ip")
+                        or finding.pik.get("host_ip")
+                        or finding.data.get("ip")
+                    )
                     port = finding.data.get("port") or finding.pik.get("port")
                     url = finding.data.get("url") or finding.pik.get("url")
                     if url:
                         ep_id = self.generate_node_id("web.endpoint", {"url": url})
-                        parent_nodes[ep_id] = (session_id, ep_id, "web.endpoint", json.dumps({"url": url}), "{}")
+                        parent_nodes[ep_id] = (
+                            session_id,
+                            ep_id,
+                            "web.endpoint",
+                            json.dumps({"url": url}),
+                            "{}",
+                        )
                         parent_edges.add((session_id, ep_id, node_id, "has_vulnerability"))
                     elif hip and port:
                         svc_pik = {"host_ip": hip, "port": int(port), "protocol": "tcp"}
                         p_id = self.generate_node_id("network.service", svc_pik)
-                        parent_nodes[p_id] = (session_id, p_id, "network.service", json.dumps(svc_pik), "{}")
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.service",
+                            json.dumps(svc_pik),
+                            "{}",
+                        )
                         parent_edges.add((session_id, p_id, node_id, "has_vulnerability"))
                     elif hip:
                         p_id = self.generate_node_id("network.host", {"ip": hip})
-                        parent_nodes[p_id] = (session_id, p_id, "network.host", json.dumps({"ip": hip}), "{}")
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.host",
+                            json.dumps({"ip": hip}),
+                            "{}",
+                        )
                         parent_edges.add((session_id, p_id, node_id, "has_vulnerability"))
 
             for assoc in finding.associations:
@@ -1404,6 +1442,7 @@ class GraphStore:
         If the session already exists, it is overwritten (restored).
         Returns the imported session ID.
         """
+
         async def _op(db: aiosqlite.Connection) -> str:
             db.row_factory = aiosqlite.Row
             await db.execute("ATTACH DATABASE ? AS src", (src_db_path,))

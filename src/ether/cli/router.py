@@ -357,13 +357,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--crashes", action="store_true", help="Show recent unhandled crash summary"
     )
     logs_parser.add_argument(
-        "--prune", action="store_true", help="Enforce log retention quota and compress historical logs"
+        "--prune",
+        action="store_true",
+        help="Enforce log retention quota and compress historical logs",
     )
     logs_parser.add_argument(
-        "--max-disk-mb", type=int, default=1000, help="Maximum log directory size in MB (default: 1000)"
+        "--max-disk-mb",
+        type=int,
+        default=1000,
+        help="Maximum log directory size in MB (default: 1000)",
     )
     logs_parser.add_argument(
-        "--max-age-days", type=int, default=30, help="Maximum age for log retention in days (default: 30)"
+        "--max-age-days",
+        type=int,
+        default=30,
+        help="Maximum age for log retention in days (default: 30)",
     )
     logs_parser.add_argument(
         "--include-forensic",

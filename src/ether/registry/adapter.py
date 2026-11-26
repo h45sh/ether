@@ -18,6 +18,7 @@ class ToolCapabilities:
     output_format: str = "text"
     supports_streaming_parse: bool = True
 
+
 from ether.common import strip_ansi as _strip_ansi
 from ether.common.context import ExecutionContext
 from ether.schemas.base import BaseFinding
@@ -54,7 +55,11 @@ class ToolAdapter(ABC):
         produces = list(manifest.output.get("produces", [])) if manifest else []
         exec_cfg = getattr(manifest, "execution", None) if manifest else None
         out_fmt = getattr(exec_cfg, "output_format", "text") if exec_cfg else "text"
-        streaming = getattr(exec_cfg, "supports_streaming_parse", self.supports_streaming_parse) if exec_cfg else self.supports_streaming_parse
+        streaming = (
+            getattr(exec_cfg, "supports_streaming_parse", self.supports_streaming_parse)
+            if exec_cfg
+            else self.supports_streaming_parse
+        )
         amplifies: List[str] = []
         if "network.service" in produces:
             amplifies.extend(["http_probe", "tls_probe", "nuclei"])

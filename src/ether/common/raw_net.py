@@ -135,7 +135,7 @@ class RawNetworkGovernor:
         rate_limit: int,
     ) -> AsyncIterator[ServiceProbeResult]:
         def _sync_scapy() -> List[int]:
-            from scapy.all import IP, TCP, conf, send, sr1
+            from scapy.all import IP, TCP, conf, send, sr1  # type: ignore[attr-defined]
 
             conf.verb = 0
             open_ports = []
@@ -144,7 +144,7 @@ class RawNetworkGovernor:
                 resp = sr1(pkt, timeout=timeout_sec, verbose=0)
                 if resp and resp.haslayer(TCP):
                     tcp_layer = resp.getlayer(TCP)
-                    if tcp_layer.flags == 0x12:
+                    if tcp_layer is not None and tcp_layer.flags == 0x12:
                         open_ports.append(p)
                         rst = IP(dst=target) / TCP(dport=p, flags="R")
                         send(rst, verbose=0)

@@ -38,15 +38,19 @@ class ContainerizedToolRunner:
         return cls.is_enabled() and (cls.get_runtime() is not None)
 
     @classmethod
-    def should_use_container(
-        cls, binary_name: str, execution_tier: Optional[str] = None
-    ) -> bool:
+    def should_use_container(cls, binary_name: str, execution_tier: Optional[str] = None) -> bool:
         """Determine if a tool execution should fall back to containerized runner.
 
         Container fallback applies strictly to external binary adapters (Tier A/C).
         Never wraps in-process Python coroutines or explicit shell commands.
         """
-        if execution_tier == "coroutine" or binary_name in ("sudo", "sh", "bash", "zsh", "stealth_scan"):
+        if execution_tier == "coroutine" or binary_name in (
+            "sudo",
+            "sh",
+            "bash",
+            "zsh",
+            "stealth_scan",
+        ):
             return False
 
         # If binary is installed locally on PATH, direct execution is preferred

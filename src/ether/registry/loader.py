@@ -87,7 +87,9 @@ class PluginLoader:
             return
 
         if not self.trusted_public_keys:
-            raise PluginSecurityError("Signature present but no trusted Ed25519 public keys configured.")
+            raise PluginSecurityError(
+                "Signature present but no trusted Ed25519 public keys configured."
+            )
 
         digest = self.compute_bundle_digest(adapter_path, manifest_path)
         sig_raw = base64.b64decode(sig_path.read_text(encoding="utf-8").strip().encode("ascii"))
@@ -140,11 +142,7 @@ class PluginLoader:
 
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
-            if (
-                isinstance(attr, type)
-                and issubclass(attr, ToolAdapter)
-                and attr is not ToolAdapter
-            ):
+            if isinstance(attr, type) and issubclass(attr, ToolAdapter) and attr is not ToolAdapter:
                 return attr()
 
         raise PluginSecurityError(f"No ToolAdapter subclass found in '{adapter_path}'.")

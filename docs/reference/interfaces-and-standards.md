@@ -62,12 +62,14 @@ See [configuration.md](configuration.md) for the complete schema.
 import asyncio
 from ether import Ether
 
+
 async def main() -> None:
     async with Ether.open(policy="safe") as ether:
         tools = ether.search_tools(query="nmap", produces="network.service")
         result = await ether.run("nmap", "10.0.0.1", profile="fast")
         diff = await ether.diff(action_id=result["action_id"])
         print(diff)
+
 
 asyncio.run(main())
 ```

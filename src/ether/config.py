@@ -466,7 +466,9 @@ class EtherSettings(BaseModel):
             if field_name not in sec_model.model_fields:
                 continue
             field_info = sec_model.model_fields[field_name]
-            target.setdefault(sec, {})[field_name] = cls._coerce_env_value(raw, field_info.annotation)
+            target.setdefault(sec, {})[field_name] = cls._coerce_env_value(
+                raw, field_info.annotation
+            )
 
     @staticmethod
     def _coerce_env_value(raw: str, annotation: Any) -> Any:

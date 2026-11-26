@@ -2,7 +2,7 @@
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 from ether import paths
 from ether.config import EtherSettings
@@ -37,7 +37,7 @@ class CliContext:
         config_arg = getattr(args, "config", None)
         policy_arg = getattr(args, "policy", None)
 
-        cli_overrides = {
+        cli_overrides: Dict[str, Dict[str, Any]] = {
             "paths": {
                 "data_dir": data_dir_arg,
                 "db_path": db_arg,

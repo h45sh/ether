@@ -62,7 +62,9 @@ def is_blocked_destination(text: str, allow_loopback: bool = True) -> bool:
             return True
 
     # Tokenize input to detect embedded IP/host candidates via ScopeValidator
-    tokens = lower_text.replace("=", " ").replace("&", " ").replace(";", " ").replace(",", " ").split()
+    tokens = (
+        lower_text.replace("=", " ").replace("&", " ").replace(";", " ").replace(",", " ").split()
+    )
     metadata_scope = EngagementScope(allow_loopback=allow_loopback)
     for raw_tok in tokens:
         tok = _strip_token_delimiters(raw_tok)
@@ -72,7 +74,11 @@ def is_blocked_destination(text: str, allow_loopback: bool = True) -> bool:
             if tok.startswith(pfx):
                 tok = tok[len(pfx) :].lstrip("=:")
                 break
-        if ":" in tok and not tok.startswith("http") and ScopeValidator.parse_ip(ScopeValidator.parse_host_candidate(tok)) is None:
+        if (
+            ":" in tok
+            and not tok.startswith("http")
+            and ScopeValidator.parse_ip(ScopeValidator.parse_host_candidate(tok)) is None
+        ):
             sub_tokens = tok.split(":")
         else:
             sub_tokens = [tok]
@@ -89,7 +95,9 @@ def is_blocked_destination(text: str, allow_loopback: bool = True) -> bool:
                 or "nip.io" in host
                 or "localtest.me" in host
             ):
-                verdict = ScopeValidator.is_in_scope(sub_tok, metadata_scope, policy_is_unrestricted=False)
+                verdict = ScopeValidator.is_in_scope(
+                    sub_tok, metadata_scope, policy_is_unrestricted=False
+                )
                 if not verdict.allowed:
                     return True
 
@@ -377,7 +385,11 @@ class ActionGateway:
                     if not tok or tok.startswith("-"):
                         continue
                     host = ScopeValidator.parse_host_candidate(tok)
-                    if host and ("." in host or "://" in tok) and ScopeValidator.parse_ip(host) is None:
+                    if (
+                        host
+                        and ("." in host or "://" in tok)
+                        and ScopeValidator.parse_ip(host) is None
+                    ):
                         verdict = await ScopeValidator.check_destination(
                             tok, scope=self.scope, policy_is_unrestricted=False
                         )

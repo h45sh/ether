@@ -106,8 +106,10 @@ class StorageLifecycleManager:
             if not fpath.exists():
                 continue
             is_log_candidate = (
-                fpath.suffix == ".log" or fpath.name.startswith("system.log.")
-            ) and not fpath.name.endswith((".gz", ".zst")) and fpath.name != "audit_manifest.jsonl"
+                (fpath.suffix == ".log" or fpath.name.startswith("system.log."))
+                and not fpath.name.endswith((".gz", ".zst"))
+                and fpath.name != "audit_manifest.jsonl"
+            )
             if is_log_candidate:
                 if fpath in protected:
                     report.skipped_forensic_files += 1
@@ -156,7 +158,8 @@ class StorageLifecycleManager:
         if current_total > max_disk_bytes:
             # Sort eligible files by mtime ascending (oldest first)
             eligible_to_prune = [
-                f for f in remaining_files
+                f
+                for f in remaining_files
                 if f.name != "audit_manifest.jsonl" and (include_forensic or f not in protected)
             ]
             eligible_to_prune.sort(key=lambda f: f.stat().st_mtime)

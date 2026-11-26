@@ -256,7 +256,7 @@ class Executor:
             )
         elif use_container:
             container_cmd = ContainerizedToolRunner.build_container_command(
-                command, cwd=cwd, env=clean_env
+                command, cwd=cwd or ".", env=clean_env
             )
             process = await asyncio.create_subprocess_exec(
                 *container_cmd,

@@ -23,7 +23,9 @@ def handle_config_show(args: Any, context: CliContext) -> int:
         print_json(payload)
         return EXIT_SUCCESS
 
-    print(f"Config File: {payload['_meta']['config_path']} (exists: {payload['_meta']['config_exists']})")
+    print(
+        f"Config File: {payload['_meta']['config_path']} (exists: {payload['_meta']['config_exists']})"
+    )
     for section, values in payload.items():
         if section == "_meta":
             continue

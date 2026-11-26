@@ -210,9 +210,7 @@ class SessionSealer:
             )
 
             # Compute audit manifest hash and chain head
-            manifest_path = ForensicLogManager.get_manifest_path(
-                session_id, data_dir=data_dir_str
-            )
+            manifest_path = ForensicLogManager.get_manifest_path(session_id, data_dir=data_dir_str)
             if manifest_path.exists():
                 manifest_bytes = manifest_path.read_bytes()
                 manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
@@ -277,7 +275,10 @@ class SessionSealer:
     ) -> Tuple[bool, str]:
         """Verify a sealed session's Ed25519 receipt and underlying SHA-256 audit chain."""
         data_dir_str = str(data_dir) if data_dir is not None else None
-        receipt_path = ForensicLogManager.get_session_dir(session_id, data_dir=data_dir_str) / "seal_receipt.json"
+        receipt_path = (
+            ForensicLogManager.get_session_dir(session_id, data_dir=data_dir_str)
+            / "seal_receipt.json"
+        )
         if not receipt_path.exists():
             return False, f"No seal receipt found for session {session_id}."
 
@@ -287,7 +288,9 @@ class SessionSealer:
             return False, f"Corrupt seal receipt: {e}"
 
         # Verify underlying hash chain and compressed logs
-        chain_ok, chain_msg = ForensicLogManager.verify_session_audit(session_id, data_dir=data_dir_str)
+        chain_ok, chain_msg = ForensicLogManager.verify_session_audit(
+            session_id, data_dir=data_dir_str
+        )
         if not chain_ok:
             return False, f"Audit chain verification failed: {chain_msg}"
 

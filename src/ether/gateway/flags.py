@@ -60,7 +60,11 @@ class FlagFirewall:
                         for sub in part.split(":"):
                             if sub.strip():
                                 values.append(sub.strip())
-        elif token.startswith("-u") and len(token) > 2 and ("http://" in token or "https://" in token):
+        elif (
+            token.startswith("-u")
+            and len(token) > 2
+            and ("http://" in token or "https://" in token)
+        ):
             values.append(token[2:])
         elif not token.startswith("-"):
             for delim in delimiters:
@@ -98,7 +102,9 @@ class FlagFirewall:
         flags_cfg = getattr(manifest, "flags", None) if manifest is not None else None
         allowed = set(getattr(flags_cfg, "allowed", []) or [])
         blocked = set(getattr(flags_cfg, "blocked", []) or [])
-        delimiters = list(getattr(flags_cfg, "compound_delimiters", ["=", ":", ","]) or ["=", ":", ","])
+        delimiters = list(
+            getattr(flags_cfg, "compound_delimiters", ["=", ":", ","]) or ["=", ":", ","]
+        )
 
         effective_blocked = (DEFAULT_DANGEROUS_FLAGS - allowed) | blocked
 

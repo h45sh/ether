@@ -28,12 +28,12 @@ def handle_logs(args: Any, context: CliContext) -> int:
             print_json(report.to_dict())
         else:
             print("[+] Log Retention Policy Enforced:")
-            print(f"    Scanned:    {report.total_scanned_bytes / (1024*1024):.2f} MB")
+            print(f"    Scanned:    {report.total_scanned_bytes / (1024 * 1024):.2f} MB")
             print(f"    Compressed: {report.compressed_files} files")
             print(f"    Pruned:     {report.pruned_files} files")
-            print(f"    Freed:      {report.freed_bytes / (1024*1024):.2f} MB")
+            print(f"    Freed:      {report.freed_bytes / (1024 * 1024):.2f} MB")
             print(f"    Protected:  {report.skipped_forensic_files} forensic logs preserved")
-            print(f"    Remaining:  {report.remaining_bytes / (1024*1024):.2f} MB")
+            print(f"    Remaining:  {report.remaining_bytes / (1024 * 1024):.2f} MB")
         return EXIT_SUCCESS
 
     show_crashes = bool(getattr(args, "crashes", False))

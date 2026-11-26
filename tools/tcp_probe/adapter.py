@@ -88,10 +88,14 @@ class TcpProbeAdapter(ToolAdapter):
             connect_duration = time.monotonic() - start_time
             if connect_duration >= 15.0:
                 is_tarpit = True
-            await context.spool_line(f"TCP probe timed out connecting to {host}:{port}", is_error=True)
+            await context.spool_line(
+                f"TCP probe timed out connecting to {host}:{port}", is_error=True
+            )
             return
         except Exception as e:
-            await context.spool_line(f"TCP probe connection failed to {host}:{port}: {e}", is_error=True)
+            await context.spool_line(
+                f"TCP probe connection failed to {host}:{port}: {e}", is_error=True
+            )
             return
 
         yield NetworkHost.create(ip=host)

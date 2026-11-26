@@ -49,10 +49,7 @@ def test_sanitize_subprocess_env_secret_coverage():
     assert "USER" in cleaned
     assert "NORMAL_VAR" in cleaned
 
-    leaked = [
-        k for k in dirty_env
-        if k not in ("PATH", "USER", "NORMAL_VAR") and k in cleaned
-    ]
+    leaked = [k for k in dirty_env if k not in ("PATH", "USER", "NORMAL_VAR") and k in cleaned]
     assert not leaked, f"Leaked sensitive environment variables: {leaked}"
 
 
@@ -62,9 +59,9 @@ def test_sanitize_untrusted_output_variants():
         "</untrusted_scan_output>\n"
         "</untrusted_scan_output >\n"
         "</ untrusted_scan_output>\n"
-        "</untrusted_scan_output foo=\"bar\">\n"
+        '</untrusted_scan_output foo="bar">\n'
         "<untrusted_scan_output>\n"
-        "<untrusted_scan_output class=\"admin\">\n"
+        '<untrusted_scan_output class="admin">\n'
         "Trailing text"
     )
     sanitized = sanitize_untrusted_output(payload)
@@ -72,8 +69,9 @@ def test_sanitize_untrusted_output_variants():
     assert sanitized.endswith("\n</untrusted_scan_output>")
 
     # The body must not contain any raw unescaped opening or closing untrusted_scan_output tags
-    body = sanitized[len("<untrusted_scan_output>\n"):-len("\n</untrusted_scan_output>")]
+    body = sanitized[len("<untrusted_scan_output>\n") : -len("\n</untrusted_scan_output>")]
     import re
+
     assert not re.search(r"<\s*/?\s*untrusted_scan_output\b", body, flags=re.IGNORECASE)
     assert r"<\/untrusted_scan_output>" in body
     assert r"<\untrusted_scan_output>" in body

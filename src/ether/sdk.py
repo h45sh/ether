@@ -63,9 +63,7 @@ class Ether:
             )
         else:
             gate_policy = (
-                GatePolicy.UNRESTRICTED
-                if cfg.gateway.policy == "unrestricted"
-                else GatePolicy.SAFE
+                GatePolicy.UNRESTRICTED if cfg.gateway.policy == "unrestricted" else GatePolicy.SAFE
             )
 
         reg = ToolRegistry(tools_dir=resolved_tools, settings=cfg)
@@ -163,9 +161,7 @@ class Ether:
     ) -> Dict[str, Any]:
         """Compute zero-token set-theoretic graph delta."""
         sid = session_id or self.session_id or ""
-        compiler = GraphTelemetryCompiler(
-            self.store, sid, execution_session=self.exec_session
-        )
+        compiler = GraphTelemetryCompiler(self.store, sid, execution_session=self.exec_session)
         return await compiler.compute_graph_diff(action_id=action_id)
 
     async def snapshot(
@@ -180,9 +176,7 @@ class Ether:
             if token_budget is not None
             else self.settings.telemetry.default_token_budget
         )
-        compiler = GraphTelemetryCompiler(
-            self.store, sid, execution_session=self.exec_session
-        )
+        compiler = GraphTelemetryCompiler(self.store, sid, execution_session=self.exec_session)
         return await compiler.compile_telemetry_snapshot(max_tokens=budget)
 
     async def blast_radius(
