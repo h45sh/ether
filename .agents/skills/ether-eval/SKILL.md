@@ -185,16 +185,16 @@ Every sublevel report must possess its own unique identity and technical signifi
   - `reports/scripts/generate_100pt_report.py`: Strictly data-driven HTML generator (zero hardcoded verdicts or percentages).
 
 ### 10-Scenario 100-Point Rubric (`10 × 10 = 100`)
-- **S1 (10 pts):** Clean out-of-repo wheel install (`uv build --wheel` → `/tmp` venv, `/tmp` CWD, `ether doctor` coroutine accuracy, `sqlite-vec`, wordlists).
-- **S2 (10 pts):** CLI/MCP `--flags` symmetry, `-s` ordering, full 18+ tool / resource / prompt live `stdio` MCP matrix, async detach + `abort_action`.
+- **S1 (10 pts):** Clean out-of-repo wheel install (`uv build --wheel` → `/tmp` venv, `/tmp` CWD), `ether tool list`/`search`, `ether doctor`, `sqlite-vec`, wordlists, `EtherSettings` (`config init`/`show` env precedence), and operator UX (`session use`/`status`/`ps`/`report`).
+- **S2 (10 pts):** CLI/MCP `--flags` & `--profile` symmetry, `-s` ordering, full 18-tool (`search_tools`, `query_graph(include_edges=True)`) / resource / prompt live `stdio` MCP matrix, async detach + `abort_action`, and `SecurityMiddleware` (HMAC scoped tokens, per-tool RBAC, IP rate limits).
 - **S3 (10 pts):** Reactive chained pipeline DAGs (Tier-A + Tier-B subprocess execution, graph persistence, `SAFE` policy).
-- **S4 (10 pts):** Adversarial bypass (302 IMDS redirect, `0.0.0.0`/`[::]`/octal/decimal/hex/`nip.io`, `--flags` SSRF smuggling, real subprocess env secret leak, case-insensitive XML breakout).
+- **S4 (10 pts):** Adversarial bypass (`PinnedTransport` 302 IMDS redirect & `verify_tls=True` default, `0.0.0.0`/`[::]`/octal/decimal/hex/`nip.io`, `FlagFirewall` dangerous/compound flags & `--flags` SSRF smuggling, real subprocess env secret leak, case-insensitive XML breakout, `PluginLoader` AST gate).
 - **S5 (10 pts):** Cyber range pivot chain & graph intelligence (BFS attack path, blast radius, Brandes centrality, crown jewels, `sqlite-vec` RAG).
 - **S6 (10 pts):** Deception, honeypot & tarpit defense (`StreamTarpitGuard`, Bayesian 120-port sprawl / Cowrie flagging, crown-jewel exclusion).
 - **S7 (10 pts):** `NmapAdapter` open vs closed/filtered state accuracy, `stealth_scan` flags, live `ffuf` discovery, real measured token reduction.
 - **S8 (10 pts):** Identity anchoring (`anchored_identity`), TTL state decay (`flapping`/`stale`), strict `ether drift` audit.
-- **S9 (10 pts):** Real `ExecutionSession` 15MB+ flood (`<10MB` RSS), 10-worker WAL concurrency, 35-adapter hostile fuzzing, `PRAGMA integrity_check`.
-- **S10 (10 pts):** Forensic chain-of-custody (`verify-audit` 1-byte tamper detection), `session close` (`.log.gz` + `PermissionError`), encrypted export bit-flip rejection, `SecureBuffer.wipe()`.
+- **S9 (10 pts):** Real `ExecutionSession` 15MB+ flood (`<10MB` RSS), 10-worker WAL concurrency + `WriteQueue` exact-ownership coalescing, 36+-adapter hostile fuzzing, `PRAGMA integrity_check`.
+- **S10 (10 pts):** `SessionSealer` Ed25519 signed audit manifest + `verify-audit` 1-byte tamper detection, `.log.gz` + `PermissionError` immutability, `CryptoEngine` ChaCha20-Poly1305 at-rest encryption, encrypted export bit-flip rejection, `SecureBuffer.wipe()`.
 
 ### True Parallel Subagent Execution (`delegate_task`)
 - Do **NOT** simulate parallel subagents with a single sequential Python script, and avoid native `invoke_subagent` if child `run_command` triggers 60s approval timeouts.
