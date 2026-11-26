@@ -51,7 +51,7 @@ class TcpProbeAdapter(ToolAdapter):
                 f"Target '{host}' blocked by SSRF policy ({verdict.reason})."
             )
 
-        timeout = float(params.get("timeout", 5.0))
+        timeout = float(params.get("timeout", 16.0))
         start_time = time.monotonic()
         banner: Optional[str] = None
         is_tarpit = False
@@ -62,7 +62,7 @@ class TcpProbeAdapter(ToolAdapter):
                 timeout=timeout,
             )
             connect_duration = time.monotonic() - start_time
-            if connect_duration > 15.0:
+            if connect_duration >= 15.0:
                 is_tarpit = True
 
             # Attempt non-blocking banner read
@@ -86,7 +86,7 @@ class TcpProbeAdapter(ToolAdapter):
 
         except asyncio.TimeoutError:
             connect_duration = time.monotonic() - start_time
-            if connect_duration >= timeout:
+            if connect_duration >= 15.0:
                 is_tarpit = True
             await context.spool_line(f"TCP probe timed out connecting to {host}:{port}", is_error=True)
             return

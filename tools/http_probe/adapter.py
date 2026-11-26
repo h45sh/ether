@@ -6,6 +6,7 @@ import ssl
 import urllib.parse
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from ether.common import sanitize_untrusted_output
 from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
 from ether.common.scope import ScopeValidator
@@ -195,8 +196,15 @@ class HTTPProbeAdapter(ToolAdapter):
             headers = dict(response.headers)
             server = headers.get("server", "").strip()
             x_powered = headers.get("x-powered-by", "").strip()
-            body_preview = response.text[:2048] if response.text else None
-            redirect_location = str(response.url) if response.history else None
+            body_preview = (
+                sanitize_untrusted_output(response.text[:2048]) if response.text else None
+            )
+            if response.history:
+                redirect_location = response.history[0].headers.get("location") or str(response.url)
+            elif 300 <= status < 400:
+                redirect_location = headers.get("location")
+            else:
+                redirect_location = None
 
             await context.spool_line(f"[+] HTTP {status} {response.reason_phrase} - {url}")
             for h_name, h_val in headers.items():

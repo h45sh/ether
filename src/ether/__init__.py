@@ -1,6 +1,5 @@
 """Ether: Reactive process supervisor and graph telemetry engine for security tools."""
 
-from ether.common.context import ExecutionContext
 from ether.common.exceptions import EtherError
 from ether.common.scope import EngagementScope, ScopeValidator
 from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
@@ -28,7 +27,6 @@ __all__ = [
     "BaseFinding",
     "EngagementScope",
     "EtherError",
-    "ExecutionContext",
     "ExecutionSession",
     "Executor",
     "GatePolicy",

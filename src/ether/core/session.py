@@ -78,6 +78,32 @@ class PassthroughActionValidator:
         return text
 
     async def validate_action(self, action: ActionRequest) -> bool:
+        import re
+
+        from ether.common.scope import EngagementScope, ScopeValidator
+
+        raw_flags = ""
+        if action.params:
+            raw_flags = action.params.get("raw_flags") or action.params.get("flags") or ""
+            if isinstance(raw_flags, list):
+                raw_flags = " ".join(str(f) for f in raw_flags)
+        if raw_flags and re.search(r"[|;&$`\n]", raw_flags):
+            raise ValueError("Shell metacharacters are prohibited in command arguments.")
+
+        safe_scope = EngagementScope(allow_loopback=False)
+        for tok in str(raw_flags).replace("=", " ").split():
+            clean_tok = tok.strip("\"'`()<>,;{}[]")
+            if not clean_tok or clean_tok.startswith("-"):
+                continue
+            host = ScopeValidator.parse_host_candidate(clean_tok)
+            if ScopeValidator.parse_ip(host) is not None or "." in host or "://" in clean_tok:
+                verdict = await ScopeValidator.check_destination(
+                    clean_tok, scope=safe_scope, policy_is_unrestricted=False
+                )
+                if not verdict.allowed:
+                    raise ValueError(
+                        f"Destination '{clean_tok}' blocked by SAFE scope policy ({verdict.reason})."
+                    )
         return True
 
 

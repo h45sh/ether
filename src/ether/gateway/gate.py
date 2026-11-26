@@ -321,17 +321,25 @@ class ActionGateway:
         Raises:
             ActionValidationError: If validation fails.
         """
-        # 1. Normalize flags -> raw_flags and enforce destination/scope if not UNRESTRICTED
+        # 1. Normalize flags -> raw_flags and enforce metacharacter + destination/scope checks
         if action.params and "flags" in action.params and "raw_flags" not in action.params:
             action.params["raw_flags"] = action.params["flags"]
         raw_flags = action.params.get("raw_flags", "") if action.params else ""
+        if isinstance(raw_flags, list):
+            raw_flags = " ".join(str(f) for f in raw_flags)
+        if re.search(r"[|;&$`\n]", raw_flags):
+            raise ActionValidationError(
+                "Shell metacharacters are prohibited in command arguments."
+            )
         if self.policy != GatePolicy.UNRESTRICTED:
-            if re.search(r"[|;&$`\n]", raw_flags):
-                raise ActionValidationError(
-                    "Shell metacharacters are prohibited in command arguments."
-                )
-            allow_loopback = getattr(self.scope, "allow_loopback", False) if hasattr(self, "scope") and self.scope else False
-            if is_blocked_destination(raw_flags, allow_loopback=allow_loopback) or is_blocked_destination(action.tool_name, allow_loopback=allow_loopback):
+            allow_loopback = (
+                getattr(self.scope, "allow_loopback", False)
+                if hasattr(self, "scope") and self.scope
+                else False
+            )
+            if is_blocked_destination(
+                raw_flags, allow_loopback=allow_loopback
+            ) or is_blocked_destination(action.tool_name, allow_loopback=allow_loopback):
                 raise ActionValidationError(
                     "Access to cloud metadata or unauthorized loopback destination is strictly prohibited."
                 )
@@ -339,6 +347,21 @@ class ActionGateway:
                 raise ActionValidationError(
                     "Target in command arguments violates authorized engagement CIDR scope."
                 )
+            # Async DNS resolution check for hostname/URL tokens in raw_flags under SAFE policy
+            if raw_flags:
+                for raw_tok in raw_flags.replace("=", " ").split():
+                    tok = _strip_token_delimiters(raw_tok)
+                    if not tok or tok.startswith("-"):
+                        continue
+                    host = ScopeValidator.parse_host_candidate(tok)
+                    if host and ("." in host or "://" in tok) and ScopeValidator.parse_ip(host) is None:
+                        verdict = await ScopeValidator.check_destination(
+                            tok, scope=self.scope, policy_is_unrestricted=False
+                        )
+                        if not verdict.allowed:
+                            raise ActionValidationError(
+                                f"Destination '{tok}' blocked by scope/DNS policy ({verdict.reason})."
+                            )
 
         # 2. Resolve Tool
         tool_data = self.registry.get_tool(action.tool_name)

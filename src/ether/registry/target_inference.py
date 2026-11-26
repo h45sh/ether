@@ -20,26 +20,20 @@ def infer_target_finding(target: str) -> BaseFinding:
         return WebEndpoint.create(url=target)
 
     # Check for IP:PORT or host:port (network.service)
-    if ":" in target and not target.startswith("http://") and not target.startswith("https://"):
+    if ":" in target and not target.startswith(("http://", "https://")):
+        host_part, port_part = "", ""
         if not target.startswith("[") and target.count(":") == 1:
-            host_part, port_part = target.split(":")
-            if port_part.isdigit():
-                return NetworkService.create(
-                    host_ip=host_part,
-                    port=int(port_part),
-                    protocol="tcp",
-                    service_name="unknown",
-                )
+            host_part, port_part = target.split(":", 1)
         elif target.startswith("[") and "]:" in target:
             host_part = target[1 : target.index("]:")]
             port_part = target[target.index("]:") + 2 :]
-            if port_part.isdigit():
-                return NetworkService.create(
-                    host_ip=host_part,
-                    port=int(port_part),
-                    protocol="tcp",
-                    service_name="unknown",
-                )
+        if host_part and port_part.isdigit():
+            return NetworkService.create(
+                host_ip=host_part,
+                port=int(port_part),
+                protocol="tcp",
+                service_name="unknown",
+            )
 
     if "/" in target:
         try:

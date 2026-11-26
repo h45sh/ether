@@ -39,6 +39,24 @@ INSTALLATION_HINTS: dict[str, str] = {
 }
 
 
+def _check_destination_sync(target: str, scope: EngagementScope) -> Any:
+    """Run ScopeValidator.check_destination synchronously from preflight checks."""
+    import asyncio
+    import concurrent.futures
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(
+            ScopeValidator.check_destination(target, scope=scope, policy_is_unrestricted=False)
+        )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(
+            asyncio.run,
+            ScopeValidator.check_destination(target, scope=scope, policy_is_unrestricted=False),
+        ).result()
+
+
 def get_tool_target_guidance(tool_name: str) -> str:
     """Return formatted Markdown target guidance dynamically generated for a specified security tool."""
     tool_lower = tool_name.lower()
@@ -527,11 +545,9 @@ class PreflightVerifier:
                     )
                 )
 
-            # Unified ScopeValidator SSRF / Loopback / Scope Protection
+            # Unified ScopeValidator SSRF / Loopback / DNS / Scope Protection
             if target:
-                verdict = ScopeValidator.is_in_scope(
-                    target, self.scope, policy_is_unrestricted=False
-                )
+                verdict = _check_destination_sync(target, self.scope)
                 if not verdict.allowed:
                     if verdict.reason == "BLOCKED_LOOPBACK_UNAUTHORIZED":
                         report.issues.append(
@@ -653,6 +669,11 @@ class PreflightVerifier:
             return
 
         has_scheme = target.startswith("http://") or target.startswith("https://")
+        # Recognize IP:PORT / [IPv6]:PORT as valid network.service targets
+        from ether.registry.target_inference import infer_target_finding
+
+        inferred = infer_target_finding(target)
+        is_service_target = inferred.schema_type == "network.service"
 
         # Scheme rules for tools that ONLY accept Web URL
         if is_web and not has_scheme:
@@ -672,7 +693,7 @@ class PreflightVerifier:
             )
 
         # Scheme rules for Network and Domain tools that do NOT accept URLs (warnings)
-        elif is_network_or_domain and has_scheme:
+        elif is_network_or_domain and has_scheme and not is_service_target:
             clean_host = self._extract_clean_hostname(target)
             report.issues.append(
                 PreflightIssue(

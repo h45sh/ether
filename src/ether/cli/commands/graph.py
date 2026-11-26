@@ -166,35 +166,25 @@ async def handle_graph_export(args: Any, context: CliContext) -> int:
             fd = os.open(output_path, flags, 0o600)
             with open(fd, "wb") as f:
                 f.write(encrypted_payload)
-            if context.is_json:
-                print_json(
-                    {
-                        "session_id": session_id,
-                        "output_path": output_path,
-                        "nodes_count": len(nodes),
-                        "edges_count": len(edges),
-                        "encrypted": True,
-                    }
-                )
-            else:
-                print(
-                    f"[+] Exported {len(nodes)} nodes and {len(edges)} edges to encrypted archive '{output_path}'"
-                )
         else:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(raw_json)
-            if context.is_json:
-                print_json(
-                    {
-                        "session_id": session_id,
-                        "output_path": output_path,
-                        "nodes_count": len(nodes),
-                        "edges_count": len(edges),
-                        "encrypted": False,
-                    }
-                )
-            else:
-                print(f"[+] Exported {len(nodes)} nodes and {len(edges)} edges to '{output_path}'")
+
+        if context.is_json:
+            print_json(
+                {
+                    "session_id": session_id,
+                    "output_path": output_path,
+                    "nodes_count": len(nodes),
+                    "edges_count": len(edges),
+                    "encrypted": encrypt,
+                }
+            )
+        else:
+            suffix = "encrypted archive " if encrypt else ""
+            print(
+                f"[+] Exported {len(nodes)} nodes and {len(edges)} edges to {suffix}'{output_path}'"
+            )
     else:
         if encrypt:
             print_error("Encrypted export requires an output file path (-o <path>).")

@@ -6,13 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
-from ether.cli.commands.graph import (
-    handle_graph_list_nodes,
-)
+from ether.cli.commands.graph import handle_graph_list_nodes
 from ether.cli.commands.session import handle_session_create, handle_session_list
 from ether.cli.commands.telemetry import handle_telemetry_health
 from ether.cli.context import CliContext
-from ether.cli.formatters import ConsoleProgress, print_status
+from ether.cli.formatters import print_error
 from ether.cli.router import build_parser, normalize_cli_args
 from ether.gateway.gate import GatePolicy
 from ether.graph.store import GraphStore
@@ -50,23 +48,16 @@ def test_cli_json_flag_placement_symmetry():
 
 
 @pytest.mark.fast
-def test_console_progress_and_status_stderr_isolation():
-    """Verify ConsoleProgress and print_status route strictly to stderr in JSON mode."""
+def test_print_error_stderr_isolation():
+    """Verify print_error routes strictly to stderr, keeping stdout clean for JSON."""
     out_buf = StringIO()
     err_buf = StringIO()
 
     with patch("sys.stdout", out_buf), patch("sys.stderr", err_buf):
-        # In JSON mode:
-        print_status("[*] Checking status...", is_json=True)
-        progress = ConsoleProgress(is_json=True)
-        progress.log("[*] Progress step 1")
-        progress.write("[*] streaming chunk...")
+        print_error("Preflight validation failed")
 
-    assert out_buf.getvalue() == "", "stdout must remain clean in JSON mode"
-    err_output = err_buf.getvalue()
-    assert "[*] Checking status..." in err_output
-    assert "[*] Progress step 1" in err_output
-    assert "[*] streaming chunk..." in err_output
+    assert out_buf.getvalue() == "", "stdout must remain clean when errors are logged"
+    assert "[!] Error: Preflight validation failed" in err_buf.getvalue()
 
 
 @pytest.mark.asyncio

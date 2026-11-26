@@ -236,18 +236,29 @@ class ScopeValidator:
         host = verdict.normalized_target
         resolved_ips: List[str] = []
         if dns_resolver is not None:
-            resolved_ips = await dns_resolver(host)
+            try:
+                resolved_ips = await asyncio.wait_for(dns_resolver(host), timeout=1.0)
+            except (OSError, asyncio.TimeoutError):
+                if not policy_is_unrestricted:
+                    return ScopeVerdict(
+                        allowed=False, reason="UNRESOLVABLE_DOMAIN", normalized_target=host
+                    )
+                return verdict
         else:
             try:
                 loop = asyncio.get_running_loop()
-                addr_info = await loop.getaddrinfo(host, None)
+                addr_info = await asyncio.wait_for(loop.getaddrinfo(host, None), timeout=1.0)
                 seen = set()
                 for entry in addr_info:
                     ip_str = str(entry[4][0])
                     if ip_str not in seen:
                         seen.add(ip_str)
                         resolved_ips.append(ip_str)
-            except OSError:
+            except (OSError, asyncio.TimeoutError):
+                if not policy_is_unrestricted:
+                    return ScopeVerdict(
+                        allowed=False, reason="UNRESOLVABLE_DOMAIN", normalized_target=host
+                    )
                 return verdict
 
         warning_verdict: Optional[ScopeVerdict] = None

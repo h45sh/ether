@@ -6,6 +6,7 @@ import httpx
 
 from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
+from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.cloud import CloudAsset
@@ -41,6 +42,22 @@ class ImdsProbeAdapter(ToolAdapter):
         if not target_url:
             target_url = params.get("url") or params.get("target")
 
+        # Under SAFE policy, validate target via ScopeValidator and block direct metadata probing BEFORE any network I/O
+        policy_str = str(getattr(context, "policy", "safe")).lower()
+        is_safe = policy_str in ("safe", "gatepolicy.safe")
+        if is_safe:
+            if not target_url or "169.254." in str(target_url):
+                raise PolicyViolationError(
+                    "Access to cloud metadata IP 169.254.169.254 is forbidden under GatePolicy.SAFE (SSRF defense)."
+                )
+            verdict = await ScopeValidator.check_destination(
+                str(target_url), policy_is_unrestricted=False
+            )
+            if not verdict.allowed:
+                raise PolicyViolationError(
+                    f"Target '{target_url}' blocked under GatePolicy.SAFE ({verdict.reason})."
+                )
+
         async with httpx.AsyncClient(timeout=3.0) as client:
             if target_url and target_url.startswith(("http://", "https://")):
                 try:
@@ -58,12 +75,7 @@ class ImdsProbeAdapter(ToolAdapter):
                 except Exception:
                     pass
 
-        # Under SAFE policy, direct cloud metadata IP probing is strictly blocked
-        if str(context.policy).lower() in ("safe", "gatepolicy.safe"):
-            if not target_url or "169.254." in str(target_url):
-                raise PolicyViolationError(
-                    "Access to cloud metadata IP 169.254.169.254 is forbidden under GatePolicy.SAFE (SSRF defense)."
-                )
+        if is_safe:
             return
 
         provider = str(params.get("provider", "aws")).lower()
