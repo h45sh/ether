@@ -6,7 +6,11 @@ import sys
 from typing import List, Optional
 
 from ether import __version__
-from ether.cli.commands.config import handle_config_path, handle_config_show
+from ether.cli.commands.config import (
+    handle_config_init,
+    handle_config_path,
+    handle_config_show,
+)
 from ether.cli.commands.doctor import handle_doctor
 from ether.cli.commands.drift import handle_drift_audit, handle_drift_export_baseline
 from ether.cli.commands.graph import (
@@ -19,15 +23,18 @@ from ether.cli.commands.graph import (
     handle_graph_list_nodes,
     handle_graph_prune,
     handle_graph_search,
+    handle_graph_tree,
 )
 from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.mcp import handle_mcp
+from ether.cli.commands.ops import handle_kill, handle_ps, handle_report, handle_status
 from ether.cli.commands.pipeline import handle_pipeline_run
 from ether.cli.commands.run import handle_run
 from ether.cli.commands.session import (
     handle_session_close,
     handle_session_create,
     handle_session_list,
+    handle_session_use,
     handle_session_verify_audit,
 )
 from ether.cli.commands.telemetry import (
@@ -195,6 +202,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Forensically seal a session and compress raw log spools to .log.gz",
     )
     sess_close_p.add_argument("session_id", help="Session ID to seal and compress")
+    sess_use_p = session_subs.add_parser(
+        "use",
+        parents=[common_options],
+        help="Pin an existing session ID as the active default session",
+    )
+    sess_use_p.add_argument("session_id", help="Session ID to pin as active")
 
     # 5. graph
     graph_parser = subparsers.add_parser(
@@ -206,7 +219,9 @@ def build_parser() -> argparse.ArgumentParser:
     nodes_p = graph_subs.add_parser(
         "list-nodes", parents=[common_options], help="List finding nodes"
     )
-    nodes_p.add_argument("session_id", help="Session ID to inspect")
+    nodes_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
     nodes_p.add_argument(
         "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.host)"
     )
@@ -312,6 +327,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Identify critical crown-jewel assets in a session",
     )
     jewels_p.add_argument("session_id", help="Session ID")
+
+    tree_p = graph_subs.add_parser(
+        "tree",
+        parents=[common_options],
+        help="Display the full session graph (nodes + edges) as an ASCII tree or JSON",
+    )
+    tree_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    tree_p.add_argument("--include-stale", action="store_true", help="Include decayed stale nodes")
+    tree_p.add_argument(
+        "--unmask", action="store_true", help="Display sensitive credential attributes in plaintext"
+    )
 
     # 6. telemetry
     telemetry_parser = subparsers.add_parser(
@@ -489,6 +517,56 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include unmasked auth tokens in output",
     )
     config_subs.add_parser("path", parents=[common_options], help="Print active config.toml path")
+    config_init_p = config_subs.add_parser(
+        "init", parents=[common_options], help="Generate a starter config.toml"
+    )
+    config_init_p.add_argument(
+        "--force", action="store_true", help="Overwrite existing config.toml if present"
+    )
+
+    # 12. status / ps / kill / report
+    status_p = subparsers.add_parser(
+        "status",
+        parents=[common_options],
+        help="Show one-glance status for the active or specified session",
+    )
+    status_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+
+    ps_p = subparsers.add_parser(
+        "ps",
+        parents=[common_options],
+        help="List running and recent actions for the active or specified session",
+    )
+    ps_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    ps_p.add_argument("--limit", type=int, default=25, help="Maximum actions to list (default: 25)")
+
+    kill_p = subparsers.add_parser(
+        "kill",
+        parents=[common_options],
+        help="Abort/close a running or orphaned action by ID",
+    )
+    kill_p.add_argument("action_id", help="Action UUID to abort/close")
+    kill_p.add_argument("-s", "--session-id", dest="session_id", default=None, help="Session ID")
+
+    report_p = subparsers.add_parser(
+        "report",
+        parents=[common_options],
+        help="Compile a Markdown or JSON engagement report from the session graph",
+    )
+    report_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    report_p.add_argument(
+        "--format", choices=["md", "json"], default="md", help="Report format (default: md)"
+    )
+    report_p.add_argument("-o", "--output", dest="output", help="Write report to file path")
+    report_p.add_argument(
+        "--unmask", action="store_true", help="Include plaintext credentials in report"
+    )
 
     return parser
 
@@ -827,6 +905,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_session_verify_audit(args, context))
             elif args.session_action == "close":
                 return _run_coroutine(handle_session_close(args, context))
+            elif args.session_action == "use":
+                return _run_coroutine(handle_session_use(args, context))
             return _run_coroutine(handle_session_list(args, context))
 
         elif args.subcommand == "graph":
@@ -846,6 +926,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_graph_blast_radius(args, context))
             elif args.graph_action == "crown-jewels":
                 return _run_coroutine(handle_graph_crown_jewels(args, context))
+            elif args.graph_action == "tree":
+                return _run_coroutine(handle_graph_tree(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":
@@ -876,7 +958,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.subcommand == "config":
             if getattr(args, "config_action", None) == "path":
                 return handle_config_path(args, context)
+            elif getattr(args, "config_action", None) == "init":
+                return handle_config_init(args, context)
             return handle_config_show(args, context)
+
+        elif args.subcommand == "status":
+            return _run_coroutine(handle_status(args, context))
+
+        elif args.subcommand == "ps":
+            return _run_coroutine(handle_ps(args, context))
+
+        elif args.subcommand == "kill":
+            return _run_coroutine(handle_kill(args, context))
+
+        elif args.subcommand == "report":
+            return _run_coroutine(handle_report(args, context))
 
         else:
             parser.print_help()

@@ -154,6 +154,23 @@ class Ether:
             rows = await self.store.get_all_nodes(sid, include_stale=include_stale)
         return rows[:max_rows]
 
+    async def graph(
+        self,
+        include_stale: bool = False,
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return the full entity graph (nodes and edges) for the session."""
+        sid = session_id or self.session_id or ""
+        nodes = await self.store.get_all_nodes(sid, include_stale=include_stale)
+        edges = await self.store.get_all_edges(sid)
+        return {
+            "session_id": sid,
+            "nodes": nodes,
+            "edges": edges,
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+        }
+
     async def diff(
         self,
         action_id: Optional[str] = None,

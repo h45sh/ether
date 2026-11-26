@@ -135,7 +135,8 @@ Query discovered entities and services from the persistent SQLite graph.
   * `schema_type` (str, optional): Filter by schema (e.g. `"network.host"`, `"network.service"`, `"vulnerability.found"`).
   * `limit` (int, default: 100): Maximum entities to return.
   * `include_stale` (bool, default: false): Include decayed stale nodes.
-* **Returns:** JSON list of matching node entities with PIK and attribute data.
+  * `include_edges` (bool, default: false): Also return all graph edges (`edges`, `total_edges`) for the session.
+* **Returns:** Compact JSON object of matching node entities (and edges when `include_edges=True`).
 
 #### 5. `inspect_entity`
 Inspect deep relational connections and incident edges for a specific finding node.

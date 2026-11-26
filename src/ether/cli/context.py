@@ -1,5 +1,6 @@
 """CLI runtime execution context and resource lifecycle management for Ether."""
 
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, Optional
@@ -93,3 +94,26 @@ class CliContext:
         registry = ToolRegistry(tools_dir=self.tools_dir, settings=self.settings)
         registry.load_tools()
         return registry
+
+    def active_session_file(self) -> str:
+        """Return path to the pinned active_session file."""
+        return os.path.join(self.data_dir, "active_session")
+
+    async def resolve_session_id(self, store: GraphStore, explicit_id: Optional[str] = None) -> str:
+        """Resolve session ID: explicit > ETHER_SESSION_ID > active_session file > default."""
+        if explicit_id:
+            return explicit_id
+        env_sid = os.environ.get("ETHER_SESSION_ID", "").strip()
+        if env_sid:
+            return env_sid
+        pin_path = self.active_session_file()
+        if os.path.isfile(pin_path):
+            try:
+                with open(pin_path, "r", encoding="utf-8") as f:
+                    pinned = f.read().strip()
+                if pinned and await store.get_session(pinned) is not None:
+                    return pinned
+            except OSError:
+                pass
+        _, default_sid = await store.get_or_create_default_session()
+        return default_sid

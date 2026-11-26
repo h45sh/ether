@@ -63,16 +63,13 @@ def _mask_credential_node(node: dict[str, Any], unmask: bool) -> dict[str, Any]:
 
 async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
     """List finding nodes recorded in an investigation session."""
-    session_id = getattr(args, "session_id", None)
-    if not session_id:
-        print_error("session_id is required. Run 'ether session list' to find session IDs.")
-        return EXIT_RUNTIME_ERROR
-
+    session_id_arg = getattr(args, "session_id", None)
     schema_type = getattr(args, "type", None)
     include_stale = bool(getattr(args, "include_stale", False))
     unmask = bool(getattr(args, "unmask", False))
 
     async with context.open_store() as store:
+        session_id = await context.resolve_session_id(store, session_id_arg)
         if schema_type:
             nodes = await store.query(
                 schema_type, session_id=session_id, include_stale=include_stale
@@ -521,4 +518,89 @@ async def handle_graph_crown_jewels(args: Any, context: CliContext) -> int:
         for j in jewels
     ]
     print_table(headers, rows)
+    return EXIT_SUCCESS
+
+
+async def handle_graph_tree(args: Any, context: CliContext) -> int:
+    """Render the entire session graph (nodes + edges) as an ASCII hierarchy or JSON."""
+    session_id_arg = getattr(args, "session_id", None)
+    include_stale = bool(getattr(args, "include_stale", False))
+    unmask = bool(getattr(args, "unmask", False))
+
+    async with context.open_store() as store:
+        session_id = await context.resolve_session_id(store, session_id_arg)
+        nodes = await store.get_all_nodes(session_id, include_stale=include_stale)
+        edges = await store.get_all_edges(session_id)
+
+    parsed_nodes = [_mask_credential_node(n, unmask=unmask) for n in nodes]
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "total_nodes": len(parsed_nodes),
+                "total_edges": len(edges),
+                "nodes": parsed_nodes,
+                "edges": edges,
+            }
+        )
+        return EXIT_SUCCESS
+
+    if not parsed_nodes:
+        print(f"Session '{session_id}' graph is empty.")
+        return EXIT_SUCCESS
+
+    node_map = {n["id"]: n for n in parsed_nodes}
+    children: dict[str, list[tuple[str, str]]] = {nid: [] for nid in node_map}
+    has_parent: set[str] = set()
+    for e in edges:
+        src = e.get("source_id")
+        dst = e.get("target_id")
+        rel = str(e.get("relation", "related"))
+        if isinstance(src, str) and isinstance(dst, str) and src in node_map and dst in node_map:
+            children[src].append((dst, rel))
+            has_parent.add(dst)
+
+    root_priority = {"network.host": 0, "domain.info": 1, "dns.record": 2}
+    roots = sorted(
+        [nid for nid in node_map if nid not in has_parent],
+        key=lambda nid: (root_priority.get(node_map[nid].get("schema_type", ""), 9), nid),
+    )
+
+    def _label(nid: str, rel: str = "") -> str:
+        n = node_map[nid]
+        pik = n.get("pik")
+        if not isinstance(pik, dict):
+            try:
+                pik = json.loads(n.get("pik_json") or "{}")
+            except Exception:
+                pik = {}
+        pik_str = ", ".join(f"{k}={v}" for k, v in pik.items()) if pik else nid[:12]
+        prefix = f"[{rel}] " if rel else ""
+        return f"{prefix}{n.get('schema_type', '')} ({pik_str}) [{nid[:8]}]"
+
+    visited: set[str] = set()
+    print(f"Session {session_id} ({len(parsed_nodes)} nodes, {len(edges)} edges)")
+
+    def _walk(nid: str, prefix: str, is_last: bool, rel: str = "") -> None:
+        branch = "└── " if is_last else "├── "
+        if nid in visited:
+            print(f"{prefix}{branch}{_label(nid, rel)} (cycle/ref)")
+            return
+        visited.add(nid)
+        print(f"{prefix}{branch}{_label(nid, rel)}")
+        kids = children.get(nid, [])
+        next_prefix = prefix + ("    " if is_last else "│   ")
+        for idx, (child_id, child_rel) in enumerate(kids):
+            _walk(child_id, next_prefix, idx == len(kids) - 1, rel=child_rel)
+
+    for idx, r_id in enumerate(roots):
+        _walk(r_id, "", idx == len(roots) - 1 and len(visited) == len(node_map))
+
+    remaining = [nid for nid in node_map if nid not in visited]
+    if remaining:
+        print("└── (standalone)")
+        for idx, nid in enumerate(remaining):
+            _walk(nid, "    ", idx == len(remaining) - 1)
+
     return EXIT_SUCCESS

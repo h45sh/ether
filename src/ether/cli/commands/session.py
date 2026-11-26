@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from ether.cli.context import EXIT_SUCCESS, CliContext
+from ether import paths
+from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
 from ether.cli.formatters import print_error, print_json, print_table
 
 
@@ -125,4 +126,25 @@ async def handle_session_close(args: Any, context: CliContext) -> int:
             f"[+] Forensically sealed session '{session_id}' "
             f"(compressed {compressed_count} log spool(s) to .log.gz)."
         )
+    return EXIT_SUCCESS
+
+
+async def handle_session_use(args: Any, context: CliContext) -> int:
+    """Pin an existing session ID as the active default session."""
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required. Usage: ether session use <session_id>")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        sess = await store.get_session(session_id)
+        if sess is None:
+            print_error(f"Session '{session_id}' not found.")
+            return EXIT_RUNTIME_ERROR
+
+    paths.atomic_create_file(context.active_session_file(), f"{session_id}\n")
+    if context.is_json:
+        print_json({"active_session": session_id, "name": sess.get("name", "")})
+    else:
+        print(f"[+] Active session pinned to '{session_id}' ({sess.get('name', '')}).")
     return EXIT_SUCCESS

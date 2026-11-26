@@ -87,6 +87,103 @@ async def test_python_sdk_ether_open_facade():
         assert "total_delta_count" in diff
         br = await client.blast_radius("nonexistent-node", max_depth=3)
         assert br["count"] == 0
+        full_graph = await client.graph()
+        assert "nodes" in full_graph and "edges" in full_graph
+
+
+@pytest.mark.asyncio
+@pytest.mark.fast
+async def test_mcp_query_graph_include_edges():
+    import json
+
+    from ether.graph.store import GraphStore
+    from ether.mcp.server import create_mcp_server
+    from ether.schemas.network import NetworkHost, NetworkService
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id = await store.create_workspace("WS")
+    sess_id = await store.create_session(ws_id, "Sess")
+    await store.upsert_finding(sess_id, NetworkHost.create(ip="10.0.0.1"))
+    await store.upsert_finding(
+        sess_id, NetworkService.create(host_ip="10.0.0.1", port=22, service_name="ssh")
+    )
+
+    server = create_mcp_server(store, default_session_id=sess_id)
+    res = await server.call_tool("query_graph", {"include_edges": True})
+    assert res.is_error is False
+    data = json.loads(res.content[0].text)
+    assert data["total"] >= 2
+    assert data["total_edges"] >= 1
+    assert len(data["edges"]) >= 1
+    await store.close()
+
+
+@pytest.mark.fast
+def test_cli_ergonomic_ops_tree_session_use_and_config_init(tmp_path, capsys):
+    import asyncio
+    import json
+    from uuid import UUID
+
+    from ether.cli.router import main
+    from ether.graph.store import GraphStore
+    from ether.schemas.network import NetworkHost, NetworkService
+    from ether.schemas.power import ActionRequest
+
+    db_path = str(tmp_path / "ops.db")
+
+    async def _seed():
+        s = GraphStore(db_path)
+        await s.initialize()
+        ws = await s.create_workspace("OpsWS")
+        sid = await s.create_session(ws, "OpsSess")
+        await s.upsert_finding(sid, NetworkHost.create(ip="10.0.0.5"), action_id="act-1")
+        await s.upsert_finding(
+            sid,
+            NetworkService.create(host_ip="10.0.0.5", port=443, service_name="https"),
+            action_id="act-1",
+        )
+        req = ActionRequest(
+            action_id=UUID("00000000-0000-0000-0000-000000000001"),
+            session_id=UUID(sid),
+            tool_name="nmap",
+        )
+        await s.timeline.append_event(sid, req, {"status": "running"}, "nmap scan")
+        await s.close()
+        return sid, str(req.action_id)
+
+    sid, act_id = asyncio.run(_seed())
+    base = ["--data-dir", str(tmp_path), "--db", db_path]
+
+    assert main([*base, "--json", "session", "use", sid]) == 0
+    assert json.loads(capsys.readouterr().out)["active_session"] == sid
+
+    assert main([*base, "--json", "status"]) == 0
+    st = json.loads(capsys.readouterr().out)
+    assert st["session_id"] == sid and st["total_nodes"] >= 2
+
+    assert main([*base, "graph", "tree"]) == 0
+    tree_out = capsys.readouterr().out
+    assert "10.0.0.5" in tree_out
+
+    assert main([*base, "--json", "graph", "tree"]) == 0
+    tree_json = json.loads(capsys.readouterr().out)
+    assert tree_json["total_edges"] >= 1
+
+    assert main([*base, "--json", "ps"]) == 0
+    assert json.loads(capsys.readouterr().out)["total"] >= 1
+
+    assert main([*base, "--json", "kill", act_id]) == 0
+    assert json.loads(capsys.readouterr().out)["aborted"] is True
+
+    rep_file = tmp_path / "report.md"
+    assert main([*base, "report", "-o", str(rep_file)]) == 0
+    assert "Ether Engagement Report" in rep_file.read_text(encoding="utf-8")
+    capsys.readouterr()
+
+    assert main([*base, "--json", "config", "init"]) == 0
+    assert (tmp_path / "config.toml").is_file()
+    capsys.readouterr()
 
 
 @pytest.mark.fast

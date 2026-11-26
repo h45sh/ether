@@ -127,6 +127,7 @@ def create_mcp_server(
         schema_type: Optional[str] = None,
         limit: int = 100,
         include_stale: bool = False,
+        include_edges: bool = False,
     ) -> str:
         """Query normalized cybersecurity findings and entities in the graph.
 
@@ -135,6 +136,7 @@ def create_mcp_server(
             schema_type: Filter by schema type (e.g. 'network.host', 'network.service').
             limit: Maximum number of nodes to return (default: 100).
             include_stale: Whether to include decayed stale nodes (default: False).
+            include_edges: Whether to also return all graph edges for the session (default: False).
         """
         from ether.mcp.security import OperationType, require_operation
 
@@ -170,14 +172,18 @@ def create_mcp_server(
                 }
             )
 
-        return _compact_json(
-            {
-                "session_id": sess_id,
-                "total": len(raw_nodes),
-                "returned": len(limited_nodes),
-                "nodes": limited_nodes,
-            }
-        )
+        payload: Dict[str, Any] = {
+            "session_id": sess_id,
+            "total": len(raw_nodes),
+            "returned": len(limited_nodes),
+            "nodes": limited_nodes,
+        }
+        if include_edges:
+            edges = await store.get_all_edges(sess_id)
+            payload["edges"] = edges
+            payload["total_edges"] = len(edges)
+
+        return _compact_json(payload)
 
     @server.tool()
     async def inspect_entity(

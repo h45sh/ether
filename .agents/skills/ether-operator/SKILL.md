@@ -18,6 +18,6 @@ Follow this 3-step loop to minimize LLM round-trips and context tokens:
    - Use `profile="fast"` / `"standard"` / `"deep"` instead of guessing raw flags; pass `arguments={"flags": [...]}` only for custom overrides.
    - Chain multi-stage workflows with `execute_pipeline(expression="subfinder(example.com) | http_probe | nuclei")`.
 
-3. **Read Compact Telemetry:**
+3. **Read Compact Telemetry & Ops:**
    - Prefer `get_diff` / `get_telemetry_snapshot` (`ether telemetry diff` / `snapshot --json`) over `include_raw=True`.
-   - Inspect active runtime limits and policies anytime with `ether config show --json`.
+   - Use `query_graph(include_edges=True)` or `ether graph tree` when full topology is needed; check `ether status`, `ether ps`, `ether kill <action_id>`, `ether report`, and `ether config show --json`.

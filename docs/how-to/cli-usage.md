@@ -390,3 +390,32 @@ ether graph export <SESSION_ID> -o engagement_deliverable.enc --encrypt --passph
 # Verify on another workstation
 ether graph import engagement_deliverable.enc --passphrase "ClientSecret2026" --json
 ```
+
+---
+
+## 11. Ergonomic Operational Commands (`status`, `ps`, `kill`, `report`, `graph tree`, `session use`, `config`)
+
+Eliminate UUID copy-pasting and inspect full topologies or live jobs in one call:
+
+```bash
+# Pin an active default session (used automatically when session_id is omitted)
+ether session use <SESSION_ID>
+
+# One-glance summary of the active session, node counts, severities, and running jobs
+ether status
+
+# View the full graph (nodes + edges) as an ASCII hierarchy or JSON
+ether graph tree
+ether graph tree --json
+
+# Supervise running/recent actions
+ether ps
+ether kill <ACTION_ID>
+
+# Compile a Markdown or JSON engagement report (credentials masked by default)
+ether report --format md -o engagement_report.md
+
+# Initialize or inspect EtherSettings (config.toml)
+ether config init
+ether config show --json
+```

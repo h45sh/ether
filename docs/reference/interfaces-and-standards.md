@@ -20,8 +20,9 @@ All three interfaces share the same underlying deep modules (`EtherSettings`, `T
 | **Pipeline Chaining** | `execute_pipeline(expression)` | `ether pipeline run "<expr>"` | `await ether.pipeline(expr)` |
 | **Zero-Token Diff** | `get_diff(action_id=...)` | `ether telemetry diff <session_id>` | `await ether.diff(action_id=...)` |
 | **Token-Budgeted Snapshot** | `get_telemetry_snapshot(token_budget=4000)` | `ether telemetry snapshot <session_id>` | `await ether.snapshot(token_budget=4000)` |
-| **Graph Query** | `query_graph(schema_type=..., limit=100)` | `ether graph list <session_id>` | `await ether.query(schema_type=..., limit=100)` |
-| **Config Introspection** | — | `ether config show [--json]` / `ether config path` | `EtherSettings.load()` |
+| **Graph Query** | `query_graph(schema_type=..., include_edges=False)` | `ether graph list-nodes [session_id]` / `ether graph tree` | `await ether.query(...)` / `await ether.graph()` |
+| **Session & Ops** | `manage_session`, `abort_action` | `ether session use <id>`, `ether status`, `ether ps`, `ether kill <id>`, `ether report` | `Ether.open(...)` |
+| **Config Introspection** | — | `ether config show [--json]` / `path` / `init` | `EtherSettings.load()` |
 
 ---
 
