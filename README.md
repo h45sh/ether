@@ -41,7 +41,7 @@ To understand Ether, consider the role of a traditional supervisory runtime: it 
 | Supervisory Architecture Role | Ether Runtime Substrate |
 | :--- | :--- |
 | **Process Scheduler & Lifecycle** (`fork`/`exec`, cgroups) | **Async Process Supervisor**: Pure argument vectors (`create_subprocess_exec`), zero `shell=True`, 64KB log disk spooling (`LogSpooler`), and automatic `SIGTERM` $\to$ `SIGKILL` timeouts. |
-| **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using bounded ring buffers (`deque(maxlen=5000)`). |
+| **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using byte- and chunk-bounded ring buffers (`ByteBoundedRingBuffer`, 2 MB / 5,000 chunks). |
 | **Device Drivers** (`/dev/*` hardware modules) | **Pluggable Smart Adapters**: Decoupled drivers in `tools/<name>/` normalizing heterogenous CLI outputs into structured Pydantic finding schemas. |
 | **Filesystem & Inodes** (ext4, deterministic paths) | **Deterministic GraphStore**: SQLite WAL engine indexing findings by deterministic SHA-256 **Primary Identity Keys (PIK)** ($H(\text{schema} + \text{sorted\_pik})$). |
 | **Security Rings / Access Controls** | **Dual GatePolicy Seam**: Engine-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for red-teams). |
@@ -89,7 +89,7 @@ To understand Ether, consider the role of a traditional supervisory runtime: it 
 ### The 6 Core Engine Subsystems
 
 1. **Async Process Supervisor & Memory Governor**
-   Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`maxlen=5000`) below **10MB RAM**.
+   Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`, `AZURE_*`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`ByteBoundedRingBuffer`: 2 MB / 5,000 chunks) below **10MB RAM**.
 
 2. **Deterministic Entity State Machine & Decoupled GraphStore**
    Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter. Concurrency is governed by a dedicated **`WriteQueueWorker`** with adaptive 25ms / 50-operation transaction batching and a read connection pool with `PRAGMA query_only = ON`.
@@ -323,7 +323,7 @@ Ether strictly adheres to the following mechanical engineering contracts:
 | :--- | :--- | :--- |
 | **Strict Headless Core** | Zero Textual, curses, or UI imports | Verified via AST linting (`pytest -m tier0`). Pure headless engine. |
 | **Process Isolation** | Pure argument vectors (`asyncio.create_subprocess_exec`) | Zero `shell=True`. 100% immune to shell injection. |
-| **Bounded Memory Ceiling** | Bounded ring buffers (`maxlen=5000`) & 64KB disk spooling | Memory usage strictly capped at **<10MB** per active job. |
+| **Bounded Memory Ceiling** | `ByteBoundedRingBuffer` (2 MB / 5,000 chunks) & 64KB disk spooling | Memory usage strictly capped at **<10MB** per active job. |
 | **Secret Scrubbing** | Child environment scrubbing (`sanitize_subprocess_env`) | Host API keys (`OPENAI_*`, `AWS_*`, `SSH_*`) never leak to child tools. |
 | **Deterministic State** | Primary Identity Key (PIK) hashing via SHA-256 | Non-destructive idempotent entity merging in SQLite WAL. |
 | **Zero-Token Diffs** | Set-theoretic delta calculation ($\Delta = S_{t+1} \setminus S_t$) | Cuts LLM agent context window consumption by **98%**. |

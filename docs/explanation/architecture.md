@@ -67,8 +67,10 @@ Ether treats cybersecurity operations through the lens of supervisory runtime de
 
 | Supervisory Concept | Ether Implementation | Architectural Function |
 | :--- | :--- | :--- |
-| **Process Scheduler & Lifecycle** | `ExecutionSession` & `Executor` | Spawns binaries via pure argument vectors (`asyncio.create_subprocess_exec`), enforces process tree lifecycle, and manages automated `SIGTERM` $\to$ `SIGKILL` escalations. Zero `shell=True`. |
-| **Memory Management & Limits** | `LogSpooler` & Bounded Ring Buffer | Enforces hard memory ceilings (<10MB RAM per job) using `deque(maxlen=5000)` while streaming raw GBs of output to disk in 64KB chunks. Sanitizes memory with `wipe_credentials()`. |
+| **Process Scheduler & Lifecycle** | `ExecutionSession` & `Executor` | Spawns binaries via pure argument vectors (`asyncio.create_subprocess_exec`), falls back to `ContainerizedToolRunner` when host binaries are absent, enforces process tree lifecycle, and manages automated `SIGTERM` $\to$ `SIGKILL` escalations. Zero `shell=True`. |
+| **Memory Management & Limits** | `LogSpooler` & `ByteBoundedRingBuffer` | Enforces hard memory ceilings (<10MB RAM per job) using `ByteBoundedRingBuffer` (2 MB byte cap and 5,000 chunk cap per active job) and bounded `subscribe()` queues while streaming raw GBs of output to disk in 64KB chunks. Sanitizes memory with `wipe_credentials()`. |
+| **Network & Stream Resilience** | `RawNetworkGovernor` & `StreamRecoveryEngine` | Accelerates TCP SYN discovery via ambient `CAP_NET_RAW` (with `asyncio.open_connection` fallback) and salvages valid JSON/XML findings from truncated or timed-out scanner streams. |
+| **Storage Lifecycle** | `StorageLifecycleManager` | Enforces configurable disk quotas and Zstandard (`zstd`) compression on historical console logs while preserving `ForensicLogManager` SHA-256 audit chain integrity. |
 | **Device Drivers** | Pluggable Smart Adapters (`tools/*`) | Translates disparate CLI outputs (Nmap XML, FFUF JSON, Nikto text) into uniform, typed Pydantic findings via `ToolAdapter` (Tier A coroutines & Tier B subprocesses). |
 | **Filesystem & Inodes** | Deterministic `GraphStore` (SQLite WAL) | Mathematical Primary Identity Keys (PIK) hash into deterministic SHA-256 Node IDs ($H(\text{schema} + \text{sorted\_pik})$), guaranteeing idempotent upserts and relational integrity. |
 | **Access Control & Security Rings** | `ActionGateway` & `GatePolicy` | Policy enforcement: `GatePolicy.SAFE` (SSRF defense, link-local & cloud IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for authorized red-teams). |
@@ -159,11 +161,11 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
 1. **Process Isolation & Pure Argument Vectors**:
    - Commands are constructed strictly as argument vectors (`List[str]`). Under no circumstances is `shell=True` or raw shell string interpolation permitted.
 2. **Environment Secret Scrubbing**:
-   - `sanitize_subprocess_env()` scrubs all cloud, provider, and VCS secrets (`ETHER_*`, `AWS_*`, `GITHUB_*`, `OPENAI_*`, `ANTHROPIC_*`, `SSH_AUTH_SOCK`, `VAULT_TOKEN`) from child process environments.
+   - `sanitize_subprocess_env()` scrubs all cloud, provider, and VCS secrets (`ETHER_*`, `AWS_*`, `GITHUB_*`, `OPENAI_*`, `ANTHROPIC_*`, `SSH_*`, `AZURE_*`, `DOCKER_*`, `NPM_*`, `GOOGLE_APPLICATION_CREDENTIALS`, `DATABASE_URL`, `VAULT_TOKEN`, and `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_API_KEY`) from child process environments.
 3. **Atomic File Permissions (TOCTOU Defense)**:
-   - Sensitive session state and encrypted archives are created atomically with `0o600` permissions (`-rw-------`). Application directories enforce `0o700`.
+   - Sensitive session state, database files, and encrypted archives are created atomically with `0o600` permissions (`-rw-------`) via temp-file + `os.replace`. Application and database directories enforce `0o700`.
 4. **AI Prompt Injection Boundary**:
-   - Untrusted scan outputs passed to AI models are encapsulated inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with breakout neutralization (`</untrusted_scan_output>` replaced with `<\/untrusted_scan_output>`).
+   - Untrusted scan outputs passed to AI models are encapsulated inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with case-insensitive breakout neutralization (`<(?:/\s*)?untrusted_scan_output\b[^>]*>`).
 
 ---
 

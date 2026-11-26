@@ -18,7 +18,7 @@ ether [GLOBAL_OPTIONS] <SUBCOMMAND> [SUBCOMMAND_OPTIONS]
 | — | `--data-dir PATH` | `ETHER_DATA_DIR` | `~/.ether` | Base application directory for logs, scratchpad, and state. |
 | — | `--db PATH` | — | `~/.ether/ether.db` | Target SQLite database file. Supports `:memory:` for ephemeral runs. |
 | — | `--tools DIR` | — | Bundled `tools/` | Directory path containing pluggable tool adapters. |
-| `-j` | `--json` | — | `false` | Output results in machine-readable JSON format. |
+| `-j` | `--json` | — | `false` | Output results in machine-readable JSON format across all CLI subcommands, with untruncated 64-character SHA-256 node IDs. |
 | `-v` | `--verbose` | — | `false` | Enable verbose debug logging to stderr. |
 | — | `--policy MODE` | — | `safe` | Gate policy mode: `safe` (SSRF/IMDS defense & scope) or `unrestricted`. |
 | `-V` | `--version` | — | — | Display Ether version and exit. |

@@ -306,10 +306,11 @@ Ether embeds `sqlite-vec` directly inside SQLite to provide sub-millisecond offl
 
 ## 6. Temporal State Decay & Invariant Identity Anchoring
 
-1. **Confidence Windows**:
-   - `confirmed`: Active and observed within the last `ttl_seconds`.
+1. **Confidence Windows & Adaptive Volatility Scoring**:
+   - `confirmed`: Active and observed within the effective `ttl_seconds`.
    - `flapping`: Observed across multiple non-consecutive runs or undergoing frequent state oscillation.
-   - `stale`: Age exceeds `ttl_seconds` without fresh observation. Excluded from standard queries by default.
+   - `stale`: Age exceeds effective `ttl_seconds` without fresh observation. Excluded from standard queries by default.
+   - `TemporalDecayEngine` computes an adaptive volatility coefficient ($V_n \in [0.1, 1.0]$) from historical flapping frequency and restart intervals, accelerating decay for high-churn cloud/container targets while preserving long confidence windows for stable hosts. Metadata-only volatility updates leave `updated_at` untouched.
 2. **Cross-IP Identity Migration**:
    When a service shifts IP addresses (e.g. in dynamic cloud or container environments), its Primary Identity Key changes. By anchoring nodes to invariant cryptographic fingerprints (`tls:<sha256>`, `ssh:<fingerprint>`, `favicon:<hash>`), `GraphStore` automatically discovers previous instances, creates directed `anchored_identity` migration edges, and marks the old ephemeral node as stale.
 
