@@ -125,9 +125,7 @@ class ToolAdapter(ABC):
 
         if not params:
             return []
-        raw = params.get("flags")
-        if raw is None:
-            raw = params.get("raw_flags", [])
+        raw = params.get("flags", [])
         if isinstance(raw, list):
             return [str(f) for f in raw if str(f).strip()]
         if isinstance(raw, str) and raw.strip():

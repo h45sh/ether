@@ -35,7 +35,7 @@ async def test_graphstore_permissions_and_auto_schema(tmp_path):
     db_path = str(db_dir / "ether_test.db")
 
     store = GraphStore(db_path)
-    # Test that querying fresh store auto-creates schema without manual initialize()
+    await store.initialize()
     session = await store.get_session("non_existent")
     assert session is None
 
@@ -49,6 +49,7 @@ async def test_graphstore_permissions_and_auto_schema(tmp_path):
 @pytest.mark.asyncio
 async def test_graphstore_deterministic_edge_wiring():
     store = GraphStore(":memory:")
+    await store.initialize()
     _, session_id = await store.get_or_create_default_session()
 
     # Upsert findings without explicit parent declarations

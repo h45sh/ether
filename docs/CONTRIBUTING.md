@@ -83,8 +83,8 @@ class MyToolAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct the CLI arguments safely as an argument list (preventing shell injection)."""
-        raw_flags = params.get("raw_flags", "")
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flags = params.get("flags", "")
+        flag_args = shlex.split(flags) if flags else []
         url = target.data.get("url") or "http://127.0.0.1"
         return ["mytool", "-u", url] + flag_args
 

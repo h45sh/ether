@@ -243,8 +243,13 @@ class Executor:
 
         if use_shell:
             default_shell = shell_path or shutil.which("bash") or os.environ.get("SHELL", "/bin/sh")
-            raw_flags = params.get("raw_flags") if params else None
-            cmd_str = raw_flags.strip() if raw_flags else shlex.join(command)
+            flags_val = params.get("flags") if params else None
+            if isinstance(flags_val, list):
+                cmd_str = " ".join(str(x) for x in flags_val).strip() or shlex.join(command)
+            elif isinstance(flags_val, str) and flags_val.strip():
+                cmd_str = flags_val.strip()
+            else:
+                cmd_str = shlex.join(command)
             final_cmd = [default_shell, "-c", cmd_str]
             process = await asyncio.create_subprocess_exec(
                 *final_cmd,

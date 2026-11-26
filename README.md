@@ -170,7 +170,7 @@ ether tool list
 SESSION_ID=$(ether session create "Target Perimeter Recon" --json | jq -r '.session_id')
 
 # 4. Supervise a tool scan (stdout is normalized streamingly into the graph)
-ether run nmap 192.168.1.50 --session-id "$SESSION_ID" --params '{"raw_flags": "-sV -p 80,443,8080"}'
+ether run nmap 192.168.1.50 --session-id "$SESSION_ID" --params '{"flags": "-sV -p 80,443,8080"}'
 
 # 5. List discovered finding nodes in the session graph
 ether graph list-nodes "$SESSION_ID"

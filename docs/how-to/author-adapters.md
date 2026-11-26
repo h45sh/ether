@@ -157,7 +157,7 @@ class NmapAdapter(ToolAdapter):
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct a safe argument vector from target and execution parameters."""
         ip = target.data.get("ip") or "127.0.0.1"
-        flags = params.get("raw_flags", "-sV -T4").split()
+        flags = params.get("flags", "-sV -T4").split()
         return ["nmap", *flags, ip]
 
     async def parse_output(

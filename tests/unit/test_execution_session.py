@@ -108,7 +108,7 @@ async def test_execution_session_dispatch_and_events():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="nmap",
-        params={"raw_flags": "-p 80 10.0.0.1"},
+        params={"flags": "-p 80 10.0.0.1"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -174,7 +174,7 @@ async def test_execution_session_typed_subscription():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="whois",
-        params={"raw_flags": "example.com"},
+        params={"flags": "example.com"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -215,7 +215,7 @@ async def test_execution_session_kill_job():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="nmap",
-        params={"raw_flags": "-sV 10.0.0.1"},
+        params={"flags": "-sV 10.0.0.1"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -325,7 +325,7 @@ async def test_privileged_action_cached_credentials_no_suspend():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "whoami"},
+        params={"flags": "whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -349,7 +349,7 @@ async def test_privileged_action_cached_credentials_no_suspend():
     # TUI was NOT suspended because credentials were already cached
     assert suspend_ctx.suspended is False
     assert len(runner.executed_calls) == 1
-    call_params = runner.executed_calls[0]["params"]["raw_flags"]
+    call_params = runner.executed_calls[0]["params"]["flags"]
     assert call_params == "sudo whoami"
     assert any("uid=0(root)" in c for c in chunks_received)
 
@@ -381,7 +381,7 @@ async def test_privileged_action_prompt_and_resume_stream():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "nmap -sS 10.0.0.1"},
+        params={"flags": "nmap -sS 10.0.0.1"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -417,7 +417,7 @@ async def test_privileged_action_prompt_and_resume_stream():
     assert any("Nmap scan report" in c for c in chunks_received)
 
     assert len(runner.executed_calls) == 1
-    assert runner.executed_calls[0]["params"]["raw_flags"] == "sudo nmap -sS 10.0.0.1"
+    assert runner.executed_calls[0]["params"]["flags"] == "sudo nmap -sS 10.0.0.1"
 
     job = session.get_job(job_id)
     assert job.status == JobStatusEnum.DONE
@@ -447,7 +447,7 @@ async def test_privileged_action_auth_failure():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "whoami"},
+        params={"flags": "whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -505,7 +505,7 @@ async def test_privileged_action_deduplicates_sudo_flags():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "sudo whoami"},
+        params={"flags": "sudo whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -520,7 +520,7 @@ async def test_privileged_action_deduplicates_sudo_flags():
             await task
 
     assert len(runner.executed_calls) == 1
-    assert runner.executed_calls[0]["params"]["raw_flags"] == "sudo whoami"
+    assert runner.executed_calls[0]["params"]["flags"] == "sudo whoami"
     await store.close()
 
 
@@ -546,7 +546,7 @@ async def test_privileged_action_missing_sudo_binary():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "whoami"},
+        params={"flags": "whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -643,11 +643,11 @@ async def test_execution_session_normalizes_flags_param_before_validation():
         "execution_tier": "coroutine",
     }
 
-    validated_raw_flags = []
+    validated_flags = []
 
     class RecordingGateway(ActionGateway):
         async def validate_action(self, action):
-            validated_raw_flags.append(action.params.get("raw_flags"))
+            validated_flags.append(action.params.get("flags"))
             return await super().validate_action(action)
 
     gateway = RecordingGateway(registry, store)
@@ -666,8 +666,8 @@ async def test_execution_session_normalizes_flags_param_before_validation():
     if task:
         await task
 
-    assert validated_raw_flags == ["-sV 10.10.10.5"]
-    assert seen_params["raw_flags"] == "-sV 10.10.10.5"
+    assert validated_flags == [["-sV", "10.10.10.5"]]
+    assert seen_params["flags"] == ["-sV", "10.10.10.5"]
     await store.close()
 
 

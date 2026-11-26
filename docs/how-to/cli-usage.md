@@ -72,10 +72,10 @@ Execute a security tool scan under Ether's reactive supervisor. Child stdout is 
 ether run nmap 192.168.1.50
 
 # Run with custom parameters and explicit session binding
-ether run nmap 10.0.0.1 --session-id <SESSION_ID> --params '{"raw_flags": "-sV -p 80,443"}'
+ether run nmap 10.0.0.1 --session-id <SESSION_ID> --params '{"flags": "-sV -p 80,443"}'
 
 # Execute under UNRESTRICTED policy (red-team workstation mode)
-ether run nmap 10.10.10.20 --policy unrestricted --params '{"raw_flags": "-p-"}'
+ether run nmap 10.10.10.20 --policy unrestricted --params '{"flags": "-p-"}'
 
 # Output execution metrics and summary as JSON
 ether run nuclei https://example.com --json
@@ -360,7 +360,7 @@ ether run subfinder example.com --session-id "$SESS"
 ether run http_probe https://example.com --session-id "$SESS"
 
 # 4. Run targeted port scan against discovered host IP
-ether run nmap 93.184.216.34 --session-id "$SESS" --params '{"raw_flags": "-sV -p 80,443"}'
+ether run nmap 93.184.216.34 --session-id "$SESS" --params '{"flags": "-sV -p 80,443"}'
 
 # 5. Review all discovered findings
 ether graph list-nodes "$SESS"

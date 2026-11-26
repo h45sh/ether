@@ -282,7 +282,7 @@ Ether surfaces granular execution telemetry payloads with a standardized `Execut
 * **MCP Resources**: `ether://schemas` (lists all 25 normalized finding schemas and PIK fields) and `ether://tools/{tool_name}/guidance` (dynamic target scope and safety guidance).
 * **MCP Prompts**: `perimeter_recon(target)` and `vulnerability_triage(session_id)` workflow templates.
 * **Server Instructions**: Sent automatically during MCP handshake summarizing active `GatePolicy`, token-efficiency rules, and `<untrusted_scan_output>` boundaries.
-* **Flag Flexibility**: `execute_tool` accepts both `arguments["flags"]` and `arguments["raw_flags"]`, and `read_action_log` transparently decompresses `.log.gz` archives for closed sessions.
+* **Flag Flexibility**: `execute_tool` accepts both `arguments["flags"]` and `arguments["flags"]`, and `read_action_log` transparently decompresses `.log.gz` archives for closed sessions.
 
 ---
 
@@ -390,7 +390,7 @@ Once connected to Ether via MCP, give your agent natural language objectives:
 > *"Inspect the current engagement session for any hosts running Apache or OpenSSH. If discovered, run nuclei with web-cve tags and report newly confirmed vulnerability nodes."*
 - **Agent Action Flow:**
   1. `query_graph(schema_type="network.service")` -> Discovers port 80/443.
-  2. `execute_tool(tool_name="nuclei", target="https://10.0.0.1", arguments={"raw_flags": "-t cves/"})`
+  2. `execute_tool(tool_name="nuclei", target="https://10.0.0.1", arguments={"flags": "-t cves/"})`
   3. `inspect_entity(entity_id=...)` -> Deep inspection of vulnerability nodes and incident relations.
 
 ---

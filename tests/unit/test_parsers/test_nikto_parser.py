@@ -13,20 +13,20 @@ def adapter():
 def test_nikto_build_command(adapter):
     # 1. Target is web.endpoint
     endpoint = WebEndpoint.create(url="http://192.168.1.1:8080/test")
-    cmd = adapter.build_command(endpoint, {"raw_flags": "-h {target} -Tuning x"})
+    cmd = adapter.build_command(endpoint, {"flags": "-h {target} -Tuning x"})
     assert cmd[0] == "nikto"
     assert "-h" in cmd
     assert "http://192.168.1.1:8080/test" in cmd
 
     # 2. Target is network.service
     service = NetworkService.create(host_ip="10.0.0.5", port=443, protocol="tcp")
-    cmd_svc = adapter.build_command(service, {"raw_flags": "-h {target} -p {port}"})
+    cmd_svc = adapter.build_command(service, {"flags": "-h {target} -p {port}"})
     assert "10.0.0.5" in cmd_svc
     assert "443" in cmd_svc
 
     # 3. Target is network.host
     host = NetworkHost.create(ip="127.0.0.1")
-    cmd_host = adapter.build_command(host, {"raw_flags": "-h {target}"})
+    cmd_host = adapter.build_command(host, {"flags": "-h {target}"})
     assert "127.0.0.1" in cmd_host
 
 

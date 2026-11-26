@@ -19,7 +19,7 @@ def test_nmap_build_command(adapter):
     assert "192.168.1.10" in cmd
 
     # 2. Command build with raw flags
-    cmd_flags = adapter.build_command(target, {"raw_flags": "-sV -Pn -p 80,443"})
+    cmd_flags = adapter.build_command(target, {"flags": "-sV -Pn -p 80,443"})
     assert "-sV" in cmd_flags
     assert "-Pn" in cmd_flags
     assert "192.168.1.10" in cmd_flags

@@ -108,13 +108,13 @@ def test_all_adapters_build_command_invariants(tool_name, tool_data):
 
     adversarial_params = [
         {},
-        {"raw_flags": ""},
-        {"raw_flags": "   "},
-        {"raw_flags": "-p 80,443 -v --script 'default,vuln'"},
-        {"raw_flags": "; rm -rf /; echo $(id) && whoami | grep root"},
-        {"raw_flags": "null\x00byte\x00injection"},
-        {"raw_flags": "-H 'Authorization: Bearer test' -u 'https://example.com?id=1'"},
-        {"raw_flags": "A" * 5000},
+        {"flags": ""},
+        {"flags": "   "},
+        {"flags": "-p 80,443 -v --script 'default,vuln'"},
+        {"flags": "; rm -rf /; echo $(id) && whoami | grep root"},
+        {"flags": "null\x00byte\x00injection"},
+        {"flags": "-H 'Authorization: Bearer test' -u 'https://example.com?id=1'"},
+        {"flags": "A" * 5000},
     ]
 
     for params in adversarial_params:

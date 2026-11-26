@@ -211,13 +211,18 @@ class CryptoEngine:
         return out
 
     def decrypt_finding_data(self, schema_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Decrypt sensitive fields after reading from SQLite."""
+        """Decrypt sensitive fields after reading from SQLite, enforcing credential TTL expiry."""
         out = dict(data)
         aad = schema_type.encode("utf-8")
         for key in (*SENSITIVE_CREDENTIAL_FIELDS, "raw_data"):
             val = out.get(key)
             if isinstance(val, str) and val.startswith(ENC_PREFIX):
                 out[key] = self.decrypt_field(val, aad=aad)
+        if is_credential_expired(out):
+            for key in SENSITIVE_CREDENTIAL_FIELDS:
+                if key in out and out[key]:
+                    out[key] = "[EXPIRED]"
+            out["expired"] = True
         return out
 
     def close(self) -> None:

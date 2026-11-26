@@ -53,7 +53,7 @@ async def execute_tool_action(
     session_id: str,
     tool_name: str,
     target_finding: BaseFinding,
-    raw_flags: str = "",
+    flags: str = "",
 ):
     """Helper to dispatch and await tool execution in an ExecutionSession."""
     target_node_id = await store.upsert_finding(session_id, target_finding)
@@ -65,12 +65,12 @@ async def execute_tool_action(
         or "target"
     )
 
-    flags_list = raw_flags.split() if raw_flags else []
+    flags_list = flags.split() if flags else []
     action = ActionRequest(
         session_id=UUID(session_id),
         tool_name=tool_name,
         target_entity_id=target_node_id,
-        params={"target": target_str, "flags": flags_list, "raw_flags": raw_flags},
+        params={"target": target_str, "flags": flags_list, "flags": flags},
     )
 
     t0 = time.perf_counter()
@@ -135,7 +135,7 @@ async def run_evaluation():
     dns_target = DnsRecord.create(domain="example.com", record_type="A", value="93.184.215.14")
     logger.info("Running dnspython against example.com...")
     res_dns = await execute_tool_action(
-        s1_exec, store, s1_session, "dnspython", dns_target, raw_flags="-t A,AAAA,MX,TXT,NS"
+        s1_exec, store, s1_session, "dnspython", dns_target, flags="-t A,AAAA,MX,TXT,NS"
     )
     logger.info(
         f"dnspython: status={res_dns['status']}, findings={res_dns['findings_count']}, duration={res_dns['duration_s']:.2f}s"
@@ -154,7 +154,7 @@ async def run_evaluation():
     dom_target = DomainInfo.create(domain="example.com")
     logger.info("Running subfinder against example.com...")
     res_sub = await execute_tool_action(
-        s1_exec, store, s1_session, "subfinder", dom_target, raw_flags="-silent"
+        s1_exec, store, s1_session, "subfinder", dom_target, flags="-silent"
     )
     logger.info(
         f"subfinder: status={res_sub['status']}, findings={res_sub['findings_count']}, duration={res_sub['duration_s']:.2f}s"
@@ -191,7 +191,7 @@ async def run_evaluation():
         host_target = NetworkHost.create(ip="127.0.0.1")
         logger.info("Running nmap on 127.0.0.1 (ports 631, 3306, 8888)...")
         res_nmap = await execute_tool_action(
-            s2_exec, store, s2_session, "nmap", host_target, raw_flags="-p 631,3306,8888"
+            s2_exec, store, s2_session, "nmap", host_target, flags="-p 631,3306,8888"
         )
         logger.info(
             f"nmap: status={res_nmap['status']}, findings={res_nmap['findings_count']}, duration={res_nmap['duration_s']:.2f}s"
@@ -219,7 +219,7 @@ async def run_evaluation():
             s2_session,
             "ffuf",
             web_target,
-            raw_flags=f"-w {wordlist_path} -u http://127.0.0.1:8888/FUZZ -mc 200,401,403",
+            flags=f"-w {wordlist_path} -u http://127.0.0.1:8888/FUZZ -mc 200,401,403",
         )
         logger.info(
             f"ffuf: status={res_ffuf['status']}, findings={res_ffuf['findings_count']}, duration={res_ffuf['duration_s']:.2f}s"

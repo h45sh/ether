@@ -12,12 +12,12 @@ def adapter():
 def test_subfinder_build_command(adapter):
     # 1. Target is domain.info
     domain_info = DomainInfo.create(domain="example.com")
-    cmd = adapter.build_command(domain_info, {"raw_flags": "-d {domain} -silent"})
+    cmd = adapter.build_command(domain_info, {"flags": "-d {domain} -silent"})
     assert cmd == ["subfinder", "-d", "example.com", "-silent"]
 
     # 2. Target is dns.record
     dns_rec = DnsRecord.create(domain="target.org", record_type="A", value="1.2.3.4")
-    cmd_dns = adapter.build_command(dns_rec, {"raw_flags": "-d {domain}"})
+    cmd_dns = adapter.build_command(dns_rec, {"flags": "-d {domain}"})
     assert cmd_dns == ["subfinder", "-d", "target.org"]
 
 

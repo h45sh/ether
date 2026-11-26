@@ -20,9 +20,17 @@ def test_container_runner_disabled_by_default(monkeypatch):
 @pytest.mark.fast
 def test_container_runner_enabled_and_available(monkeypatch):
     monkeypatch.setenv("ETHER_CONTAINER_FALLBACK", "1")
-    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", "ghcr.io/ether/arsenal:v1.0.0")
+    pinned = "ghcr.io/ether/arsenal@sha256:" + ("a" * 64)
+    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", pinned)
 
     assert ContainerizedToolRunner.is_enabled() is True
+    assert ContainerizedToolRunner.get_image() == pinned
+
+    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", "ghcr.io/ether/arsenal:v1.0.0")
+    with pytest.raises(ValueError, match="digest-pinned"):
+        ContainerizedToolRunner.get_image()
+
+    monkeypatch.setenv("ETHER_CONTAINER_ALLOW_MUTABLE_TAG", "1")
     assert ContainerizedToolRunner.get_image() == "ghcr.io/ether/arsenal:v1.0.0"
 
     with patch("shutil.which", return_value="/usr/bin/podman"):
@@ -62,7 +70,8 @@ def test_container_runner_should_use_container(monkeypatch):
 
 @pytest.mark.fast
 def test_container_runner_build_command(monkeypatch):
-    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", "ghcr.io/ether/arsenal:pinned")
+    pinned = "ghcr.io/ether/arsenal@sha256:" + ("b" * 64)
+    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", pinned)
     with patch("shutil.which", return_value="/usr/bin/podman"):
         cmd = ContainerizedToolRunner.build_container_command(
             command=["sqlmap", "-u", "http://target.com"],
@@ -74,7 +83,7 @@ def test_container_runner_build_command(monkeypatch):
         assert "--rm" in cmd
         assert "--read-only" in cmd
         assert "--cap-drop=ALL" in cmd
-        assert "ghcr.io/ether/arsenal:pinned" in cmd
+        assert pinned in cmd
         assert "sqlmap" in cmd
         assert "-u" in cmd
         # Scrubbed secret
@@ -85,6 +94,7 @@ def test_container_runner_build_command(monkeypatch):
 @pytest.mark.fast
 def test_preflight_verifier_container_fallback_warning(monkeypatch):
     monkeypatch.setenv("ETHER_CONTAINER_FALLBACK", "1")
+    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", "ghcr.io/ether/arsenal@sha256:" + ("c" * 64))
 
     class FakeAdapter:
         name = "mock_missing"

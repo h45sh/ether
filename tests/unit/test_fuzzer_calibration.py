@@ -65,7 +65,7 @@ async def test_ffuf_adapter_injects_filter_size():
 
         findings = []
         async for f in adapter.execute_action(
-            target, {"raw_flags": "-u http://target.local/FUZZ"}, mock_context
+            target, {"flags": "-u http://target.local/FUZZ"}, mock_context
         ):
             findings.append(f)
 
@@ -98,7 +98,7 @@ async def test_gobuster_adapter_injects_exclude_length():
 
         findings = []
         async for f in adapter.execute_action(
-            target, {"raw_flags": "-u http://target.local"}, mock_context
+            target, {"flags": "-u http://target.local"}, mock_context
         ):
             findings.append(f)
 

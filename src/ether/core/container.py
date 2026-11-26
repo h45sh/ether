@@ -29,8 +29,19 @@ class ContainerizedToolRunner:
 
     @classmethod
     def get_image(cls) -> str:
-        """Return the pinned or configured container image reference."""
-        return os.environ.get("ETHER_CONTAINER_IMAGE", cls.DEFAULT_IMAGE).strip()
+        """Return the digest-pinned or configured container image reference."""
+        image = os.environ.get("ETHER_CONTAINER_IMAGE", cls.DEFAULT_IMAGE).strip()
+        allow_mutable = os.environ.get("ETHER_CONTAINER_ALLOW_MUTABLE_TAG", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if not allow_mutable and "@sha256:" not in image:
+            raise ValueError(
+                f"Container image '{image}' must be digest-pinned (@sha256:...) unless ETHER_CONTAINER_ALLOW_MUTABLE_TAG=1."
+            )
+        return image
 
     @classmethod
     def is_available(cls) -> bool:

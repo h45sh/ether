@@ -72,7 +72,7 @@ async def test_action_gateway_flag_smuggling_rejection():
     action = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "--target=169.254.169.254"},
+        params={"flags": "--target=169.254.169.254"},
     )
     with pytest.raises(ActionValidationError):
         await gateway.validate_action(action)
@@ -80,7 +80,7 @@ async def test_action_gateway_flag_smuggling_rejection():
     action_metachar = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "-p 80 | cat"},
+        params={"flags": "-p 80 | cat"},
     )
     with pytest.raises(ActionValidationError):
         await gateway.validate_action(action_metachar)

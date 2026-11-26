@@ -244,12 +244,6 @@ class GraphStore:
                         os.chmod(self.db_path, 0o600)
                     except OSError:
                         pass
-                cursor = await self._conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions' LIMIT 1"
-                )
-                if not await cursor.fetchone():
-                    await self._conn.executescript(SCHEMA_DDL)
-                    await self._conn.commit()
             yield self._conn
 
     def get_read_conn(self):

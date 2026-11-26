@@ -82,16 +82,18 @@ class PassthroughActionValidator:
 
         from ether.common.scope import EngagementScope, ScopeValidator
 
-        raw_flags = ""
+        flags_str = ""
         if action.params:
-            raw_flags = action.params.get("raw_flags") or action.params.get("flags") or ""
-            if isinstance(raw_flags, list):
-                raw_flags = " ".join(str(f) for f in raw_flags)
-        if raw_flags and re.search(r"[|;&$`\n]", raw_flags):
+            flags_val = action.params.get("flags") or ""
+            if isinstance(flags_val, list):
+                flags_str = " ".join(str(f) for f in flags_val)
+            else:
+                flags_str = str(flags_val)
+        if flags_str and re.search(r"[|;&$`\n]", flags_str):
             raise ValueError("Shell metacharacters are prohibited in command arguments.")
 
         safe_scope = EngagementScope(allow_loopback=False)
-        for tok in str(raw_flags).replace("=", " ").split():
+        for tok in str(flags_str).replace("=", " ").split():
             clean_tok = tok.strip("\"'`()<>,;{}[]")
             if not clean_tok or clean_tok.startswith("-"):
                 continue
@@ -230,7 +232,10 @@ class InternalShellAdapter(ToolAdapter):
         return True
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        return shlex.split(params.get("raw_flags", ""))
+        flags_val = params.get("flags", [])
+        if isinstance(flags_val, list):
+            return [str(f) for f in flags_val if str(f).strip()]
+        return shlex.split(str(flags_val))
 
     async def parse_output(
         self,
@@ -510,28 +515,26 @@ class ExecutionSession:
         resolved_vars = self.gateway.resolve_entity_variables(pik)
         if action.params is None:
             action.params = {}
-        if "flags" in action.params and not action.params.get("raw_flags"):
-            flags_val = action.params["flags"]
-            if isinstance(flags_val, list):
-                action.params["raw_flags"] = " ".join(str(x) for x in flags_val)
-            elif flags_val is not None:
-                action.params["raw_flags"] = str(flags_val)
-        elif "raw_flags" in action.params and not action.params.get("flags"):
-            rf = action.params["raw_flags"]
-            if isinstance(rf, str) and rf.strip():
-                import shlex
+        flags_val = action.params.get("flags", [])
+        if isinstance(flags_val, list):
+            flags_str = " ".join(str(x) for x in flags_val)
+        elif flags_val is not None:
+            flags_str = str(flags_val)
+        else:
+            flags_str = ""
 
-                action.params["flags"] = shlex.split(rf.strip())
+        flags_str = self.gateway.interpolate_variables(flags_str, resolved_vars)
+        if isinstance(action.params.get("flags"), list):
+            import shlex
 
-        raw_flags = action.params.get("raw_flags", "") if action.params else ""
-        raw_flags = self.gateway.interpolate_variables(raw_flags, resolved_vars)
-        if action.params:
-            action.params["raw_flags"] = raw_flags
+            action.params["flags"] = shlex.split(flags_str) if flags_str.strip() else []
+        else:
+            action.params["flags"] = flags_str
 
         # 2. Builtin 'cd' handling
         tool_data = self.registry.get_tool(action.tool_name)
         if not tool_data and action.tool_name == "cd":
-            dest = raw_flags.strip()
+            dest = flags_str.strip()
             current = self.get_cwd(str(action.session_id))
             new_path = os.path.abspath(os.path.join(current, dest))
             if os.path.isdir(new_path):
@@ -545,10 +548,12 @@ class ExecutionSession:
 
         # 3. Determine Adapter
         if action.is_explicit_shell:
-            action.params["raw_flags"] = f"{action.tool_name} {raw_flags}".strip()
+            if isinstance(action.params.get("flags"), list):
+                action.params["flags"] = [action.tool_name, *action.params["flags"]]
+            else:
+                action.params["flags"] = f"{action.tool_name} {flags_str}".strip()
             adapter = InternalShellAdapter()
         elif tool_data:
-            action.params["raw_flags"] = raw_flags
             adapter = tool_data["adapter"]
         else:
             raise ValueError(f"No tool or explicit shell prefix found for '{action.tool_name}'")
@@ -576,7 +581,11 @@ class ExecutionSession:
         )
         log_file_path = str(log_path)
         self._job_spoolers[action.action_id] = spooler
-        cmd_raw = action.params.get("raw_flags", "") if action.params else ""
+        flags_val = action.params.get("flags", "") if action.params else ""
+        if isinstance(flags_val, list):
+            cmd_raw = " ".join(str(x) for x in flags_val)
+        else:
+            cmd_raw = str(flags_val) if flags_val is not None else ""
         cmd_snippet = f"{action.tool_name} {cmd_raw}".strip() if cmd_raw else action.tool_name
 
         job = JobStatus(
@@ -916,7 +925,7 @@ class ExecutionSession:
                 data={},
                 status="confirmed",
             )
-            params = {"raw_flags": shlex.join(cmd_args)}
+            params = {"flags": shlex.join(cmd_args)}
 
             async for _ in self.runner.run(
                 adapter=adapter,

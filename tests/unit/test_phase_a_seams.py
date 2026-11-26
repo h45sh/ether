@@ -176,8 +176,9 @@ async def test_reopen_session_invalidates_seal_receipt(tmp_path):
 
 
 @pytest.mark.fast
-def test_container_runner_hardened_flags():
+def test_container_runner_hardened_flags(monkeypatch):
     """ContainerizedToolRunner defaults to --network=none and enforces resource/privilege limits."""
+    monkeypatch.setenv("ETHER_CONTAINER_IMAGE", "ghcr.io/ether/arsenal@sha256:" + ("d" * 64))
     with patch("shutil.which", return_value="/usr/bin/podman"):
         cmd_default = ContainerizedToolRunner.build_container_command(
             command=["nmap", "-sV", "10.0.0.1"],

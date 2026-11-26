@@ -205,14 +205,14 @@ class ActionGateway:
         """Validate an action request returning a structured PreflightReport rather than raising exceptions."""
         from ether.gateway.preflight import PreflightIssue
 
-        raw_flags = ""
-        if action.params:
-            raw_flags = action.params.get("raw_flags") or action.params.get("flags", "")
+        flags_val = action.params.get("flags", "") if action.params else ""
+        if isinstance(flags_val, list):
+            flags_val = " ".join(str(f) for f in flags_val)
         target_str = await self._resolve_entity_target_str(action)
         report = self.preflight_verify(
             tool_name=action.tool_name,
             target=target_str,
-            flags=raw_flags,
+            flags=flags_val,
         )
 
         try:
@@ -348,18 +348,18 @@ class ActionGateway:
         Raises:
             ActionValidationError: If validation fails.
         """
-        # 1. Normalize flags -> raw_flags and enforce metacharacter + destination/scope checks
-        if action.params and "flags" in action.params and "raw_flags" not in action.params:
-            action.params["raw_flags"] = action.params["flags"]
-        raw_flags = action.params.get("raw_flags", "") if action.params else ""
-        if isinstance(raw_flags, list):
-            raw_flags = " ".join(str(f) for f in raw_flags)
-        if raw_flags:
+        # 1. Normalize flags and enforce metacharacter + destination/scope checks
+        flags_val = action.params.get("flags", "") if action.params else ""
+        if isinstance(flags_val, list):
+            flags_str = " ".join(str(f) for f in flags_val)
+        else:
+            flags_str = str(flags_val) if flags_val is not None else ""
+        if flags_str:
             from ether.gateway.flags import FlagFirewall, FlagFirewallError
 
             firewall = FlagFirewall(registry=self.registry)
             try:
-                firewall.validate_arguments(action.tool_name, raw_flags, self.policy)
+                firewall.validate_arguments(action.tool_name, flags_str, self.policy)
             except FlagFirewallError as fw_err:
                 raise ActionValidationError(str(fw_err)) from fw_err
         if self.policy != GatePolicy.UNRESTRICTED:
@@ -369,18 +369,18 @@ class ActionGateway:
                 else False
             )
             if is_blocked_destination(
-                raw_flags, allow_loopback=allow_loopback
+                flags_str, allow_loopback=allow_loopback
             ) or is_blocked_destination(action.tool_name, allow_loopback=allow_loopback):
                 raise ActionValidationError(
                     "Access to cloud metadata endpoints is strictly prohibited (or unauthorized loopback destination)."
                 )
-            if self._allowed_cidrs and not self.validate_target_scope(raw_flags):
+            if self._allowed_cidrs and not self.validate_target_scope(flags_str):
                 raise ActionValidationError(
                     "Target in command arguments violates authorized engagement CIDR scope."
                 )
-            # Async DNS resolution check for hostname/URL tokens in raw_flags under SAFE policy
-            if raw_flags:
-                for raw_tok in raw_flags.replace("=", " ").split():
+            # Async DNS resolution check for hostname/URL tokens in flags under SAFE policy
+            if flags_str:
+                for raw_tok in flags_str.replace("=", " ").split():
                     tok = _strip_token_delimiters(raw_tok)
                     if not tok or tok.startswith("-"):
                         continue

@@ -28,7 +28,7 @@ def test_sqlmap_build_command(adapter):
     # 2. Custom flags should be preserved and macro substituted
     cmd_custom = adapter.build_command(
         endpoint,
-        {"raw_flags": "-u http://target.local/test --dbs --level=2"},
+        {"flags": "-u http://target.local/test --dbs --level=2"},
     )
     assert "--batch" in cmd_custom
     assert "--dbs" in cmd_custom

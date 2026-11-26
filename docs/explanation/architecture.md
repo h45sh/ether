@@ -126,7 +126,7 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
 
 ```text
 [ 1. Consumer / Agent Layer ]
-  Submits ActionRequest(tool="nmap", params={"raw_flags": "-sV"}, target="192.168.1.50")
+  Submits ActionRequest(tool="nmap", params={"flags": "-sV"}, target="192.168.1.50")
   
 [ 2. ActionGateway & Policy Enforcement ]
   - Evaluates GatePolicy (SAFE vs UNRESTRICTED)

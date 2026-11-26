@@ -97,13 +97,11 @@ class SupervisedExecutionService:
                     "remediation": f"Use one of: {avail}",
                 }
 
-        raw_flags = args_dict.get("flags")
-        if raw_flags is None:
-            raw_flags = args_dict.get("raw_flags", [])
-        if isinstance(raw_flags, list):
-            explicit_flags = [str(f) for f in raw_flags]
-        elif isinstance(raw_flags, str) and raw_flags.strip():
-            explicit_flags = shlex.split(raw_flags.strip())
+        flags_input = args_dict.get("flags", [])
+        if isinstance(flags_input, list):
+            explicit_flags = [str(f) for f in flags_input]
+        elif isinstance(flags_input, str) and flags_input.strip():
+            explicit_flags = shlex.split(flags_input.strip())
         else:
             explicit_flags = []
 

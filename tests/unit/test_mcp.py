@@ -615,8 +615,8 @@ async def test_mcp_perimeter_recon_prompt_pipeline_syntax():
 
 
 @pytest.mark.asyncio
-async def test_mcp_execute_tool_passes_raw_flags_and_handles_failed():
-    """Verify execute_tool forwards raw_flags in ActionRequest.params and sets NON_ZERO_EXIT on ExecutionFailed."""
+async def test_mcp_execute_tool_passes_flags_and_handles_failed():
+    """Verify execute_tool forwards flags in ActionRequest.params and sets NON_ZERO_EXIT on ExecutionFailed."""
     from ether.core.session import ExecutionFailed
 
     store = GraphStore(":memory:")

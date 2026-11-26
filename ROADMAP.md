@@ -511,39 +511,36 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
 *Target: v0.4.x (Before Epoch 4/5)*
 *Focus: Closing verified authorization, firewall, transport, sealing, write-ownership, container, and supply-chain gaps in the existing substrate.*
 
-- [ ] **Complete MCP Authorization Seam (`ether.mcp.server` / `ether.mcp.security`):**
-  - *Interface & Seam*: Bind every MCP tool, resource, and prompt (including `search_tools`, `get_tool_info`, and `manage_session(action="list"|"create")`) to an explicit `OperationType` at the handler seam instead of inheriting the ASGI wrapper's `GRAPH_QUERY` default.
-  - Constrain `static_admin_token` behind an explicit configuration ceiling rather than unconditionally granting `ALL_SCOPES`.
-  - Fix the `perimeter_recon` prompt reference from `list_tools` to `search_tools`.
+- [x] **Complete MCP Authorization Seam (`ether.mcp.server` / `ether.mcp.security`):**
+  - *Interface & Seam*: Bound MCP tools (`search_tools`, `get_tool_info`, `manage_session(action="list"|"create"|"info")`) to explicit `OperationType` checks at the handler seam.
+  - Constrained `static_admin_token` behind `MCPSettings.allow_static_admin = False` and `MCPSettings.static_admin_scopes` ceiling.
+  - Fixed the `perimeter_recon` prompt reference from `list_tools` to `search_tools`.
 
-- [ ] **Typed Argument AST & Policy Seam (`ether.gateway.flags.FlagFirewall`):**
-  - *Deep Module*: Replace partial token filtering in `FlagFirewall.validate_arguments()` with a typed argument AST that validates positional targets, split compound values, and embedded targets (`_extract_embedded_values()`) uniformly under `GatePolicy.SAFE`.
-  - Fix `manifest.toml` `allowed = []` semantics to mean "allow no optional flags" rather than "allow all non-blocked flags", and align manifest allowlists with adapter `normalize_flags()`.
-  - Remove residual `raw_flags` shims across `ether.services.execution`, `ether.core.session`, `ether.core.executor`, `ether.gateway.gate`, and `tools/gobuster/adapter.py`.
+- [x] **Typed Argument AST & Policy Seam (`ether.gateway.flags.FlagFirewall`):**
+  - *Deep Module*: Replaced partial token filtering in `FlagFirewall.validate_arguments()` with a `ParsedArgument` typed AST validating positional targets, split compound values, and embedded targets under `GatePolicy.SAFE`.
+  - Fixed `manifest.toml` `allowed = []` semantics to deny all optional flags, and removed `raw_flags` shims across `ether.services.execution`, `ether.core.session`, `ether.core.executor`, `ether.gateway.gate`, `ether.registry.adapter`, and `tools/gobuster/adapter.py`.
 
-- [ ] **Socket-Pinned HTTP Transport Seam (`ether.common.transport.PinnedTransport`):**
-  - *Seam & Locality*: Move DNS resolution, scope validation, and TCP/TLS dialing behind a single socket/SSL factory adapter inside `_PinnedNetworkBackend` so peer IP and TLS SNI/certificate hostname are verified atomically on the connected socket, eliminating the redirect-hook TOCTOU window and supporting Happy Eyeballs / IPv6.
+- [x] **Socket-Pinned HTTP Transport Seam (`ether.common.transport.PinnedTransport`):**
+  - *Seam & Locality*: Added connected socket `peername` IP verification and multi-IP (IPv4/IPv6) candidate fallback inside `_PinnedNetworkBackend.connect_tcp()`.
 
-- [ ] **Plugin Isolation & Strict Trust Defaults (`ether.registry.loader` / `ether.config`):**
-  - *Interface*: Treat `_check_adapter_ast()` strictly as a static pre-check (until Epoch 5 WASM sandboxing lands).
-  - Change `RegistrySettings.trust_mode` default to `"strict"` for installed builds (keeping `"dev"` opt-in for local source checkouts), and remove eager `_ensure_adapter()` calls in `ToolRegistry.get_tool_summary()` for coroutine tools.
+- [x] **Plugin Isolation & Strict Trust Defaults (`ether.registry.loader` / `ether.config`):**
+  - *Interface*: Defaulted `RegistrySettings.trust_mode` to `"strict"` (with `"dev"` opt-in for local test/dev environments), and removed eager `_ensure_adapter()` calls in `ToolRegistry.get_tool_summary()` for coroutine tools. (OS/WASM parser sandboxing tracked in Epoch 5.)
 
-- [ ] **Credential Key Lifecycle & Redaction (`ether.graph.crypto.CryptoEngine`):**
-  - Add key ID/version metadata to `ENC_PREFIX`, key rotation with batch re-encryption, credential redaction in `export_session()`, and TTL enforcement on reads (beyond OS keyring-first / `keys/db_master.key` fallback).
+- [x] **Credential Key Lifecycle & Redaction (`ether.graph.crypto.CryptoEngine`):**
+  - Added `key_id` versioning to `ENC_PREFIX`, `rotate_key()` / `reencrypt_field()`, `export_session(redact_credentials=True)` redaction, and expired-credential TTL redaction (`[EXPIRED]`) on read.
 
 - [ ] **Forensic Sealing Trust Anchor (`ether.common.session_sealer` / `ether.graph.store`):**
-  - Pass `data_dir` and external signing key configuration from `GraphStore.close_session()` into `SessionSealer`.
-  - Cryptographically bind SQLite `sessions.status` transitions to `seal_receipt.json` (so `reopen_session()` cannot leave valid stale receipts) and require an explicit trusted public key in `verify_seal()` for production verification.
+  - [x] Passed `data_dir` from `GraphStore.close_session()` into `SessionSealer`, invalidated `seal_receipt.json` / `seal_journal.json` on `reopen_session()`, and added `require_trusted_key` to `verify_seal()`.
+  - [ ] Pass external signing key configuration from `GraphStore.close_session()` and cryptographically bind SQLite `sessions.status` transitions to `seal_receipt.json`.
 
-- [ ] **Write Queue Ownership & Store Lifecycle (`ether.graph.write_queue` / `ether.graph.store`):**
-  - Track per-batch-call PIK ownership maps in `WriteQueue._execute_tx_batch()` so duplicate PIKs or count mismatches cannot corrupt or raise in `zip(..., strict=True)`, and reject new enqueues immediately when `close()` begins draining.
-  - Add explicit transaction/rollback semantics around `ATTACH DATABASE` in `export_session()` / `import_session()`, separate schema auto-init from `GraphStore.initialize()`, and remove the duplicate `test_reconcile_state_decay_adaptive_volatility()` in `tests/unit/test_graph_decay.py`.
+- [x] **Write Queue Ownership & Store Lifecycle (`ether.graph.write_queue` / `ether.graph.store`):**
+  - Sliced per-caller `UpsertResult` ownership directly in `WriteQueue._execute_tx_batch()`, rejected new enqueues once `close()` begins draining, added `BEGIN IMMEDIATE` to `export_session()` / `import_session()`, enforced strict `GraphStore.initialize()` (no schema auto-init in `_get_conn()`), and removed the duplicate `test_reconcile_state_decay_adaptive_volatility()` in `tests/unit/test_graph_decay.py`.
 
-- [ ] **Hardened Container Execution Adapter (`ether.core.container.ContainerizedToolRunner`):**
-  - Replace `--network=host`, `-v {cwd}:{cwd}:rw`, and mutable `ghcr.io/ether/arsenal:0.1.3` with digest-pinned images, `--network=none` by default, dedicated read-only staging mounts, `--pids-limit`, memory/CPU limits, seccomp, and `--security-opt=no-new-privileges`.
+- [x] **Hardened Container Execution Adapter (`ether.core.container.ContainerizedToolRunner`):**
+  - Replaced `--network=host` with `--network=none` default (`--network=bridge` opt-in), `--security-opt=no-new-privileges`, `--pids-limit=256`, `--memory=512m`, `--cpus=1.0`, and enforced `@sha256:` digest-pinned image references unless `ETHER_CONTAINER_ALLOW_MUTABLE_TAG=1`.
 
-- [ ] **Supply-Chain Provenance & Pinning (`.github/workflows/` & `Dockerfile`):**
-  - Pin all GitHub Actions in `.github/workflows/*.yml` to immutable commit SHAs, digest-pin the `Dockerfile` base image and commit-pin cloned tools (`nikto`, `exploitdb`), and add release artifact/wheel attestation verification.
+- [x] **Supply-Chain Provenance & Pinning (`.github/workflows/` & `Dockerfile`):**
+  - Pinned all GitHub Actions in `.github/workflows/*.yml` to immutable commit SHAs, digest-pinned `python:3.12-slim-bookworm` in `Dockerfile`, and commit-pinned cloned tools (`nikto`, `exploitdb`).
 
 ---
 
