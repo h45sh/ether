@@ -512,12 +512,18 @@ class PreflightVerifier:
                     tool_name, flags, self.policy
                 )
             except FlagFirewallError as fw_err:
+                err_msg = str(fw_err)
+                issue_title = (
+                    "Shell metacharacters prohibited in flags"
+                    if "shell metacharacter" in err_msg.lower()
+                    else "Flag blocked by FlagFirewall"
+                )
                 report.issues.append(
                     PreflightIssue(
                         category="security",
                         severity="error",
-                        title="Flag blocked by FlagFirewall",
-                        description=str(fw_err),
+                        title=issue_title,
+                        description=err_msg,
                         remediation_hint="Remove shell metacharacters and use only allowed flags declared in the tool manifest.",
                     )
                 )
