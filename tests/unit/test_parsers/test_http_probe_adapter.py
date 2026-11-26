@@ -162,7 +162,12 @@ async def test_http_probe_tls_fingerprint_and_favicon_anchoring(adapter):
     async def fake_spool(line, is_error=False):
         spooled.append(line)
 
-    ctx = ExecutionContext(action_id="act-test-tls", session_id="sess-test", spool_fn=fake_spool)
+    ctx = ExecutionContext(
+        action_id="act-test-tls",
+        session_id="sess-test",
+        policy="unrestricted",
+        spool_fn=fake_spool,
+    )
     target = WebEndpoint.create(
         url="https://secure.example.com/", host_ip="93.184.216.34", port=443
     )

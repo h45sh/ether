@@ -73,18 +73,22 @@ def is_blocked_destination(text: str, allow_loopback: bool = True) -> bool:
             if tok.startswith(pfx):
                 tok = tok[len(pfx) :].lstrip("=:")
                 break
-        sub_tokens = tok.split(":") if ":" in tok and not tok.startswith("http") else [tok]
+        if ":" in tok and not tok.startswith("http") and ScopeValidator.parse_ip(ScopeValidator.parse_host_candidate(tok)) is None:
+            sub_tokens = tok.split(":")
+        else:
+            sub_tokens = [tok]
         for sub_tok in sub_tokens:
             sub_tok = _strip_token_delimiters(sub_tok)
             if not sub_tok:
                 continue
             host = ScopeValidator.parse_host_candidate(sub_tok)
+            if not allow_loopback and (host == "localhost" or host.endswith(".localhost")):
+                return True
             if (
                 ScopeValidator.parse_ip(host) is not None
                 or host in METADATA_HOSTNAMES
                 or "nip.io" in host
                 or "localtest.me" in host
-                or not allow_loopback
             ):
                 verdict = ScopeValidator.is_in_scope(sub_tok, metadata_scope, policy_is_unrestricted=False)
                 if not verdict.allowed:
@@ -341,7 +345,7 @@ class ActionGateway:
                 raw_flags, allow_loopback=allow_loopback
             ) or is_blocked_destination(action.tool_name, allow_loopback=allow_loopback):
                 raise ActionValidationError(
-                    "Access to cloud metadata or unauthorized loopback destination is strictly prohibited."
+                    "Access to cloud metadata endpoints is strictly prohibited (or unauthorized loopback destination)."
                 )
             if self._allowed_cidrs and not self.validate_target_scope(raw_flags):
                 raise ActionValidationError(

@@ -21,7 +21,9 @@ async def test_calibrate_fuzzer_baseline_success():
 
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
-        result = await calibrate_fuzzer_baseline("http://target.local")
+        result = await calibrate_fuzzer_baseline(
+            "http://target.local", policy_is_unrestricted=True
+        )
 
         assert result is not None
         assert result["status_code"] == 200
@@ -34,7 +36,9 @@ async def test_calibrate_fuzzer_baseline_fail_open_timeout():
     """Verify target timeouts fail open and return None without halting workflow."""
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_get.side_effect = httpx.ConnectTimeout("Connection timed out")
-        result = await calibrate_fuzzer_baseline("http://unreachable.local")
+        result = await calibrate_fuzzer_baseline(
+            "http://unreachable.local", policy_is_unrestricted=True
+        )
         assert result is None
 
 

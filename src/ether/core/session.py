@@ -179,10 +179,11 @@ class ExecutionFailed(ExecutionEvent):
 
 
 class ByteBoundedRingBuffer:
-    """Byte-bounded ring buffer that evicts oldest chunks when total bytes exceed max_bytes."""
+    """Byte- and chunk-bounded ring buffer that evicts oldest chunks when limits are exceeded."""
 
-    def __init__(self, max_bytes: int = 2 * 1024 * 1024):
+    def __init__(self, max_bytes: int = 2 * 1024 * 1024, max_chunks: Optional[int] = 5000):
         self.max_bytes = max_bytes
+        self.max_chunks = max_chunks
         self._chunks: deque[str] = deque()
         self._current_bytes: int = 0
         self.dropped_bytes_count: int = 0
@@ -191,7 +192,10 @@ class ByteBoundedRingBuffer:
         chunk_bytes = len(chunk.encode("utf-8", errors="replace"))
         self._chunks.append(chunk)
         self._current_bytes += chunk_bytes
-        while self._chunks and self._current_bytes > self.max_bytes:
+        while self._chunks and (
+            self._current_bytes > self.max_bytes
+            or (self.max_chunks is not None and len(self._chunks) > self.max_chunks)
+        ):
             oldest = self._chunks.popleft()
             evicted_bytes = len(oldest.encode("utf-8", errors="replace"))
             self._current_bytes -= evicted_bytes

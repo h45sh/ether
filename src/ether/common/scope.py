@@ -73,6 +73,9 @@ class ScopeValidator:
     @classmethod
     def parse_ip(cls, host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
         """Parse standard IP, CIDR network address, or alternate numerical IP (hex/decimal/octal)."""
+        if host.isdigit() and int(host) <= 65535:
+            return None
+
         ip_obj: Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = None
         try:
             if "/" in host:

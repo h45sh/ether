@@ -26,6 +26,7 @@ from ether.core.session import (
     ExecutionFailed,
 )
 from ether.gateway.gate import ActionGateway, GatePolicy
+from ether.gateway.scope import EngagementScope
 from ether.graph.analytics import GraphAnalyticsEngine
 from ether.graph.store import GraphStore
 from ether.graph.telemetry import GraphTelemetryCompiler
@@ -170,7 +171,12 @@ async def run_evaluation():
     # =========================================================================
     logger.info("=== SCENARIO 2: HERMETIC LAB TARGET & ACTIVE PROBING ===")
     s2_session = await store.create_session(ws_id, "Scenario 2: Hermetic Lab Active Probing")
-    s2_gw = ActionGateway(registry, store, policy=GatePolicy.SAFE)
+    s2_gw = ActionGateway(
+        registry,
+        store,
+        policy=GatePolicy.SAFE,
+        scope=EngagementScope(allow_loopback=True),
+    )
     s2_exec = s2_gw.create_session()
 
     s2_results = {"session_id": s2_session, "actions": []}

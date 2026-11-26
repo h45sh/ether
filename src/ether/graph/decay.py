@@ -33,7 +33,8 @@ class TemporalDecayEngine:
             now = now.replace(tzinfo=UTC)
 
         transitions: List[Dict[str, str]] = []
-        updates: List[Tuple[str, str, str, str]] = []
+        status_updates: List[Tuple[str, str, str, str]] = []
+        metadata_updates: List[Tuple[str, str, str]] = []
 
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -118,14 +119,22 @@ class TemporalDecayEngine:
             else:
                 status_counts[current_status] = status_counts.get(current_status, 0) + 1
 
-            if new_status != current_status or data_updated:
+            if new_status != current_status:
                 data_json_str = json.dumps(data) if isinstance(data, dict) else row["data_json"]
-                updates.append((new_status, data_json_str, session_id, nid))
+                status_updates.append((new_status, data_json_str, session_id, nid))
+            elif data_updated:
+                data_json_str = json.dumps(data) if isinstance(data, dict) else row["data_json"]
+                metadata_updates.append((data_json_str, session_id, nid))
 
-        if updates:
+        if status_updates:
             await db.executemany(
                 "UPDATE nodes SET status = ?, data_json = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id = ?",
-                updates,
+                status_updates,
+            )
+        if metadata_updates:
+            await db.executemany(
+                "UPDATE nodes SET data_json = ? WHERE session_id = ? AND id = ?",
+                metadata_updates,
             )
 
         return {
