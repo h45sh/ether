@@ -35,7 +35,14 @@ async def handle_run(args: Any, context: CliContext) -> int:
         print_error(f"Tool '{tool_name}' is not registered.")
         return EXIT_RUNTIME_ERROR
 
-    gateway = ActionGateway(registry=registry, policy=context.policy)
+    gateway = ActionGateway(registry=registry, policy=context.policy, settings=context.settings)
+    profile = getattr(args, "profile", None)
+    timeout_arg = getattr(args, "timeout", None)
+    timeout_seconds = (
+        float(timeout_arg)
+        if timeout_arg is not None
+        else context.settings.execution.default_timeout_sec
+    )
 
     async with context.open_store() as store:
         gateway.store = store
@@ -61,10 +68,12 @@ async def handle_run(args: Any, context: CliContext) -> int:
         result = await service.execute_tool(
             tool_name=tool_name,
             target=target,
-            arguments={"flags": flags, "raw_flags": flags_str},
+            arguments={"flags": flags},
             session_id=session_id,
+            timeout_seconds=timeout_seconds,
             include_raw=True,
             chunk_callback=_chunk_cb,
+            profile=profile,
         )
 
         if result.get("is_error"):

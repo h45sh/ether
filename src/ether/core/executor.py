@@ -140,8 +140,17 @@ class StreamTarpitGuard:
 class Executor:
     """Executes tools and manages their lifecycle and output persistence."""
 
-    def __init__(self, store: Optional[GraphStore] = None):
+    def __init__(self, store: Optional[GraphStore] = None, settings: Optional[Any] = None):
         self.store = store
+        self._settings = settings
+        exec_cfg = getattr(settings, "execution", None)
+        self._loop_yield_sec: float = float(getattr(exec_cfg, "loop_yield_sec", 0.01))
+        self._stream_chunk_bytes: int = int(getattr(exec_cfg, "stream_chunk_bytes", 65536))
+        self._tarpit_window_sec: float = float(getattr(exec_cfg, "tarpit_window_sec", 15.0))
+        self._tarpit_min_bps: float = float(getattr(exec_cfg, "tarpit_min_bps", 10.0))
+        self._privilege_drop_caps: bool = bool(getattr(exec_cfg, "privilege_drop_caps", False))
+        self._privilege_use_netns: bool = bool(getattr(exec_cfg, "privilege_use_netns", False))
+        self._privilege_uds_path: Optional[str] = getattr(exec_cfg, "privilege_uds_path", None)
         self._active_processes: Dict[str, asyncio.subprocess.Process] = {}
         self._last_exit_codes: Dict[str, int] = {}
 
@@ -258,8 +267,23 @@ class Executor:
                 env=clean_env,
             )
         else:
+            exec_cmd = command
+            if self._privilege_drop_caps:
+                from ether.core.privilege import PrivilegeGovernor
+
+                PrivilegeGovernor.drop_supervisor_capabilities()
+            if self._privilege_uds_path or self._privilege_use_netns:
+                from pathlib import Path as _Path
+
+                from ether.core.privilege import PrivilegeGovernor
+
+                exec_cmd = PrivilegeGovernor.build_isolated_worker_command(
+                    command,
+                    uds_path=_Path(self._privilege_uds_path) if self._privilege_uds_path else None,
+                    use_netns=self._privilege_use_netns,
+                )
             process = await asyncio.create_subprocess_exec(
-                *command,
+                *exec_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.DEVNULL,
@@ -355,7 +379,7 @@ class Executor:
                                     logger.error(f"Error parsing line '{collapsed}': {parse_e}")
 
                     # Explicitly yield control to the asyncio event loop in tight streaming loops
-                    await asyncio.sleep(0.001)
+                    await asyncio.sleep(self._loop_yield_sec)
             except Exception as e:
                 logger.error(f"Error draining stream: {e}")
 

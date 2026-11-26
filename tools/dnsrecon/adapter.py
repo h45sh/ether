@@ -2,7 +2,6 @@
 
 import json
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -22,15 +21,15 @@ class DnsreconAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         domain = target.pik.get("domain") or target.data.get("domain")
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
 
         args = ["dnsrecon", "-j", "-"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         if domain and "-d" not in args:
             args.extend(["-d", domain])
-        elif not domain and not raw_flags:
+        elif not domain and not flag_args:
             raise ValueError("Target finding must specify a domain for dnsrecon.")
 
         return args

@@ -18,7 +18,7 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **Understand Zero-Token Diffs:** [Architecture Deep Dive](explanation/architecture.md) — Learn how set-theoretic deltas save 98% of context tokens.
 
 ### I am a Security Operator or Red-Teamer (CLI & Unrestricted Policy)
-* **Master the CLI:** [Headless CLI Operations Manual](how-to/cli-usage.md) — Full reference for all 10 subcommands (`doctor`, `tool`, `run`, `session`, `graph`, `telemetry`, `logs`, `mcp`, `pipeline`, `drift`).
+* **Master the CLI:** [Headless CLI Operations Manual](how-to/cli-usage.md) — Full reference for all 11 subcommands (`doctor`, `tool`, `run`, `session`, `graph`, `telemetry`, `logs`, `mcp`, `pipeline`, `drift`, `config`).
 * **Unconstrained Execution:** Learn how to unlock raw, unconstrained execution using `--policy unrestricted` in [GatePolicy Reference](reference/engineering-standards.md).
 * **Forensic Archiving:** Export and import encrypted session databases using AES-256-GCM in [CLI Operations Guide](how-to/cli-usage.md#7-exporting--importing-investigation-archives).
 
@@ -84,6 +84,9 @@ Select your persona or operational goal to jump directly to the relevant guides:
 * **[Security Policy](SECURITY.md)**: Vulnerability disclosure, bug bounty guidelines, and reporting channels.
 
 ### 3. Reference (Facts & Specifications)
+* **[Unified Interfaces & Standards](reference/interfaces-and-standards.md)**: Authoritative comparison and contracts for MCP, CLI, Python SDK (`Ether.open()`), and `EtherSettings`.
+* **[Configuration & Settings Reference](reference/configuration.md)**: Auto-synced reference of every `EtherSettings` section, `ETHER_*` environment variable, and `config.toml` option.
+* **[Security Tools Catalog](reference/tools-catalog.md)**: Auto-synced catalog of all 36 tool adapters, execution tiers, schemas, and `[profiles]`.
 * **[Schema Registry](reference/schema-registry.md)**: Authoritative specification of all 25 normalized finding schemas, Primary Identity Keys (PIK), and child relations.
 * **[Engineering Standards](reference/engineering-standards.md)**: Strict headless invariants, deep module principles, memory limits, and testing standards.
 * **[Domain Glossary](reference/glossary.md)**: Ubiquitous language defining core concepts like PIK, Zero-Token Diff, Flapping State, and GatePolicy.

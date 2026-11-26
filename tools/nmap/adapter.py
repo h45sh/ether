@@ -1,7 +1,6 @@
 """Nmap tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -67,12 +66,8 @@ class NmapAdapter(ToolAdapter):
 
         args = ["nmap", "--noninteractive"]
 
-        # Handle manual raw flags from UI
-        raw_flags = params.get("flags") or params.get("raw_flags", "")
-        if isinstance(raw_flags, list):
-            args.extend(str(f) for f in raw_flags)
-        elif isinstance(raw_flags, str) and raw_flags.strip():
-            args.extend(shlex.split(raw_flags.strip()))
+        flag_args = self.normalize_flags(params)
+        args.extend(flag_args)
 
         # Add streaming XML flag if not explicitly overridden
         if not any(flag in args for flag in ("-oX", "-oN", "-oG", "-oA")):
@@ -80,7 +75,7 @@ class NmapAdapter(ToolAdapter):
 
         if ip and ip not in args:
             args.append(ip)
-        elif not (raw_flags or ip):
+        elif not (flag_args or ip):
             raise ValueError(
                 "Target finding must have an IP address, or provide one in the command flags."
             )

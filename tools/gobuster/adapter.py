@@ -1,12 +1,10 @@
 """Gobuster tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.common.context import ExecutionContext
 from ether.registry.adapter import ToolAdapter
-from ether.registry.assets import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.web import WebEndpoint
 from tools.ffuf.adapter import calibrate_fuzzer_baseline
@@ -31,9 +29,9 @@ class GobusterAdapter(ToolAdapter):
             calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
             if calib and calib.get("size") is not None:
                 params = dict(params)
-                raw_flags = params.get("raw_flags", "")
-                if "--exclude-length" not in raw_flags:
-                    params["raw_flags"] = f"{raw_flags} --exclude-length {calib['size']}".strip()
+                flag_list = self.normalize_flags(params)
+                if "--exclude-length" not in flag_list:
+                    params["flags"] = [*flag_list, "--exclude-length", str(calib["size"])]
 
         async for finding in super().execute_action(target, params, context):
             yield finding
@@ -59,25 +57,8 @@ class GobusterAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         args = ["gobuster"]
-
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
-            url = self.extract_url(target) or ""
-            # Substitute centralized wordlist macros
-            raw_flags, _ = substitute_wordlist_macros(raw_flags)
-            if "{wordlist}" in raw_flags:
-                default_wl = resolve_wordlist("common_dirs")
-                raw_flags = raw_flags.replace("{wordlist}", str(default_wl))
-
-            tokens = shlex.split(raw_flags)
-            resolved_tokens = []
-            for token in tokens:
-                if "{url}" in token:
-                    token = token.replace("{url}", url)
-                resolved_tokens.append(token)
-
-            args.extend(resolved_tokens)
-
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
+        args.extend(flag_args)
         return args
 
     async def parse_output(
@@ -94,7 +75,7 @@ class GobusterAdapter(ToolAdapter):
 
         # Try to extract base url from command params if not available
         if not base_url:
-            raw_flags = context.get("params", {}).get("raw_flags", "")
+            raw_flags = " ".join(self.normalize_flags(context.get("params")))
             url_match = self.URL_FLAG_RE.search(raw_flags)
             if url_match:
                 base_url = url_match.group(1).rstrip("/")

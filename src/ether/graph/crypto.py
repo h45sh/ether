@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import ctypes
 import importlib.util
 import os
 import time
@@ -14,17 +13,10 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 from ether import paths
 from ether.common.crypto import derive_key_argon2id
+from ether.common.secure_memory import wipe_buffer as zeroize_bytes
 
 ENC_PREFIX = "enc:chacha20v1:"
 SENSITIVE_CREDENTIAL_FIELDS = ("password", "token", "secret", "private_key", "api_key")
-
-
-def zeroize_bytes(buf: bytearray) -> None:
-    """Overwrite a mutable bytearray in memory with zeros via ctypes.memset."""
-    if not isinstance(buf, bytearray) or len(buf) == 0:
-        return
-    c_buf = (ctypes.c_char * len(buf)).from_buffer(buf)
-    ctypes.memset(ctypes.addressof(c_buf), 0, len(buf))
 
 
 def is_credential_expired(data: Dict[str, Any], now: Optional[float] = None) -> bool:

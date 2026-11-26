@@ -1,7 +1,6 @@
 """Whois tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.registry.adapter import ToolAdapter
@@ -36,13 +35,12 @@ class WhoisAdapter(ToolAdapter):
 
         args = ["whois"]
 
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        flag_args = self.normalize_flags(params)
+        args.extend(flag_args)
 
         if query:
             args.append(query)
-        elif not raw_flags:
+        elif not flag_args:
             raise ValueError(
                 f"Target finding {target.schema_type} missing query field (domain/ip), and no flags provided."
             )

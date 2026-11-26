@@ -125,11 +125,23 @@ class ActionGateway:
         allowed_cidrs: Optional[List[str]] = None,
         policy: GatePolicy = GatePolicy.SAFE,
         scope: Optional[EngagementScope] = None,
+        settings: Optional[Any] = None,
     ):
         self.registry = registry
         self.store = store
+        self.settings = settings
         self.policy = policy
-        self.scope = scope if scope is not None else EngagementScope()
+        if scope is not None:
+            self.scope = scope
+        elif settings is not None:
+            gw_cfg = getattr(settings, "gateway", None)
+            self.scope = EngagementScope(
+                allow_loopback=getattr(gw_cfg, "allow_loopback", False),
+                allow_metadata=getattr(gw_cfg, "allow_metadata", False),
+                allow_link_local=getattr(gw_cfg, "allow_link_local", False),
+            )
+        else:
+            self.scope = EngagementScope()
         self._allowed_cidrs: Optional[List[Any]] = None
         effective_cidrs = (
             allowed_cidrs if allowed_cidrs is not None else (self.scope.allowed_cidrs or None)
@@ -146,7 +158,11 @@ class ActionGateway:
         """Run preflight verification checks (binary availability, URL schemes, wordlists, and security gating)."""
         from ether.gateway.preflight import PreflightVerifier
 
-        verifier = PreflightVerifier(registry=self.registry, policy=self.policy)
+        verifier = PreflightVerifier(
+            registry=self.registry,
+            policy=self.policy,
+            scope=self.scope,
+        )
         return verifier.verify(tool_name=tool_name, target=target, flags=flags)
 
     async def _resolve_entity_target_str(self, action: ActionRequest) -> str:

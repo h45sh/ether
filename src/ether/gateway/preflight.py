@@ -322,7 +322,9 @@ class PreflightVerifier:
         clean_tool = (tool_name or "").strip().lower()
         active_scope = scope if scope is not None else EngagementScope()
 
-        if re.search(r"[|;&$`\n]", clean_flags):
+        from ether.gateway.flags import SHELL_METACHAR_RE
+
+        if SHELL_METACHAR_RE.search(clean_flags):
             return "[!] Shell metacharacters are prohibited in command flags."
 
         if policy == GatePolicy.SAFE:

@@ -149,10 +149,17 @@ class GraphStore:
         db_path: str,
         crypto_engine: Optional[Any] = None,
         sqlcipher_enabled: bool = False,
+        settings: Optional[Any] = None,
     ):
         self.db_path = db_path
+        self._settings = settings
+        if crypto_engine is None and settings is not None and db_path != ":memory:":
+            if getattr(getattr(settings, "graph", None), "encrypt_at_rest", False):
+                from ether.graph.crypto import CryptoEngine
+
+                data_dir = getattr(getattr(settings, "paths", None), "data_dir", None)
+                crypto_engine = CryptoEngine(CryptoEngine.resolve_master_key(data_dir=data_dir))
         self._crypto_engine = crypto_engine
-        self._sqlcipher_enabled = sqlcipher_enabled
         self._on_upsert_callbacks: List[Callable[[str, BaseFinding], Any]] = []
         self._on_batch_callbacks: List[Callable[[str, List[BaseFinding]], Any]] = []
         self._conn: Optional[aiosqlite.Connection] = None
@@ -163,7 +170,13 @@ class GraphStore:
         self._session_status_cache: Dict[str, str] = {}
         self._warmed_sessions: Set[str] = set()
         self.timeline = ActionTimelineRepository(self)
-        self.write_worker = WriteQueue(self._get_conn)
+        batch_win = getattr(getattr(settings, "graph", None), "write_batch_window_sec", 0.001)
+        max_batch = getattr(getattr(settings, "graph", None), "write_max_batch_size", 500)
+        self.write_worker = WriteQueue(
+            self._get_conn,
+            batch_window_seconds=batch_win,
+            max_batch_size=max_batch,
+        )
         self.vector_index = VectorIndex()
         self._read_pool: List[aiosqlite.Connection] = []
         self._read_pool_lock: Optional[asyncio.Lock] = None
@@ -818,7 +831,11 @@ class GraphStore:
                     "anchor_hash": anchor_hash,
                 }
             else:
-                node_metadata[node_id]["data"].update(finding.data)
+                from ether.graph.merger import NodeAttributeMerger
+
+                node_metadata[node_id]["data"] = NodeAttributeMerger.merge_node_data(
+                    node_metadata[node_id]["data"], finding.data
+                )
                 node_metadata[node_id]["status"] = finding.status
                 node_metadata[node_id]["ttl_seconds"] = ttl_seconds
                 if anchor_hash:
@@ -913,13 +930,16 @@ class GraphStore:
                 rows = await cursor.fetchall()
                 for r_id, r_data in rows:
                     if r_data:
+                        from ether.graph.merger import NodeAttributeMerger
+
                         merged = json.loads(r_data)
                         if self._crypto_engine is not None:
                             merged = self._crypto_engine.decrypt_finding_data(
                                 node_metadata[r_id]["schema_type"], merged
                             )
-                        merged.update(node_metadata[r_id]["data"])
-                        node_metadata[r_id]["data"] = merged
+                        node_metadata[r_id]["data"] = NodeAttributeMerger.merge_node_data(
+                            merged, node_metadata[r_id]["data"]
+                        )
 
         # 3. Batch upsert the nodes
         nodes_params = [

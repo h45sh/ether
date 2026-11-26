@@ -2,7 +2,6 @@
 
 import json
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -22,16 +21,16 @@ class KiterunnerAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         url = self.extract_url(target)
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
 
         binary = "kr" if self.is_binary_available("kr") else "kiterunner"
         args = [binary, "scan"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         if url and url not in args:
             args.append(url)
-        elif not url and not raw_flags:
+        elif not url and not flag_args:
             raise ValueError("Target finding must specify a URL for kiterunner.")
 
         return args

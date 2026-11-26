@@ -7,56 +7,10 @@ from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
 from ether.cli.formatters import print_error, print_json, print_table
 
 
-def _collect_tool_entries(registry: Any) -> list[dict[str, Any]]:
-    """Collect normalized tool metadata using ToolRegistry summary if present, with safe fallback."""
-    summary_fn = getattr(registry, "list_tool_summaries", None) or getattr(
-        registry, "summary", None
-    )
-    if callable(summary_fn):
-        try:
-            raw_summary = summary_fn()
-            if isinstance(raw_summary, list):
-                for s in raw_summary:
-                    if "tier" not in s and "execution_tier" in s:
-                        s["tier"] = s["execution_tier"]
-                return raw_summary
-        except Exception:
-            pass
-
-    result = []
-    for name in sorted(registry.list_tools()):
-        data = registry.get_tool(name)
-        manifest = data.get("manifest") if data else None
-        adapter = data.get("adapter") if data else None
-        meta = getattr(manifest, "meta", None)
-        tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
-        binary = getattr(meta, "binary", name) if meta else name
-
-        if tier == "coroutine":
-            is_installed = bool(adapter and adapter.validate_install())
-            display_bin = binary or "native"
-        else:
-            is_installed = shutil.which(binary) is not None if binary else False
-            display_bin = binary or name
-
-        result.append(
-            {
-                "name": name,
-                "binary": display_bin,
-                "tier": tier,
-                "execution_tier": tier,
-                "installed": is_installed,
-                "category": getattr(meta, "category", "general") if meta else "general",
-                "description": getattr(meta, "description", "") if meta else "",
-            }
-        )
-    return result
-
-
 def handle_tool_list(args: Any, context: CliContext) -> int:
     """List all available tool adapters in ToolRegistry."""
     registry = context.get_registry()
-    entries = _collect_tool_entries(registry)
+    entries = registry.list_tool_summaries()
 
     if context.is_json:
         print_json(entries)
@@ -77,6 +31,41 @@ def handle_tool_list(args: Any, context: CliContext) -> int:
                 installed_str,
                 entry.get("category", "general"),
                 desc,
+            ]
+        )
+
+    print_table(headers, rows)
+    return EXIT_SUCCESS
+
+
+def handle_tool_search(args: Any, context: CliContext) -> int:
+    """Search registered tools by keyword, accepted schema, or produced schema."""
+    registry = context.get_registry()
+    matches = registry.search_tools(
+        query=getattr(args, "query", None),
+        accepts=getattr(args, "accepts", None),
+        produces=getattr(args, "produces", None),
+        include_profiles=True,
+    )
+
+    if context.is_json:
+        print_json(matches)
+        return EXIT_SUCCESS
+
+    headers = ["TOOL", "TIER", "INSTALLED", "PROFILES", "SUMMARY"]
+    rows = []
+    for entry in matches:
+        profs = ",".join(sorted((entry.get("profiles") or {}).keys())) or "-"
+        summary = entry.get("one_line_summary") or entry.get("description", "")
+        if len(summary) > 55:
+            summary = summary[:52] + "..."
+        rows.append(
+            [
+                entry["name"],
+                entry.get("tier", "subprocess"),
+                "yes" if entry.get("installed") else "no",
+                profs,
+                summary,
             ]
         )
 

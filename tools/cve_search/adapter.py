@@ -2,7 +2,6 @@
 
 import json
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -21,13 +20,13 @@ class CveSearchAdapter(ToolAdapter):
         return self.is_binary_available("cve_search")
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
         svc = target.data.get("service_name") or target.data.get("product") or "unknown"
         ver = target.data.get("version") or ""
 
         args = ["cve_search", "--json"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         query = f"{svc} {ver}".strip()
         if query and query not in args:

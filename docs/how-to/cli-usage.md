@@ -263,7 +263,7 @@ ether mcp --transport sse --port 8000
 ```
 
 **Exposed MCP Tools:**
-* `execute_tool`: Supervise and run tools with timeout, output capture, and structured error diagnostics.
+* `execute_tool`: Supervise and run tools with `profile` presets (`fast`, `standard`, `deep`), timeout, output capture, and structured error diagnostics.
 * `abort_action`: Safely terminate active running background scan tasks.
 * `read_action_log`: Read recent spooled execution log lines for an action.
 * `query_graph`: Query typed finding entities and attributes from the graph.
@@ -273,7 +273,7 @@ ether mcp --transport sse --port 8000
 * `get_attack_path`: Compute shortest directed multi-hop attack path between two entity nodes.
 * `get_blast_radius`: Calculate transitive compromise blast radius up to a maximum hop depth.
 * `get_crown_jewels`: Identify critical high-value assets and topological choke points.
-* `list_tools`: Discover all registered security tools, execution tiers, and installation status.
+* `search_tools`: Lazily search registered security tools by keyword, accepted schema, or produced schema (with `[profiles]`).
 * `get_tool_info`: Inspect input/output schema contracts and binary discovery status.
 * `manage_session`: Create, list, or inspect investigation sessions and workspaces.
 * `get_deception_report`: Analyze honeypots, delay-tarpits, and low-confidence finding beliefs.

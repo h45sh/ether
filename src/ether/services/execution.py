@@ -51,6 +51,7 @@ class SupervisedExecutionService:
         timeout_seconds: Union[int, float] = 120,
         include_raw: bool = False,
         chunk_callback: Optional[Callable[[str], None]] = None,
+        profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute a security tool under process supervision, preflight verification, and telemetry diffing."""
         # 1. Resolve investigation session
@@ -60,7 +61,8 @@ class SupervisedExecutionService:
 
         # 2. Verify tool registration
         registry = self.gateway.registry
-        if not registry.get_tool(tool_name):
+        tool_entry = registry.get_tool(tool_name)
+        if not tool_entry:
             return {
                 "is_error": True,
                 "error_category": ExecutionErrorCategory.BINARY_MISSING.value,
@@ -68,23 +70,47 @@ class SupervisedExecutionService:
                 "stderr_snippet": f"Tool '{tool_name}' is not registered in Ether arsenal.",
                 "error": "ToolNotFound",
                 "message": f"Tool '{tool_name}' is not registered in Ether arsenal.",
-                "remediation": "Check registered tools via 'ether tool list'.",
+                "remediation": "Check registered tools via 'ether tool search' or 'ether tool list'.",
             }
 
-        # 3. Normalize flags
+        # 3. Resolve profile + normalize flags
         args_dict = arguments or {}
+        resolved_profile = profile or args_dict.get("profile")
+        profile_flags: List[str] = []
+        if resolved_profile:
+            manifest = tool_entry.get("manifest")
+            profiles = getattr(manifest, "profiles", None) or {}
+            tier = getattr(getattr(manifest, "meta", None), "execution_tier", "subprocess")
+            if resolved_profile in profiles:
+                profile_flags = [str(f) for f in profiles[resolved_profile]]
+            elif tier == "coroutine" or not profiles:
+                profile_flags = []
+            else:
+                avail = ", ".join(sorted(profiles.keys()))
+                return {
+                    "is_error": True,
+                    "error_category": ExecutionErrorCategory.INVALID_ARGUMENT.value
+                    if hasattr(ExecutionErrorCategory, "INVALID_ARGUMENT")
+                    else "invalid_argument",
+                    "exit_code": 2,
+                    "stderr_snippet": f"Unknown profile '{resolved_profile}' for '{tool_name}'. Available: {avail}",
+                    "error": "UnknownProfile",
+                    "message": f"Unknown profile '{resolved_profile}' for '{tool_name}'. Available: {avail}",
+                    "remediation": f"Use one of: {avail}",
+                }
+
         raw_flags = args_dict.get("flags")
         if raw_flags is None:
             raw_flags = args_dict.get("raw_flags", [])
         if isinstance(raw_flags, list):
-            flags_list = [str(f) for f in raw_flags]
-            flags_str = " ".join(flags_list)
+            explicit_flags = [str(f) for f in raw_flags]
         elif isinstance(raw_flags, str) and raw_flags.strip():
-            flags_str = raw_flags.strip()
-            flags_list = shlex.split(flags_str)
+            explicit_flags = shlex.split(raw_flags.strip())
         else:
-            flags_str = ""
-            flags_list = []
+            explicit_flags = []
+
+        flags_list = profile_flags + explicit_flags
+        flags_str = " ".join(flags_list)
 
         # 4. Preflight verification gate
         report = self.gateway.preflight_verify(tool_name=tool_name, target=target, flags=flags_str)
@@ -107,7 +133,8 @@ class SupervisedExecutionService:
             session_id=UUID(session_id),
             tool_name=tool_name,
             target_entity_id=target_node_id,
-            params={"target": target, "flags": flags_list, "raw_flags": flags_str},
+            params={"target": target, "flags": flags_list},
+            timeout_seconds=float(timeout_seconds) if timeout_seconds is not None else None,
         )
 
         try:
@@ -128,9 +155,7 @@ class SupervisedExecutionService:
                 "remediation": "Verify tool arguments and input schema requirements.",
             }
 
-        # 6. Stream and await execution events
-        raw_chunks: List[str] = []
-
+        # 6. Stream and await execution events (zero-copy: ExecutionSession owns the bounded ring buffer)
         async def _await_events() -> tuple[int, Optional[str]]:
             exit_code = 0
             err_msg = None
@@ -138,7 +163,6 @@ class SupervisedExecutionService:
                 if isinstance(event, ExecutionStarted):
                     pass
                 elif isinstance(event, ExecutionChunk):
-                    raw_chunks.append(event.text)
                     if chunk_callback is not None:
                         try:
                             chunk_callback(event.text)
@@ -168,7 +192,7 @@ class SupervisedExecutionService:
                 self.store, session_id, execution_session=self.exec_sess
             )
             diff = await compiler.compute_graph_diff(action_id=str(action_id))
-            raw_text = "".join(raw_chunks) or "".join(self.exec_sess.get_output_history(action_id))
+            raw_text = "".join(self.exec_sess.get_output_history(action_id))
             is_err = (exit_code != 0) or (err_msg is not None)
 
             result: Dict[str, Any] = {
@@ -317,7 +341,11 @@ class SupervisedExecutionService:
                 message=f"Pipeline stage '{first_stage.tool_name}' against '{raw_target}' rejected by policy {self.gateway.policy.value}.",
             )
 
-        engine = PipelineEngine(self.gateway.registry, store=self.store)
+        engine = PipelineEngine(
+            self.gateway.registry,
+            store=self.store,
+            command_runner=getattr(self.exec_sess, "command_runner", None),
+        )
         collected: List[Dict[str, Any]] = []
         try:
             async for finding in engine.execute_pipeline(

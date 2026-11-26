@@ -1,7 +1,6 @@
 """Cloud Enum multi-cloud OSINT tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -27,12 +26,12 @@ class CloudEnumAdapter(ToolAdapter):
         if "." in keyword:
             keyword = keyword.split(".")[0]
 
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
 
         binary = "cloud_enum" if self.is_binary_available("cloud_enum") else "cloud_enum.py"
         args = [binary, "-k", keyword, "-l", "-"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         return args
 

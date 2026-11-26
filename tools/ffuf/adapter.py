@@ -3,7 +3,6 @@
 import json
 import logging
 import re
-import shlex
 import ssl
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -14,7 +13,7 @@ from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
 from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
-from ether.registry.assets import resolve_wordlist, substitute_wordlist_macros
+from ether.registry.assets import resolve_wordlist
 from ether.schemas.base import BaseFinding
 from ether.schemas.vulnerability import AuditMisconfig
 from ether.schemas.web import WebEndpoint
@@ -91,12 +90,10 @@ class FfufAdapter(ToolAdapter):
             calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
             if calib and calib.get("size") is not None:
                 params = dict(params)
-                raw_flags = params.get("flags") or params.get("raw_flags", "")
-                if isinstance(raw_flags, list):
-                    raw_flags = " ".join(str(f) for f in raw_flags)
-                raw_flags = str(raw_flags).strip()
-                if "-fs" not in raw_flags:
-                    params["raw_flags"] = f"{raw_flags} -fs {calib['size']}".strip()
+                flag_list = self.normalize_flags(params)
+                if "-fs" not in flag_list:
+                    flag_list = [*flag_list, "-fs", str(calib["size"])]
+                params["flags"] = flag_list
 
         async for finding in super().execute_action(target, params, context):
             yield finding
@@ -111,12 +108,7 @@ class FfufAdapter(ToolAdapter):
         url = self.extract_url(target)
 
         # 2. Process flags and substitute macros
-        raw_flags = params.get("flags") or params.get("raw_flags", "")
-        if isinstance(raw_flags, list):
-            raw_flags = " ".join(str(f) for f in raw_flags)
-        raw_flags = str(raw_flags).strip()
-        raw_flags, _ = substitute_wordlist_macros(raw_flags)
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
 
         args = ["ffuf"]
 

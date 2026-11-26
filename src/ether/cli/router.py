@@ -6,6 +6,7 @@ import sys
 from typing import List, Optional
 
 from ether import __version__
+from ether.cli.commands.config import handle_config_path, handle_config_show
 from ether.cli.commands.doctor import handle_doctor
 from ether.cli.commands.drift import handle_drift_audit, handle_drift_export_baseline
 from ether.cli.commands.graph import (
@@ -34,7 +35,7 @@ from ether.cli.commands.telemetry import (
     handle_telemetry_health,
     handle_telemetry_snapshot,
 )
-from ether.cli.commands.tool import handle_tool_info, handle_tool_list
+from ether.cli.commands.tool import handle_tool_info, handle_tool_list, handle_tool_search
 from ether.cli.context import (
     EXIT_RUNTIME_ERROR,
     EXIT_SUCCESS,
@@ -85,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         help="Execution gateway policy mode (default: safe)",
     )
+    common_options.add_argument(
+        "--config",
+        metavar="PATH",
+        default=argparse.SUPPRESS,
+        help="Path to Ether config.toml (default: ~/.ether/config.toml)",
+    )
 
     parser = argparse.ArgumentParser(
         prog="ether",
@@ -116,6 +123,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tool_subs = tool_parser.add_subparsers(dest="tool_action")
     tool_subs.add_parser("list", parents=[common_options], help="List all available tools")
+    tool_search_p = tool_subs.add_parser(
+        "search", parents=[common_options], help="Search tools by keyword or schema"
+    )
+    tool_search_p.add_argument("query", nargs="?", default=None, help="Keyword to search")
+    tool_search_p.add_argument("--accepts", default=None, help="Filter by input schema")
+    tool_search_p.add_argument("--produces", default=None, help="Filter by output schema")
     tool_info_p = tool_subs.add_parser(
         "info", parents=[common_options], help="Show details for a tool"
     )
@@ -130,10 +143,21 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("tool", help="Tool to execute (e.g. nmap, subfinder, gobuster)")
     run_parser.add_argument("target", help="Target IP, hostname, URL, or CIDR")
     run_parser.add_argument(
+        "--profile",
+        default=None,
+        help="Preset flag profile from manifest.toml (e.g. fast, standard, deep)",
+    )
+    run_parser.add_argument(
         "--flags",
         default="",
         type=str,
         help="Extra flags to pass to the tool binary",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Override execution timeout in seconds (default: settings.execution.default_timeout_sec)",
     )
     run_parser.add_argument(
         "-s", "--session-id", dest="session_id", help="Session ID to record findings into"
@@ -440,6 +464,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Record AuditDrift findings into session graph",
     )
+
+    # 11. config
+    config_parser = subparsers.add_parser(
+        "config",
+        parents=[common_options],
+        help="Inspect unified Ether configuration and config.toml path",
+    )
+    config_subs = config_parser.add_subparsers(dest="config_action")
+    config_show_p = config_subs.add_parser(
+        "show", parents=[common_options], help="Display resolved EtherSettings"
+    )
+    config_show_p.add_argument(
+        "--unmask",
+        action="store_true",
+        help="Include unmasked auth tokens in output",
+    )
+    config_subs.add_parser("path", parents=[common_options], help="Print active config.toml path")
 
     return parser
 
@@ -764,6 +805,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.subcommand == "tool":
             if args.tool_action == "info":
                 return handle_tool_info(args, context)
+            elif args.tool_action == "search":
+                return handle_tool_search(args, context)
             return handle_tool_list(args, context)
 
         elif args.subcommand == "run":
@@ -821,6 +864,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 parser.print_help()
                 return EXIT_USAGE_ERROR
+
+        elif args.subcommand == "config":
+            if getattr(args, "config_action", None) == "path":
+                return handle_config_path(args, context)
+            return handle_config_show(args, context)
 
         else:
             parser.print_help()

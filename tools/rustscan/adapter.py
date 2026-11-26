@@ -1,7 +1,6 @@
 """Rustscan tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -24,14 +23,14 @@ class RustscanAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         host = self.extract_host(target)
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
 
         args = ["rustscan", "-a"]
         if host:
             args.append(host)
 
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         return args
 

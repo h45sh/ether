@@ -1,7 +1,6 @@
 """Nuclei vulnerability scanner adapter."""
 
 import json
-import shlex
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.registry.adapter import ToolAdapter
@@ -21,8 +20,7 @@ class NucleiAdapter(ToolAdapter):
         """Construct nuclei execution command with streaming JSONL output."""
         url = self.extract_url(target)
 
-        raw_flags = params.get("raw_flags", "").strip()
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.normalize_flags(params)
 
         args = ["nuclei"]
 

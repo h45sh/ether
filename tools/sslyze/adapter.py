@@ -1,7 +1,6 @@
 """SSLyze tool adapter for deep SSL/TLS audits."""
 
 import json
-import shlex
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.registry.adapter import ToolAdapter
@@ -22,9 +21,8 @@ class SslyzeAdapter(ToolAdapter):
         host = self.extract_host(target) or "127.0.0.1"
         port = self.extract_port(target) or 443
         args = ["sslyze", f"{host}:{port}", "--json_out=-"]
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        flag_args = self.normalize_flags(params)
+        args.extend(flag_args)
         return args
 
     async def parse_output(

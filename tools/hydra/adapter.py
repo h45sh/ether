@@ -1,7 +1,6 @@
 """THC Hydra network logon cracker tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -28,11 +27,11 @@ class HydraAdapter(ToolAdapter):
         if target.schema_type == "network.service":
             service = target.data.get("service_name") or "ssh"
 
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
 
         args = ["hydra", "-V"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         if host and host not in args:
             args.extend([host, service])

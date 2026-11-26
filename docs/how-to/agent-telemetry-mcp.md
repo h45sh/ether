@@ -103,9 +103,10 @@ Supervise and execute a security tool scan. If execution exceeds `timeout_second
 * **Arguments:**
   * `tool_name` (str): Registered tool name (e.g. `"nmap"`, `"nuclei"`, `"ffuf"`, `"http_probe"`).
   * `target` (str): Target domain, IP address, or URL.
-  * `arguments` (dict, optional): Custom parameters (e.g. `{"raw_flags": "-sV -p 80,443"}`).
+  * `profile` (str, optional): Preset flag profile from `manifest.toml` (`"fast"`, `"standard"`, `"deep"`).
+  * `arguments` (dict, optional): Custom parameters (e.g. `{"flags": ["-sV", "-p", "80,443"]}`).
   * `session_id` (str, optional): Target session ID (defaults to active session).
-  * `timeout_seconds` (int, default: 60): Execution timeout before background fallback.
+  * `timeout_seconds` (int | float, default: 120): Execution timeout before background fallback.
 * **Returns:** Structured JSON execution status, discovered findings count, and sanitized terminal preview.
 * **Security Policy & Scope:** Enforces the server's active `GatePolicy` (`safe` by default, or `unrestricted`). Under `safe`, cloud metadata endpoints and loopback addresses (`127.0.0.1`, `::1`) are blocked unless `EngagementScope(allow_loopback=True)` or `GatePolicy.UNRESTRICTED` is configured on the server/gateway. Server `server_info.version` is populated dynamically from package metadata.
 
@@ -191,10 +192,14 @@ Identify critical high-value assets (Domain Controllers, databases, Kerberos, RC
 
 ### Arsenal Self-Discovery
 
-#### 11. `list_tools`
-List all security tools registered in the Ether arsenal with execution tiers (`coroutine` vs `subprocess`), installation status, categories, and descriptions.
-* **Arguments:** None.
-* **Returns:** JSON list of registered tools with `name`, `binary`, `tier`, `installed`, `category`, and `description`.
+#### 11. `search_tools`
+Lazily search registered security tools by keyword, accepted schema, or produced schema without dumping the entire arsenal into context.
+* **Arguments:**
+  * `query` (str, optional): Keyword filter across tool name, summary, description, and category.
+  * `accepts` (str, optional): Filter by input finding schema (e.g., `"network.host"`).
+  * `produces` (str, optional): Filter by output finding schema (e.g., `"network.service"`).
+  * `include_profiles` (bool, default: True): Include executable `[profiles]` presets.
+* **Returns:** Compact JSON object `{"total": ..., "tools": [...]}` with `name`, `tier`, `installed`, `accepts`, `produces`, and `profiles`.
 
 #### 12. `get_tool_info`
 Get detailed manifest specifications, accepted input formats, emitted finding schemas, and binary discovery paths for a registered tool.

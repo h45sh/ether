@@ -1,7 +1,6 @@
 """Subfinder tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -36,12 +35,13 @@ class SubfinderAdapter(ToolAdapter):
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         args = ["subfinder"]
 
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
-            domain = self.extract_domain(target) or ""
-            tokens = shlex.split(raw_flags)
-            resolved_tokens = [t.replace("{domain}", domain) for t in tokens if t]
-            args.extend(resolved_tokens)
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
+        if flag_args:
+            args.extend(flag_args)
+        else:
+            domain = self.extract_domain(target)
+            if domain:
+                args.extend(["-d", domain, "-silent"])
 
         return args
 

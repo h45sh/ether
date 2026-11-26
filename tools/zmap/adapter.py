@@ -1,7 +1,6 @@
 """ZMap single-packet network scanner tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -24,15 +23,15 @@ class ZmapAdapter(ToolAdapter):
         if not target_ip and target.schema_type == "network.netblock":
             target_ip = target.pik.get("cidr") or target.data.get("cidr")
 
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.normalize_flags(params)
 
         args = ["zmap", "-p", "80", "-o", "-"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        if flag_args:
+            args.extend(flag_args)
 
         if target_ip and target_ip not in args:
             args.append(target_ip)
-        elif not target_ip and not raw_flags:
+        elif not target_ip and not flag_args:
             raise ValueError("Target finding must specify an IP address or subnet for zmap.")
 
         return args

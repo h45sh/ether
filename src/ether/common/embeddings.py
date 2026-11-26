@@ -114,30 +114,7 @@ class OnnxVectorEmbeddingEngine(VectorEmbeddingEngine):
             self._session = None
 
     def embed_text(self, text: str) -> List[float]:
-        """Embed text using ONNX session if available, falling back to Tier 1 feature hashing."""
-        if self._session is not None:
-            try:
-                inputs = {self._session.get_inputs()[0].name: [[1]]}
-                outputs = self._session.run(None, inputs)
-                raw_vec = outputs[0]
-                while (
-                    isinstance(raw_vec, (list, tuple))
-                    and len(raw_vec) == 1
-                    and isinstance(raw_vec[0], (list, tuple))
-                ):
-                    raw_vec = raw_vec[0]
-                if hasattr(raw_vec, "flatten"):
-                    raw_vec = raw_vec.flatten().tolist()
-                elif isinstance(raw_vec, (list, tuple)) and isinstance(raw_vec[0], (list, tuple)):
-                    raw_vec = [item for sublist in raw_vec for item in sublist]
-
-                raw_vec = list(raw_vec)[: self.dimension]
-                norm_sq = sum(float(x * x) for x in raw_vec)
-                if norm_sq > 1e-12:
-                    norm = math.sqrt(norm_sq)
-                    return [float(x / norm) for x in raw_vec]
-            except Exception:
-                pass
+        """Embed text using deterministic Tier 1 feature hashing (ONNX requires an explicit tokenizer)."""
         return super().embed_text(text)
 
 

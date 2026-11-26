@@ -1,6 +1,5 @@
 """Abstract base class for all tool plugins."""
 
-import asyncio
 import functools
 import shutil
 from abc import ABC, abstractmethod
@@ -93,51 +92,71 @@ class ToolAdapter(ABC):
                 f"Cannot execute subprocess tool '{self.name or self.__class__.__name__}' without a CommandRunner in ExecutionContext."
             )
 
-        from collections import deque
-
-        max_history_bytes = 2 * 1024 * 1024
-        stdout_lines: deque[str] = deque()
-        history_bytes = 0
-
         async def _on_stdout(chunk: str) -> None:
-            nonlocal history_bytes
-            chunk_bytes = len(chunk.encode("utf-8", errors="replace"))
-            stdout_lines.append(chunk)
-            history_bytes += chunk_bytes
-            while stdout_lines and history_bytes > max_history_bytes:
-                evicted = stdout_lines.popleft()
-                history_bytes -= len(evicted.encode("utf-8", errors="replace"))
             await context.spool_line(chunk, is_error=False)
 
         async def _on_stderr(chunk: str) -> None:
             await context.spool_line(chunk, is_error=True)
 
-        try:
-            async for finding in context.runner.run(
-                adapter=self,
-                target=target,
-                params=params,
-                task_id=context.action_id,
-                cwd=context.cwd,
-                env=context.env,
-                use_shell=context.use_shell,
-                shell_path=context.shell_path,
-                on_output=_on_stdout,
-                on_error_output=_on_stderr,
-                timeout_seconds=context.timeout_seconds,
-            ):
-                yield finding
-        except (TimeoutError, asyncio.TimeoutError):
-            raw_history = "".join(stdout_lines).strip()
-            if raw_history:
-                try:
-                    async for finding in self.parse_output(
-                        raw_history, target, context={"params": params, "is_partial": True}
-                    ):
-                        yield finding
-                except Exception:
-                    pass
-            raise
+        async for finding in context.runner.run(
+            adapter=self,
+            target=target,
+            params=params,
+            task_id=context.action_id,
+            cwd=context.cwd,
+            env=context.env,
+            use_shell=context.use_shell,
+            shell_path=context.shell_path,
+            on_output=_on_stdout,
+            on_error_output=_on_stderr,
+            timeout_seconds=context.timeout_seconds,
+        ):
+            yield finding
+
+    @staticmethod
+    def normalize_flags(params: Optional[Dict[str, Any]]) -> List[str]:
+        """Normalize params['flags'] into a clean List[str] vector."""
+        import shlex
+
+        if not params:
+            return []
+        raw = params.get("flags")
+        if raw is None:
+            raw = params.get("raw_flags", [])
+        if isinstance(raw, list):
+            return [str(f) for f in raw if str(f).strip()]
+        if isinstance(raw, str) and raw.strip():
+            return shlex.split(raw.strip())
+        return []
+
+    def expand_flag_macros(
+        self,
+        flags: List[str],
+        target: BaseFinding,
+        data_dir: Optional[str] = None,
+    ) -> List[str]:
+        """Expand {url}, {domain}, {ip}, {target}, and wordlist macros uniformly."""
+        from ether.registry.assets import substitute_wordlist_macros
+
+        url_val = self.extract_url(target) or ""
+        host_val = self.extract_host(target) or ""
+        domain_val = self.extract_domain(target) or host_val
+        target_val = url_val or domain_val or host_val
+
+        expanded: List[str] = []
+        for token in flags:
+            t = token
+            if target_val:
+                t = t.replace("{target}", target_val)
+            if url_val:
+                t = t.replace("{url}", url_val)
+            if domain_val:
+                t = t.replace("{domain}", domain_val)
+            if host_val:
+                t = t.replace("{ip}", host_val)
+            t, _ = substitute_wordlist_macros(t, data_dir=data_dir)
+            expanded.append(t)
+        return expanded
 
     @abstractmethod
     def validate_install(self) -> bool:

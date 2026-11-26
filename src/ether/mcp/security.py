@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextvars
 import hashlib
 import hmac
 import json
@@ -26,6 +27,24 @@ class OperationType(str, Enum):
 
 
 ALL_SCOPES: FrozenSet[str] = frozenset(op.value for op in OperationType)
+_CURRENT_AUTH_CONTEXT: contextvars.ContextVar[Optional["AuthContext"]] = contextvars.ContextVar(
+    "ether_mcp_auth_context", default=None
+)
+
+
+def get_current_auth_context() -> Optional["AuthContext"]:
+    """Return the active AuthContext for the current async task, if any."""
+    return _CURRENT_AUTH_CONTEXT.get()
+
+
+def require_operation(operation: OperationType) -> None:
+    """Enforce per-tool RBAC when an authenticated AuthContext is active."""
+    ctx = _CURRENT_AUTH_CONTEXT.get()
+    if ctx is not None and not ctx.has_scope(operation):
+        raise AuthError(
+            f"Token subject '{ctx.subject}' lacks required scope '{operation.value}'.",
+            status_code=403,
+        )
 
 
 @dataclass(frozen=True)
@@ -242,7 +261,7 @@ class SecurityMiddleware:
                     client_ip = client[0] if client else "127.0.0.1"
                     client_cert = scope.get("client_cert")
                     try:
-                        await middleware.authenticate_request(
+                        ctx = await middleware.authenticate_request(
                             headers=headers,
                             client_cert=client_cert,
                             operation=default_operation,
@@ -261,6 +280,12 @@ class SecurityMiddleware:
                         )
                         await resp(scope, receive, send)
                         return
+                    token = _CURRENT_AUTH_CONTEXT.set(ctx)
+                    try:
+                        await app(scope, receive, send)
+                    finally:
+                        _CURRENT_AUTH_CONTEXT.reset(token)
+                    return
                 await app(scope, receive, send)
 
         return _ASGIWrapper()

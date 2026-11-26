@@ -2,7 +2,6 @@
 
 import json
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -28,11 +27,10 @@ class AmassAdapter(ToolAdapter):
             or self.extract_host(target)
             or "target.local"
         )
-        raw_flags = params.get("raw_flags", "")
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
 
         args = ["amass", "enum", "-o", "-"]
-        if raw_flags:
-            args.extend(shlex.split(raw_flags))
+        args.extend(flag_args)
 
         if domain and "-d" not in args:
             args.extend(["-d", domain])
