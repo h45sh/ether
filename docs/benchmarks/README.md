@@ -24,7 +24,7 @@ Measures SQLite WAL ingestion throughput, exact-ownership transactional batch co
 
 | Benchmark / Subsystem | Measured Rate | Operational Guarantee | Status |
 | :--- | :--- | :--- | :---: |
-| **Concurrent WAL Ingestion** | **1,753.2 upserts/sec** | $\ge$ 1,200 entities/sec hard floor | **PASS** |
+| **Concurrent WAL Ingestion** | **2,266.4 upserts/sec** (1,000 entities, 10 workers, 0.441s; prior baseline 1,753.2/s) | $\ge$ 1,200 entities/sec hard floor | **PASS** |
 | **Batch Ingestion Throughput** | **3,171.5 entities/sec** (2,000 nodes in 0.63s) | $\ge$ 2,000 entities/sec | **PASS** |
 | **Streaming Output Spooling** | **206,169 lines/sec** (10,000 lines in 0.048s) | $\ge$ 50,000 lines/sec (64KB chunks) | **PASS** |
 | **Schema Normalization & PIK Hashing** | **47,159 findings/sec** (10,000 models in 0.21s) | Deterministic SHA-256 generation | **PASS** |
@@ -37,8 +37,8 @@ Validates process isolation, ring buffer caps, and strict heap boundedness under
 
 | Benchmark / Load Condition | Traced RAM Delta | Hard Enforcement Cap | Status |
 | :--- | :--- | :--- | :---: |
-| **Chaos Stream Flood (15MB noisy stream)** | **0.368 MB RSS Delta** | Strict ceiling: < 10.0 MB per active job | **PASS** |
-| **High-Throughput Spooler Buffer** | **724.36 KB heap delta** | Bounded ring buffer (`maxlen=5000`) | **PASS** |
+| **Chaos Stream Flood (15MB noisy stream)** | **0.366 MB RSS Delta** (prior baseline 0.368 MB) | Strict ceiling: < 10.0 MB per active job | **PASS** |
+| **High-Throughput Spooler Buffer** | **1.497 MB** ring buffer across 100,000 lines (26.49 MB disk spool) | Bounded ring buffer (`maxlen=5000`) | **PASS** |
 | **SQLite In-Memory Engine State** | **Passes `PRAGMA integrity_check`** | Zero database corruption or lock timeouts | **PASS** |
 
 ---
@@ -52,7 +52,7 @@ Evaluates engine-level security guardrails, sandbox containment, and tamper-evid
 | **SSRF & IMDS Containment (`SAFE` Policy)** | 100% block rate on HTTP 302 redirects to `169.254.169.254`, IPv6 equivalents, hex/octal evasion, and DNS rebinding | Automated adversarial bypass suite | **PASS** |
 | **Child Subprocess Secret Scrubbing** | Zero leaked environment secrets (`ETHER_*`, `AWS_*`, `OPENAI_*`, `SSH_*`, lowercase variants) | Inspect active child process `/proc` environment | **PASS** |
 | **Prompt Injection Boundary** | Neutralizes unescaped closing tags (`</untrusted_scan_output>` $\to$ `<\/untrusted_scan_output>`) | Structural XML sandbox fuzzing | **PASS** |
-| **Adversarial Stream Crash Immunity** | 0.00% crash rate across 630 hostile input streams (broken ANSI, null bytes, truncated JSON, 20K floods) | Universal parser fuzzing matrix | **PASS** |
+| **Adversarial Stream Crash Immunity** | 0.00% crash rate across 648 hostile input streams (36 adapters $\times$ 18 streams: broken ANSI, null bytes, truncated JSON, 20K floods) | Universal parser fuzzing matrix | **PASS** |
 | **Forensic Audit Integrity** | 100% detection of 1-byte log tampering; sealed sessions enforce `PermissionError` immutability | SHA-256 block hash chaining & gzip compaction | **PASS** |
 
 ---
@@ -82,4 +82,22 @@ Measures isolated subprocess cold-start latency across core modules and standalo
 | `ether.schemas.base` | Base Finding & PIK Substrate | 290.4 ms | **PASS** |
 | `ether.mcp.server` | Native MCP Server (Stdio/SSE) | 1,012.8 ms | **PASS** |
 
-**Packaging Isolation:** Standalone wheel build (`ether_core-0.1.3-py3-none-any.whl`) installs cleanly and executes outside git checkout with 35 discoverable tool adapters and bundled fallback wordlists.
+**Packaging Isolation:** Standalone wheel build (`ether_core-0.1.3-py3-none-any.whl`) installs cleanly and executes outside the git checkout (`CWD=/tmp`), exposing 36 registered tool adapters, bundled fallback wordlists, and an 18-tool / 1-resource / 2-prompt MCP `stdio` surface (`ether mcp`).
+
+---
+
+## 7. Live Multi-Target & Cyber-Range Capabilities (AWS & VPN)
+
+Verified across live AWS EC2 dual-posture targets (`GatePolicy.SAFE` and `GatePolicy.UNRESTRICTED`) and a live TryHackMe target (`10.48.157.67` over `tun0` in `GatePolicy.UNRESTRICTED`):
+- **Live AWS Dual-Posture (`SAFE` & `UNRESTRICTED`):**
+  - **Blind `GatePolicy.SAFE` (`16.179.220.153` vs `13.211.171.71`):** Discovered exposed vs. hardened postures using `nmap --profile fast`, `http_probe`, `ffuf --profile fast`, and `nuclei --profile deep`, persisting 14 nodes / 30 edges on the vulnerable target (OWASP Juice Shop `:80` + `gunicorn/19.9.0` `:8080`) vs. 5 nodes / 4 edges on the hardened `nginx` baseline.
+  - **`GatePolicy.UNRESTRICTED` (`16.178.229.204` vs `32.236.190.178`):** Executed `nmap --script` NSE probes, `ffuf`, `http_probe`, `nuclei`, `ether report -s <SESSION_ID>`, and `ether session verify-audit` with deterministic graph deduplication and same-origin `anchored_identity` disambiguation (ADR 0018).
+- **Live VPN Cyber Range (`10.48.157.67` over `tun0`, `GatePolicy.UNRESTRICTED`):**
+  - `nmap` top-1000 connect sweep (`--min-rate 500 -Pn`) completed in `1.20s` over `tun0`, discovering 5 open TCP ports (`22`, `53`, `7777`, `7778`, `8443`) and persisting `network.host` and `network.service` nodes.
+  - `http_probe` fingerprinted HTTP services (`nginx/1.28.2` CyberChef on `:7777`, `nginx/1.29.5` Reverse Shell Generator on `:7778` with SHA-256 favicon hash), wrapped HTML body previews in `<untrusted_scan_output>` tags, and enforced `verify_tls=True` against self-signed TLS on `:8443`.
+  - `ffuf` executed 136 directory probes in `<1s` using bundled fallback wordlists; `GraphStore` deduplicated all findings into 12 PIK nodes, 9 edges, and 36 event-log rows.
+- **Observed Operational Constraints (tracked in `ROADMAP.md`):**
+  - Bundled `tools/*/manifest.toml` files lack `.toml.sha256`/`.py.sig` artifacts, requiring `ETHER_PLUGIN_TRUST_MODE=dev` for `ether doctor` / `ether run`.
+  - `nmap -sV --top-ports 1000` over VPN exceeded the default `120.0s` timeout and returned `status="running", findings_count=0` until split into fast port discovery + targeted `-sV -p ...`.
+  - `tls_probe` connected to port `443` regardless of `--flags "-p 8443"`.
+  - `http_probe` rejected self-signed TLS on `:8443` even when `--policy unrestricted` and `--flags "-k"` were passed.

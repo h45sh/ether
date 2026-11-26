@@ -34,8 +34,10 @@ Before beginning, ensure you have:
 Ether operates as a headless runtime engine supervising underlying security tools. First, verify that your environment, database, vector extensions, and tool adapters are healthy:
 
 ```bash
-ether doctor
+ETHER_PLUGIN_TRUST_MODE=dev ether doctor
 ```
+
+> **Note:** `ToolRegistry` defaults to `PluginTrustMode.STRICT`, which expects `.toml.sha256` and `.py.sig` sidecar files alongside each adapter. Set `ETHER_PLUGIN_TRUST_MODE=dev` when running from source or using bundled `tools/*` without sidecar digests.
 
 ### Expected Output:
 ```text
@@ -47,7 +49,7 @@ Database: /home/user/.ether/ether.db (SQLite 3.45+, WAL Mode)
 sqlite-vec Extension: LOADABLE (vec0 virtual table enabled)
 Security Policy: GatePolicy.SAFE (SSRF & IMDS defense active)
 
-Discovered Pluggable Tool Adapters (35 registered):
+Discovered Pluggable Tool Adapters (36 registered):
   [+] nmap             -> /usr/bin/nmap
   [+] nuclei           -> /usr/local/bin/nuclei
   [+] ffuf             -> /usr/bin/ffuf

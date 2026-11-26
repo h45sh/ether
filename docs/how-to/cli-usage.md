@@ -23,6 +23,8 @@ ether [GLOBAL_OPTIONS] <SUBCOMMAND> [SUBCOMMAND_OPTIONS]
 | — | `--policy MODE` | — | `safe` | Gate policy mode: `safe` (SSRF/IMDS defense & scope) or `unrestricted`. |
 | `-V` | `--version` | — | — | Display Ether version and exit. |
 
+> **Plugin Trust Mode (`ETHER_PLUGIN_TRUST_MODE`):** `ToolRegistry` defaults to `PluginTrustMode.STRICT`, which requires `.toml.sha256` and `.py.sig` files alongside `manifest.toml` / `adapter.py`. When running from source or using bundled `tools/*` without sidecar digests, set `ETHER_PLUGIN_TRUST_MODE=dev` (or configure `registry.trust_mode = "dev"` in `config.toml`).
+
 ---
 
 ## 2. System Diagnostics (`ether doctor`)
@@ -77,9 +79,18 @@ ether run nmap 10.0.0.1 --session-id <SESSION_ID> --params '{"flags": "-sV -p 80
 # Execute under UNRESTRICTED policy (red-team workstation mode)
 ether run nmap 10.10.10.20 --policy unrestricted --params '{"flags": "-p-"}'
 
+# High-latency / VPN scans: split port discovery from targeted -sV to avoid the 120s default timeout
+ether run nmap 10.48.157.67 --policy unrestricted --flags "-T4 --top-ports 1000 -Pn --min-rate 500" -j
+ether run nmap 10.48.157.67 --policy unrestricted --timeout 180 --flags "-sV -p 22,53,7777,7778,8443 -Pn" -j
+
 # Output execution metrics and summary as JSON
 ether run nuclei https://example.com --json
 ```
+
+**Observed Adapter Constraints:**
+* `nmap` with combined `-sV --top-ports 1000` over VPN tunnels can exceed `execution.default_timeout_sec` (`120.0s`) and return `status="running", findings_count=0`; use a fast port sweep first and pass discovered ports to `-sV -p ...`.
+* `http_probe` enforces `verify_tls=True` by default and currently does not honor `--flags "-k"` for self-signed TLS endpoints even under `--policy unrestricted`.
+* `tls_probe` currently connects to port `443` regardless of `--flags "-p <port>"`.
 
 ---
 

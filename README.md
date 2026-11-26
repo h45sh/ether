@@ -163,7 +163,7 @@ The `ether` CLI provides 10 high-leverage subcommands to manage workspaces, supe
 # 1. Verify environment health and discovered security tools
 ether doctor
 
-# 2. Inspect available tool adapters (35 registered adapters)
+# 2. Inspect available tool adapters (36 registered adapters; use ETHER_PLUGIN_TRUST_MODE=dev if bundled tools lack .sha256/.sig sidecars)
 ether tool list
 
 # 3. Create a dedicated investigation session
@@ -341,7 +341,7 @@ Ether is empirically validated across automated mechanical testbeds and multi-sc
 
 | Focus Area | Verified Mechanical Guarantee | Target Benchmark / Status |
 | :--- | :--- | :--- |
-| **Packaging & Isolation** | Clean wheel build (`uv build --wheel`), standalone execution outside repository tree, 35 discovered adapters, fallback bundled wordlists. | Standalone isolation verified |
+| **Packaging & Isolation** | Clean wheel build (`uv build --wheel`), standalone execution outside repository tree, 36 discovered adapters, 18 MCP tools (`stdio`), fallback bundled wordlists. | Standalone isolation verified |
 | **CLI / MCP Symmetry** | 100% feature and schema parity between Headless CLI and native Model Context Protocol (MCP) server. | Full schema parity verified |
 | **Reactive Pipeline DAGs** | Real-time streaming tool chains (`subfinder \| nmap \| nuclei`) with asynchronous queue backpressure and non-blocking propagation. | In-memory stream propagation |
 | **Adversarial Defenses** | Active blocking of HTTP 302 redirects to cloud IMDS (`169.254.169.254`), IP evasion defense, zero leak of host secrets (`ETHER_*`, `OPENAI_*`). | 100% containment |
@@ -349,7 +349,7 @@ Ether is empirically validated across automated mechanical testbeds and multi-sc
 | **Deception Defenses** | TCP banner-loop tarpit detection, Bayesian deception scoring on port sprawl, automated exclusion of canary ports. | Real-time belief updating |
 | **Stealth & Firewall Accuracy** | Accurate preservation of `filtered` firewall states, native SYN scan flags, >98% token reduction via zero-token deltas. | Exact state fidelity |
 | **Identity Anchoring & Drift** | Cryptographic fingerprinting (`tls:`, `ssh:`, `favicon:`), cross-IP migration tracking, temporal confidence decay. | Cryptographic anchoring |
-| **Storage & Memory Limits** | **1,753.2 upserts/sec** WAL write throughput with `WriteQueue` batching, **0.37MB** RSS delta (<10MB ceiling). | Concurrency & RAM bounds met |
+| **Storage & Memory Limits** | **2,266.4 upserts/sec** WAL write throughput with `WriteQueue` batching, **0.366MB** RSS delta (<10MB ceiling). | Concurrency & RAM bounds met |
 | **Forensic Chain-of-Custody** | Cryptographic SHA-256 block hash chaining, closed session immutability (`PermissionError`), AES-256-GCM encrypted archives. | Tamper-evident verification |
 
 ### Empirical Run 1 Benchmark
@@ -367,7 +367,7 @@ Ether is empirically validated across automated mechanical testbeds and multi-sc
 
 ---
 
-## Universal Smart Adapter Arsenal (35 Pluggable Adapters)
+## Universal Smart Adapter Arsenal (36 Pluggable Adapters)
 
 Ether decouples command building, execution, and stream normalization into pluggable tool adapters located in `tools/<name>/`:
 

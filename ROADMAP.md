@@ -554,6 +554,44 @@ Directly addressing the 14 architectural, cryptographic, and operational risks i
   - *Problem*: `ether report` only accepted an optional positional `session_id` ([router.py:560-562](src/ether/cli/router.py#L560-L562)) and failed with `unrecognized arguments: -s`.
   - *Deep Module Design*: Added shared `_resolve_session_arg()` across `report`, `status`, and `ps` supporting both optional positional `session_id` and `-s`/`--session-id` uniformly.
 
+#### 9. Live Evaluation Hardening & Adapter Seam Fixes (Resolving Run 6 Deficiencies)
+
+- [ ] **First-Party Bundled Adapter Verification in `STRICT` Trust Mode (`ether.registry.loader` / `ether.registry.registry`):**
+  - *Problem*: Out-of-the-box `ether doctor` and `ether run` fail in the default `PluginTrustMode.STRICT` mode (`Missing manifest SHA-256 digest for '.../manifest.toml' in STRICT mode`) because bundled `tools/*/manifest.toml` files do not ship `.toml.sha256` / `.py.sig` artifacts, forcing operators to set `ETHER_PLUGIN_TRUST_MODE=dev`.
+  - *Deep Module Design*: Deepen `PluginLoader` so trust verification handles both first-party bundled adapters (verified against an embedded/build-time manifest lockfile or wheel `RECORD` SHA-256) and third-party user plugins (requiring `.toml.sha256` + Ed25519 `.py.sig`) behind the existing interface.
+  - *Seam Placement*: Adapter loading and supply-chain verification seam (`ether.registry.loader.PluginLoader.load_verified_adapter`).
+  - *Minimal Interface Surface*: `load_verified_adapter(adapter_path, manifest_path, expected_manifest_sha256=None) -> ToolAdapter` (unchanged for callers and `ToolRegistry`).
+  - *Implementation (Hidden Complexity)*: Resolve bundled-vs-external provenance inside `PluginLoader`, ship deterministic `.toml.sha256` digests (or a signed bundle lockfile) for all `tools/*` during wheel build, and fail closed only when an unverified external adapter or tampered digest is detected.
+  - *Leverage & Locality*: Every CLI command (`doctor`, `run`, `tool list`) and MCP server startup works out-of-the-box in `STRICT` mode without environment overrides; trust policy changes stay localized to `PluginLoader`.
+  - *The Deletion Test*: Removing this logic forces every user and CI harness to either disable `STRICT` mode globally via `ETHER_PLUGIN_TRUST_MODE=dev` or manually maintain per-tool sidecar hashes at every call site.
+
+- [ ] **Uniform Target & Port Resolution in `TlsProbeAdapter` (`tools/tls_probe/adapter.py`):**
+  - *Problem*: Running `ether run tls_probe 10.48.157.67 --flags "-p 8443"` ignores the port flag and connects to `10.48.157.67:443`, failing with `Errno 111 Connect call failed` against non-443 TLS services (e.g., NICE DCV on `:8443`).
+  - *Deep Module Design*: Encapsulate all target/port extraction (`host:port`, `https://host:port`, `params["port"]`, and `--flags "-p <port>"` / `--port`) inside `TlsProbeAdapter` behind the `ToolAdapter` seam.
+  - *Seam Placement*: Protocol adapter execution seam (`ToolAdapter.execute_action(target, params, context)`).
+  - *Minimal Interface Surface*: Single `execute_action(target, params, context) -> AsyncIterator[BaseFinding]` contract.
+  - *Implementation (Hidden Complexity)*: Parse port precedence (`explicit -p/--port flag > URL/host:port > default 443`), validate port range `1..65535`, and bind the TLS handshake socket to the resolved port while preserving `PinnedTransport` SSRF protections in `SAFE` mode.
+  - *Leverage & Locality*: CLI, MCP, and pipeline callers pass targets uniformly without special-casing non-443 TLS ports.
+  - *The Deletion Test*: Without this inside `TlsProbeAdapter`, callers must pre-parse targets and rewrite flags differently for `tls_probe` than for `nmap` or `http_probe`.
+
+- [ ] **Policy-Gated TLS Verification Override in `HttpProbeAdapter` (`tools/http_probe/adapter.py` / `ether.core.sandbox`):**
+  - *Problem*: `http_probe` against self-signed lab/red-team HTTPS endpoints (e.g., `https://10.48.157.67:8443/`) fails with `CERTIFICATE_VERIFY_FAILED` even when `--policy unrestricted` and `--flags "-k"` are passed.
+  - *Deep Module Design*: Keep `verify_tls=True` as the immutable default invariant in `PinnedTransport`, and allow an explicit `insecure=True` / `-k` override inside `HttpProbeAdapter` only when authorized by `context.policy == GatePolicy.UNRESTRICTED`.
+  - *Seam Placement*: HTTP prober adapter seam (`HttpProbeAdapter.execute_action`) + gateway policy context (`ExecutionContext.policy`).
+  - *Minimal Interface Surface*: `execute_action(target, params, context)` honoring `insecure` / `-k` strictly under `GatePolicy.UNRESTRICTED`.
+  - *Implementation (Hidden Complexity)*: Reject `--insecure` / `-k` at `FlagFirewall` / `ActionGateway` in `GatePolicy.SAFE` while configuring `PinnedTransport(verify_tls=False)` in `GatePolicy.UNRESTRICTED` and recording `tls_verified=False` in the resulting `WebEndpoint` metadata.
+  - *Leverage & Locality*: Preserves zero-compromise TLS verification in `SAFE` mode while unblocking self-signed cyber-range and red-team targets in `UNRESTRICTED` mode in one place.
+  - *The Deletion Test*: Removing this forces operators to abandon `http_probe` for raw `curl -k` subprocesses, losing `PinnedTransport` and `<untrusted_scan_output>` sanitization.
+
+- [ ] **Two-Stage Adaptive `NmapAdapter` Execution & Partial-Result Flushing (`tools/nmap/adapter.py` / `ether.core.executor`):**
+  - *Problem*: Running `nmap -sV -T4 --top-ports 1000 -Pn` over high-latency VPN tunnels (`tun0`) exceeds the default execution timeout and returns `status="running", findings_count=0` in CLI JSON output, forcing callers to manually split discovery into a fast port sweep followed by a targeted `-sV -p <ports>` scan.
+  - *Deep Module Design*: Hide two-stage discovery (fast connect/SYN sweep → targeted `-sV` only on discovered open ports) and incremental XML chunk flushing on timeout inside `NmapAdapter` / `ExecutionSession` behind the single `execute_action()` seam.
+  - *Seam Placement*: Subprocess supervision and adapter streaming seam (`ExecutionSession` / `NmapAdapter.execute_action`).
+  - *Minimal Interface Surface*: Callers invoke `ether run nmap <target>` once and receive streamed `NetworkService` findings even if `-sV` hits a timeout.
+  - *Implementation (Hidden Complexity)*: When a combined discovery + `-sV` profile is requested, run stage-1 port discovery first, immediately yield `NetworkService` port findings, and run stage-2 `-sV` exclusively against open ports with partial XML parsing on timeout/cancellation.
+  - *Leverage & Locality*: Eliminates manual two-pass orchestration across all autonomous agents and CLI callers; timeout and streaming resilience live in one module.
+  - *The Deletion Test*: Deleting this forces every agent loop and benchmark script to re-implement split-scan heuristics and lose all findings whenever a slow VPN scan times out.
+
 ---
 
 ### Epoch 4: The Unrestricted Virtual PTY & Enterprise Identity Engine
