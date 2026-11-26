@@ -35,7 +35,7 @@ Ether solves this through a **"Smart Adapter / Simple Core"** architecture:
 ├────────────────────────────────────────────────────────────────────────┤
 │                      STATE & GRAPH STORAGE (SQLite)                    │
 │  - GraphStore Facade (Deterministic SHA-256 PIKs, Idempotent Upsert)   │
-│  - WriteQueueWorker (Adaptive 25ms/50-op Batch Serialization Queue)    │
+│  - WriteQueue (Exact-Ownership PIK Batch Serialization Queue)         │
 │  - VectorIndex (sqlite-vec vec0 Offline Embeddings & Semantic Search)  │
 │  - Temporal State Decay (TTL Windows: confirmed -> flapping -> stale)   │
 │  - Invariant Identity Anchoring (TLS/SSH/Favicon Cryptographic Hashes) │
@@ -93,7 +93,7 @@ graph TD
     Headless["Headless Interfaces<br>(CLI Router, MCP Server, Python SDK)"]
     Gateway["Gateways & Policy<br>(ActionGateway, ScopeValidator, PreflightVerifier)"]
     Core["Process Supervision & Execution<br>(ExecutionSession, Executor, LogSpooler, ForensicLogManager)"]
-    State["State & Graph Storage<br>(GraphStore Facade, WriteQueueWorker, VectorIndex, TelemetryCompiler)"]
+    State["State & Graph Storage<br>(GraphStore Facade, WriteQueue, VectorIndex, TelemetryCompiler)"]
     Registry["Pluggable Adapters & Registry<br>(ToolRegistry, ToolAdapter, AssetResolver, tools/*)"]
     Schemas["Normalized Schemas & Primitives<br>(BaseFinding, AuditRecord, Canonicalize, Crypto)"]
 

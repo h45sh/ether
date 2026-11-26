@@ -504,17 +504,23 @@ class PreflightVerifier:
         """Enforce sandbox security restrictions (sudo ban, SSRF link-local gating under SAFE policy)."""
         from ether.gateway.gate import is_blocked_destination
 
-        # Metacharacter check under all policies
-        if flags and re.search(r"[|;&$`\n]", flags):
-            report.issues.append(
-                PreflightIssue(
-                    category="security",
-                    severity="error",
-                    title="Shell metacharacters prohibited in flags",
-                    description="Command flags contain shell metacharacters (| ; & $ ` \\n) which are rejected.",
-                    remediation_hint="Remove shell interpolation and pipe metacharacters from arguments.",
+        if flags:
+            from ether.gateway.flags import FlagFirewall, FlagFirewallError
+
+            try:
+                FlagFirewall(registry=self.registry).validate_arguments(
+                    tool_name, flags, self.policy
                 )
-            )
+            except FlagFirewallError as fw_err:
+                report.issues.append(
+                    PreflightIssue(
+                        category="security",
+                        severity="error",
+                        title="Flag blocked by FlagFirewall",
+                        description=str(fw_err),
+                        remediation_hint="Remove shell metacharacters and use only allowed flags declared in the tool manifest.",
+                    )
+                )
 
         if self.policy == GatePolicy.SAFE:
             # Sudo ban in Safe Policy
@@ -753,13 +759,17 @@ class PreflightVerifier:
         if self.registry:
             tool_data = self.registry.get_tool(tool_name)
             manifest = tool_data.get("manifest") if isinstance(tool_data, dict) else None
-            learning = getattr(manifest, "learning", None) if manifest else None
-            if learning and getattr(learning, "recipes", None):
+            profiles = getattr(manifest, "profiles", None) if manifest else None
+            flags_cfg = getattr(manifest, "flags", None) if manifest else None
+            allowed_flags = getattr(flags_cfg, "allowed", []) if flags_cfg else []
+            if "-w" in allowed_flags or "--wordlist" in allowed_flags:
+                manifest_uses_wordlist = True
+            elif profiles:
                 manifest_uses_wordlist = any(
-                    "-w" in r.flags
-                    or "--wordlist" in r.flags
-                    or any("{wordlist:" in f for f in r.flags)
-                    for r in learning.recipes
+                    "-w" in vec
+                    or "--wordlist" in vec
+                    or any("{wordlist:" in f for f in vec)
+                    for vec in profiles.values()
                 )
 
         is_wordlist_tool = manifest_uses_wordlist or "--wordlist" in flags or "-w" in flags

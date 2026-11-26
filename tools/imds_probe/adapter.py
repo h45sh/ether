@@ -2,8 +2,6 @@
 
 from typing import Any, AsyncIterator, Dict, List
 
-import httpx
-
 from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
 from ether.common.scope import ScopeValidator
@@ -58,7 +56,16 @@ class ImdsProbeAdapter(ToolAdapter):
                     f"Target '{target_url}' blocked under GatePolicy.SAFE ({verdict.reason})."
                 )
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        from ether.common.transport import PinnedTransport
+
+        verify_tls = bool(params.get("verify_tls", True))
+        async with PinnedTransport.create_client(
+            scope=getattr(context, "scope", None),
+            verify_tls=verify_tls,
+            timeout=3.0,
+            policy_is_unrestricted=not is_safe,
+            max_redirects=0,
+        ) as client:
             if target_url and target_url.startswith(("http://", "https://")):
                 try:
                     resp = await client.get(target_url, follow_redirects=False)
@@ -80,7 +87,16 @@ class ImdsProbeAdapter(ToolAdapter):
 
         provider = str(params.get("provider", "aws")).lower()
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        from ether.common.transport import PinnedTransport
+
+        verify_tls = bool(params.get("verify_tls", True))
+        async with PinnedTransport.create_client(
+            scope=getattr(context, "scope", None),
+            verify_tls=verify_tls,
+            timeout=3.0,
+            policy_is_unrestricted=not is_safe,
+            max_redirects=0,
+        ) as client:
             if provider == "aws":
                 # 1. Probe IMDSv2 (Token request)
                 try:

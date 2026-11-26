@@ -26,7 +26,7 @@ from ether.graph.identity import IdentityAnchoringEngine
 from ether.graph.merger import _hydrate_node_row
 from ether.graph.timeline import ActionTimelineRepository
 from ether.graph.vector_index import VectorIndex
-from ether.graph.write_queue import WriteQueueWorker
+from ether.graph.write_queue import UpsertResult, WriteQueue
 from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest
 
@@ -144,8 +144,15 @@ def _cached_node_id(schema_type: str, pik_items: tuple) -> str:
 class GraphStore:
     """Manages workspaces, sessions, and stateful entity graphs."""
 
-    def __init__(self, db_path: str):
+    def __init__(
+        self,
+        db_path: str,
+        crypto_engine: Optional[Any] = None,
+        sqlcipher_enabled: bool = False,
+    ):
         self.db_path = db_path
+        self._crypto_engine = crypto_engine
+        self._sqlcipher_enabled = sqlcipher_enabled
         self._on_upsert_callbacks: List[Callable[[str, BaseFinding], Any]] = []
         self._on_batch_callbacks: List[Callable[[str, List[BaseFinding]], Any]] = []
         self._conn: Optional[aiosqlite.Connection] = None
@@ -156,7 +163,7 @@ class GraphStore:
         self._session_status_cache: Dict[str, str] = {}
         self._warmed_sessions: Set[str] = set()
         self.timeline = ActionTimelineRepository(self)
-        self.write_worker = WriteQueueWorker(self._get_conn)
+        self.write_worker = WriteQueue(self._get_conn)
         self.vector_index = VectorIndex()
         self._read_pool: List[aiosqlite.Connection] = []
         self._read_pool_lock: Optional[asyncio.Lock] = None
@@ -553,14 +560,17 @@ class GraphStore:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
-    async def close_session(self, session_id: str) -> None:
-        """Mark session as closed/archived and compress session logs."""
-        from ether.common.forensic_log import ForensicLogManager
+    def _hydrate_row(self, row: aiosqlite.Row) -> Dict[str, Any]:
+        """Hydrate a node row and transparently decrypt fields when CryptoEngine is active."""
+        hydrated = _hydrate_node_row(row)
+        if self._crypto_engine is not None and isinstance(hydrated.get("data"), dict):
+            hydrated["data"] = self._crypto_engine.decrypt_finding_data(
+                hydrated.get("schema_type", ""), hydrated["data"]
+            )
+        return hydrated
 
-        try:
-            ForensicLogManager.compress_session_logs(session_id)
-        except Exception:
-            pass
+    async def _mark_session_closed_sql(self, session_id: str) -> None:
+        """Persist CLOSED session state via WriteQueue."""
 
         async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
@@ -570,6 +580,13 @@ class GraphStore:
 
         self._session_status_cache[session_id] = "CLOSED"
         await self._run_write(_op, session_id=session_id, enforce_open=False)
+
+    async def close_session(self, session_id: str) -> None:
+        """Atomically seal session via two-phase SessionSealer and mark CLOSED."""
+        from ether.common.session_sealer import SessionSealer
+
+        sealer = SessionSealer(store=self)
+        await sealer.seal_session(session_id)
 
     async def is_session_closed(self, session_id: str) -> bool:
         """Check if a session is forensically closed."""
@@ -701,12 +718,16 @@ class GraphStore:
         if self._session_status_cache.get(session_id) == "CLOSED":
             raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
 
-        node_ids, unique_node_ids, parent_nodes, assoc_nodes = await self._enqueue_write(
-            self._raw_upsert_findings_batch,
+        result: UpsertResult = await self.write_worker.enqueue_upsert(
             session_id,
             findings,
-            action_id,
+            action_id=action_id,
+            upsert_fn=self._raw_upsert_findings_batch,
         )
+        node_ids = result.node_ids
+        unique_node_ids = result.unique_node_ids
+        parent_nodes = result.parent_nodes
+        assoc_nodes = result.assoc_nodes
 
         bloom = self._get_bloom(session_id)
         # Update Bloom filter with all newly upserted node IDs and relationship nodes
@@ -893,6 +914,10 @@ class GraphStore:
                 for r_id, r_data in rows:
                     if r_data:
                         merged = json.loads(r_data)
+                        if self._crypto_engine is not None:
+                            merged = self._crypto_engine.decrypt_finding_data(
+                                node_metadata[r_id]["schema_type"], merged
+                            )
                         merged.update(node_metadata[r_id]["data"])
                         node_metadata[r_id]["data"] = merged
 
@@ -903,7 +928,11 @@ class GraphStore:
                 nid,
                 meta["schema_type"],
                 json.dumps(meta["pik"]),
-                json.dumps(meta["data"]),
+                json.dumps(
+                    self._crypto_engine.encrypt_finding_data(meta["schema_type"], meta["data"])
+                    if self._crypto_engine is not None
+                    else meta["data"]
+                ),
                 meta["status"],
                 action_id,
                 action_id,
@@ -1019,7 +1048,7 @@ class GraphStore:
             stmt = " ".join(["SELECT * FROM nodes WHERE", where_sql])
             cursor = await db.execute(stmt, params)
             rows = await cursor.fetchall()
-            return [_hydrate_node_row(r) for r in rows]
+            return [self._hydrate_row(r) for r in rows]
 
     async def get_event_log(self, session_id: str) -> List[Dict]:
         """Fetch all events for a session."""
@@ -1048,7 +1077,7 @@ class GraphStore:
             query += " ORDER BY updated_at DESC"
             cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
-            return [_hydrate_node_row(r) for r in rows]
+            return [self._hydrate_row(r) for r in rows]
 
     async def sync_vectors_batch(self, findings: List[BaseFinding], session_id: str = "") -> int:
         """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
@@ -1166,7 +1195,7 @@ class GraphStore:
                 (workspace_id,),
             )
             rows = await cursor.fetchall()
-            return [_hydrate_node_row(r) for r in rows]
+            return [self._hydrate_row(r) for r in rows]
 
     async def get_workspace_edges(self, workspace_id: str) -> List[Dict]:
         async with self._get_read_conn() as db:
@@ -1188,7 +1217,7 @@ class GraphStore:
                 "SELECT * FROM nodes WHERE session_id = ? AND id = ?", (session_id, node_id)
             )
             row = await cursor.fetchone()
-            return _hydrate_node_row(row) if row else None
+            return self._hydrate_row(row) if row else None
 
     async def update_node_data(
         self, session_id: str, node_id: str, updates: Dict[str, Any]
@@ -1259,7 +1288,7 @@ class GraphStore:
         await dest_store.initialize()
         await dest_store.close()
 
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("ATTACH DATABASE ? AS dest", (dest_db_path,))
             try:
                 # 1. Copy workspace row
@@ -1345,6 +1374,8 @@ class GraphStore:
                 except Exception:
                     pass
 
+        await self.write_worker.enqueue_mutation(_op, transactional=False)
+
     async def import_session(
         self, src_db_path: str, target_workspace_id: Optional[str] = None
     ) -> str:
@@ -1353,7 +1384,7 @@ class GraphStore:
         If the session already exists, it is overwritten (restored).
         Returns the imported session ID.
         """
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> str:
             db.row_factory = aiosqlite.Row
             await db.execute("ATTACH DATABASE ? AS src", (src_db_path,))
             try:
@@ -1561,6 +1592,8 @@ class GraphStore:
                     await db.execute("DETACH DATABASE src")
                 except Exception:
                     pass
+
+        return await self.write_worker.enqueue_mutation(_op, transactional=False)
 
     async def upsert_node_belief(
         self,

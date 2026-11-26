@@ -163,7 +163,7 @@ A high-leverage RadixTrie-backed network boundary engine in `ActionGateway` that
 _Avoid_: Network filter, IP checker, range checker
 
 **Write Queue Worker**:
-A decoupled background serialization worker (`WriteQueueWorker`) managing an async operation queue with adaptive transaction batching (25ms window, up to 50 operations) to ensure deadlock-free SQLite WAL writes.
+A decoupled background serialization worker (`WriteQueue`) managing an async operation queue with exact-ownership reverse PIK lookup and transaction batching to ensure deadlock-free SQLite WAL writes.
 _Avoid_: Write thread, database queue, batch runner
 
 **Vector Index Engine**:

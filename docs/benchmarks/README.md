@@ -20,7 +20,7 @@ Measures end-to-end command latency, database query overhead, and sub-millisecon
 
 ## 2. High-Concurrency Storage & Write Throughput
 
-Measures SQLite WAL ingestion throughput, transactional batch coalescing via `WriteQueueWorker`, and schema normalization under load.
+Measures SQLite WAL ingestion throughput, exact-ownership transactional batch coalescing via `WriteQueue`, and schema normalization under load.
 
 | Benchmark / Subsystem | Measured Rate | Operational Guarantee | Status |
 | :--- | :--- | :--- | :---: |

@@ -3,18 +3,14 @@ name = "postgres_probe"
 description = "Native Python asynchronous coroutine prober auditing PostgreSQL connection handlers on port 5432."
 one_line_summary = "native async PostgreSQL handshake and SSL auditor"
 category = "Database Assessment"
-categories = ["database", "auth", "recon"]
 binary = "postgres_probe"
 execution_tier = "coroutine"
+categories = ["database", "auth", "recon"]
 theory = """
 ### Protocol Theory & PostgreSQL Frontend/Backend Protocol
 PostgreSQL clients exchange startup packets (SSLRequest code 80877103 followed by StartupMessage 196608)
 to negotiate TLS transport encryption and determine server authentication schemes.
 """
-
-[modes]
-learning = true
-power = true
 
 [input]
 accepts = ["network.service", "network.host"]
@@ -23,11 +19,16 @@ target_types = ["ip", "cidr", "domain"]
 [output]
 produces = ["database.service"]
 
-[learning]
-enabled = true
+[execution]
+tier = "coroutine"
+output_format = "coroutine"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
 
-[[learning.recipes]]
-name = "Standard PostgreSQL Probe"
-difficulty = "Beginner"
-description = "Audit PostgreSQL port 5432 for SSL capability and authentication requirements."
-flags = ["--port", "5432"]
+[flags]
+allowed = ["--port"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["--port", "5432"]

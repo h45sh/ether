@@ -45,14 +45,22 @@ category = "Web Reconnaissance"
 categories = ["web", "enumeration"]
 binary = "mytool"
 
-[modes]
-power = true
-
 [input]
 accepts = ["network.service", "web.endpoint"]
 
 [output]
 produces = ["web.endpoint", "web.vulnerability"]
+
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-u", "-w", "-t", "-json"]
+blocked = ["--proxy", "--config"]
+compound_delimiters = ["=", ":", ","]
 ```
 
 ### B. The Tool Adapter (`adapter.py`)

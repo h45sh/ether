@@ -3,17 +3,13 @@ name = "wpscan"
 description = "WordPress security scanner auditing plugins, themes, and known CMS vulnerabilities."
 one_line_summary = "WordPress CMS vulnerability, theme, and plugin scanner"
 category = "Vulnerability Assessment"
-categories = ["web", "vuln", "cms"]
 binary = "wpscan"
+categories = ["web", "vuln", "cms"]
 theory = """
 ### Protocol Theory & CMS Component Auditing
 WPScan enumerates WordPress versions, installed plugins, and theme style headers, matching
 hashes and slug names against the WPScan vulnerability database.
 """
-
-[modes]
-learning = true
-power = true
 
 [input]
 accepts = ["web.endpoint"]
@@ -22,11 +18,16 @@ target_types = ["url"]
 [output]
 produces = ["vulnerability.found", "audit.misconfig"]
 
-[learning]
-enabled = true
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
 
-[[learning.recipes]]
-name = "Standard WordPress Scan"
-difficulty = "Beginner"
-description = "Audit WordPress site for vulnerable plugins and core versions."
-flags = ["-f", "json", "--no-banner"]
+[flags]
+allowed = ["-f", "--no-banner", "--url", "-u"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["-f", "json", "--no-banner"]

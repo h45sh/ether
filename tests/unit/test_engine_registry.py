@@ -16,19 +16,19 @@ def test_tool_registry_discovery(tmp_path):
         categories = ["Testing"]
         binary = "echo"
 
-        [modes]
-        learning = true
-        power = true
-
         [input]
         accepts = ["network.host"]
 
         [output]
         produces = ["network.service"]
 
-        [learning]
-        flags = []
-        recipes = []
+        [execution]
+        tier = "subprocess"
+        output_format = "text"
+
+        [flags]
+        allowed = []
+        blocked = []
     """)
     (tool_dir / "manifest.toml").write_text(manifest_content)
 
@@ -81,10 +81,6 @@ def test_tool_registry_coroutine_discovery(tmp_path):
         description = "A native coroutine tool"
         categories = ["Recon"]
         execution_tier = "coroutine"
-
-        [modes]
-        learning = false
-        power = true
 
         [input]
         accepts = ["network.host"]

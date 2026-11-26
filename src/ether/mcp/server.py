@@ -28,42 +28,16 @@ from ether.services.execution import SupervisedExecutionService
 logger = logging.getLogger(__name__)
 
 
-class BearerTokenAuthMiddleware:
-    """ASGI middleware enforcing Bearer token authentication on HTTP endpoints."""
-
-    def __init__(self, app: Any, token: str) -> None:
-        self.app = app
-        self.token = token
-
-    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        if scope["type"] == "http":
-            auth_header = None
-            for key, val in scope.get("headers", []):
-                if key.lower() == b"authorization":
-                    auth_header = val.decode("latin1")
-                    break
-            expected = f"Bearer {self.token}"
-            if not auth_header or auth_header.strip() != expected:
-                logger.warning(
-                    "MCP SSE unauthorized access attempt rejected (missing or invalid Bearer token)"
-                )
-                from starlette.responses import Response
-
-                response = Response(
-                    content="Unauthorized: Missing or invalid Bearer token\n",
-                    status_code=401,
-                    media_type="text/plain",
-                    headers={"WWW-Authenticate": 'Bearer realm="ether-mcp"'},
-                )
-                await response(scope, receive, send)
-                return
-        await self.app(scope, receive, send)
-
-
 class EtherMCPServer(MCPServer):
-    """Subclass of MCPServer supporting optional Bearer token authentication on SSE endpoints."""
+    """Subclass of MCPServer enforcing SecurityMiddleware on HTTP/SSE endpoints."""
 
-    def __init__(self, *args: Any, auth_token: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        auth_token: Optional[str] = None,
+        security_middleware: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
         if "version" not in kwargs:
             try:
                 import ether
@@ -73,11 +47,20 @@ class EtherMCPServer(MCPServer):
                 kwargs["version"] = "0.1.3"
         super().__init__(*args, **kwargs)
         self.auth_token = auth_token
+        self.security_middleware = security_middleware
 
     def sse_app(self, *args: Any, **kwargs: Any) -> Any:
         app = super().sse_app(*args, **kwargs)
+        if self.security_middleware is not None:
+            return self.security_middleware.wrap_asgi(app)
         if self.auth_token:
-            return BearerTokenAuthMiddleware(app, self.auth_token)
+            from ether.mcp.security import SecurityMiddleware
+
+            mw = SecurityMiddleware(
+                signing_secret=self.auth_token,
+                static_admin_token=self.auth_token,
+            )
+            return mw.wrap_asgi(app)
         return app
 
 
@@ -451,21 +434,9 @@ def create_mcp_server(
         )
 
         recommended_flags: List[Dict[str, Any]] = []
-        power_cfg = getattr(manifest, "power", None)
-        if power_cfg and getattr(power_cfg, "suggests", None):
-            for s in power_cfg.suggests:
-                recommended_flags.append(dict(s))
-        learning_cfg = getattr(manifest, "learning", None)
-        if learning_cfg and getattr(learning_cfg, "recipes", None):
-            for r in learning_cfg.recipes:
-                recommended_flags.append(
-                    {
-                        "name": r.name,
-                        "difficulty": r.difficulty,
-                        "description": r.description,
-                        "flags": r.flags,
-                    }
-                )
+        profiles = getattr(manifest, "profiles", None) or {}
+        for profile_name, flag_vec in profiles.items():
+            recommended_flags.append({"profile": profile_name, "flags": list(flag_vec)})
 
         return json.dumps(
             {

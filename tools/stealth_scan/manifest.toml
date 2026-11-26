@@ -3,9 +3,9 @@ name = "stealth_scan"
 description = "Native Python stealth packet crafting engine (TCP SYN half-open sweep, Layer 2 ARP discovery, port-knocking) with unprivileged fallback."
 one_line_summary = "native async stealth packet prober and port-knocker"
 category = "Network Reconnaissance"
-categories = ["recon", "network", "stealth"]
 binary = "stealth_scan"
 execution_tier = "coroutine"
+categories = ["recon", "network", "stealth"]
 theory = """
 ### Stealth Packet Crafting & TCP SYN Scanning
 Stealth scanning avoids completing the standard TCP 3-way handshake by transmitting a raw TCP SYN packet.
@@ -15,10 +15,6 @@ When running without raw socket privileges (CAP_NET_RAW / root), execution grace
 asynchronous TCP connect probes.
 """
 
-[modes]
-learning = true
-power = true
-
 [input]
 accepts = ["network.host", "network.service"]
 target_types = ["ip", "cidr", "domain"]
@@ -26,23 +22,18 @@ target_types = ["ip", "cidr", "domain"]
 [output]
 produces = ["network.host", "network.service"]
 
-[learning]
-enabled = true
+[execution]
+tier = "coroutine"
+output_format = "coroutine"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
 
-[[learning.recipes]]
-name = "Stealth TCP SYN Scan"
-difficulty = "Intermediate"
-description = "Execute a half-open TCP SYN scan against specified ports."
-flags = ["--mode", "syn", "--ports", "22,80,443"]
+[flags]
+allowed = ["--mode", "--ports", "--knock-sequence", "-m", "-p"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
 
-[[learning.recipes]]
-name = "Layer 2 ARP Sweep"
-difficulty = "Beginner"
-description = "Perform a local broadcast ARP sweep across a local CIDR."
-flags = ["--mode", "arp"]
-
-[[learning.recipes]]
-name = "Port Knocking Sequence"
-difficulty = "Advanced"
-description = "Transmit a sequenced train of knock packets to unlock protected ports."
-flags = ["--mode", "knock", "--knock-sequence", "7000,8000,9000"]
+[profiles]
+fast = ["--mode", "syn", "--ports", "22,80,443"]
+standard = ["--mode", "arp"]
+deep = ["--mode", "knock", "--knock-sequence", "7000,8000,9000"]

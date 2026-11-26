@@ -86,14 +86,22 @@ categories = ["Network", "PortScan"]
 binary = "nmap"
 tier = "binary"
 
-[modes]
-power = true
-
 [input]
 accepts = ["network.host"]
 
 [output]
 produces = ["network.host", "network.service"]
+
+[execution]
+tier = "subprocess"
+output_format = "xml"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-sV", "-Pn", "-p", "--top-ports"]
+blocked = ["-oG", "-oN", "--script"]
+compound_delimiters = ["=", ":", ","]
 ```
 
 ### Tier A In-Process Coroutine Manifest:
@@ -103,16 +111,24 @@ name = "http_probe"
 description = "Fast in-process HTTP/HTTPS probe with SSRF defense"
 category = "Web Reconnaissance"
 categories = ["web", "probe"]
-tier = "coroutine"
-
-[modes]
-power = true
+execution_tier = "coroutine"
 
 [input]
 accepts = ["network.host", "network.service"]
 
 [output]
 produces = ["web.endpoint", "web.technology"]
+
+[execution]
+tier = "coroutine"
+output_format = "coroutine"
+supports_streaming_parse = true
+default_timeout_sec = 30.0
+
+[flags]
+allowed = ["--verify-tls"]
+blocked = []
+compound_delimiters = ["=", ":", ","]
 ```
 
 ---

@@ -3,16 +3,12 @@ name = "sslyze"
 description = "Fast and powerful SSL/TLS scanning library and scanner."
 one_line_summary = "deep cryptographic SSL/TLS vulnerability and cipher audit scanner"
 category = "Network Reconnaissance"
-categories = ["recon", "network", "tls", "vulnerability"]
 binary = "sslyze"
+categories = ["recon", "network", "tls", "vulnerability"]
 theory = """
 ### Advanced TLS Audit & Cryptographic Attacks
 SSLyze analyzes the cryptographic architecture of SSL/TLS servers to identify weak cipher suites, protocol downgrades, and vulnerabilities such as Heartbleed (CVE-2014-0160) and ROBOT (Return of Bleichenbacher's Oracle Threat).
 """
-
-[modes]
-learning = true
-power = true
 
 [input]
 accepts = ["network.service", "network.host", "web.endpoint"]
@@ -21,11 +17,16 @@ target_types = ["ip", "domain", "url"]
 [output]
 produces = ["tls.certificate", "tls.cipher_suite", "audit.misconfig"]
 
-[learning]
-enabled = true
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
 
-[[learning.recipes]]
-name = "Deep SSL/TLS Vulnerability Sweep"
-difficulty = "Intermediate"
-description = "Comprehensive TLS audit evaluating Heartbleed, ROBOT, and deprecated protocol suites."
-flags = ["--json_out=-"]
+[flags]
+allowed = ["--json_out"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["--json_out=-"]

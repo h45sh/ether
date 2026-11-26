@@ -76,6 +76,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -109,12 +110,29 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag_name }},enable=${{ inputs.tag_name != '' && inputs.tag_name != null }}
 
       - name: Build and push Docker image
+        id: docker-build
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
+          provenance: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}@${{ steps.docker-build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: ether-sbom.cdx.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image with Cosign (OIDC)
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.docker-build.outputs.digest }}

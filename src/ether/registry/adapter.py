@@ -4,7 +4,20 @@ import asyncio
 import functools
 import shutil
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional
+
+
+@dataclass(frozen=True)
+class ToolCapabilities:
+    """Declarative engine-to-tool capability and pipeline chaining contract."""
+
+    name: str
+    accepts: List[str] = field(default_factory=list)
+    produces: List[str] = field(default_factory=list)
+    amplifies_to: List[str] = field(default_factory=list)
+    output_format: str = "text"
+    supports_streaming_parse: bool = True
 
 from ether.common import strip_ansi as _strip_ansi
 from ether.common.context import ExecutionContext
@@ -30,6 +43,34 @@ class ToolAdapter(ABC):
 
     name: str = ""
     execution_tier: str = "subprocess"
+    supports_streaming_parse: bool = True
+
+    def get_structured_default_flags(self) -> List[str]:
+        """Return preferred machine-readable output flags when not overridden by caller."""
+        return []
+
+    def get_capabilities(self, manifest: Optional[Any] = None) -> ToolCapabilities:
+        """Return declarative input/output/chaining capabilities for pipeline amplification."""
+        accepts = list(manifest.input.get("accepts", [])) if manifest else []
+        produces = list(manifest.output.get("produces", [])) if manifest else []
+        exec_cfg = getattr(manifest, "execution", None) if manifest else None
+        out_fmt = getattr(exec_cfg, "output_format", "text") if exec_cfg else "text"
+        streaming = getattr(exec_cfg, "supports_streaming_parse", self.supports_streaming_parse) if exec_cfg else self.supports_streaming_parse
+        amplifies: List[str] = []
+        if "network.service" in produces:
+            amplifies.extend(["http_probe", "tls_probe", "nuclei"])
+        elif "web.endpoint" in produces:
+            amplifies.extend(["nuclei", "ffuf", "imds_probe"])
+        elif "domain.info" in produces:
+            amplifies.extend(["dns_lookup", "subfinder", "http_probe"])
+        return ToolCapabilities(
+            name=self.name,
+            accepts=accepts,
+            produces=produces,
+            amplifies_to=amplifies,
+            output_format=out_fmt,
+            supports_streaming_parse=streaming,
+        )
 
     @staticmethod
     def is_binary_available(binary: str) -> bool:
@@ -109,7 +150,7 @@ class ToolAdapter(ABC):
 
         Args:
             target: The finding being scanned (e.g. a network.host)
-            params: User-provided flags or options from the TUI
+            params: User-provided flags or options from the caller (CLI, MCP, or SDK)
         """
         pass
 
