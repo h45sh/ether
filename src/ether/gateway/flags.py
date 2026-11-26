@@ -164,7 +164,9 @@ class FlagFirewall:
             has_allowed_contract = is_concrete_allowed
         allowed = set(raw_allowed) if is_concrete_allowed else set()
         raw_blocked = getattr(flags_cfg, "blocked", None) if flags_cfg is not None else None
-        blocked = set(raw_blocked) if isinstance(raw_blocked, (list, tuple, set, frozenset)) else set()
+        blocked = (
+            set(raw_blocked) if isinstance(raw_blocked, (list, tuple, set, frozenset)) else set()
+        )
         raw_delims = (
             getattr(flags_cfg, "compound_delimiters", None) if flags_cfg is not None else None
         )
