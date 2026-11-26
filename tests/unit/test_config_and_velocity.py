@@ -81,3 +81,34 @@ async def test_python_sdk_ether_open_facade():
         assert any(m["name"] == "nmap" for m in matches)
         snap = await client.snapshot()
         assert "nodes" in snap or "findings" in snap or isinstance(snap, dict)
+        nodes = await client.query(limit=10)
+        assert isinstance(nodes, list)
+        diff = await client.diff()
+        assert "total_delta_count" in diff
+        br = await client.blast_radius("nonexistent-node", max_depth=3)
+        assert br["count"] == 0
+
+
+@pytest.mark.fast
+def test_cli_config_show_and_path(tmp_path, capsys):
+    import json
+
+    from ether.cli.router import main
+
+    rc1 = main(["--data-dir", str(tmp_path), "--json", "config", "show"])
+    assert rc1 == 0
+    out1 = json.loads(capsys.readouterr().out)
+    assert "execution" in out1 and "gateway" in out1
+
+    rc2 = main(["--data-dir", str(tmp_path), "config", "show"])
+    assert rc2 == 0
+    assert "[execution]" in capsys.readouterr().out
+
+    rc3 = main(["--data-dir", str(tmp_path), "--json", "config", "path"])
+    assert rc3 == 0
+    out3 = json.loads(capsys.readouterr().out)
+    assert out3["config_path"].endswith("config.toml")
+
+    rc4 = main(["--data-dir", str(tmp_path), "config", "path"])
+    assert rc4 == 0
+    assert "config.toml" in capsys.readouterr().out
