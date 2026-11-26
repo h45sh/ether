@@ -15,6 +15,20 @@ repos:
         files: ^src/ether/schemas/.*\.py$
         pass_filenames: false
 
+      - id: docs-sync-check
+        name: Check Generated Docs Up to Date
+        entry: python3 scripts/generate_docs.py --check
+        language: system
+        files: ^(src/ether/config\.py|tools/.*/manifest\.toml)$
+        pass_filenames: false
+
+      - id: mypy-strict
+        name: Strict Static Type Check (MyPy)
+        entry: mypy src/ether
+        language: system
+        types: [python]
+        pass_filenames: false
+
       - id: tier0-tests
         name: Tier 0 Mechanical & Invariant Tests
         entry: pytest -m tier0

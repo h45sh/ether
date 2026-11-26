@@ -18,7 +18,7 @@ Adherence to these mechanical standards is mandatory to preserve architectural d
 ## 2. Context Gate & Token Optimization Policy
 
 1. **Slice Reads:** When inspecting code, use line-bounded ranges (`read_file` with `StartLine` and `EndLine`) targeting only the relevant function or block. Never dump full files into context unprompted.
-2. **Tier 0 Local Pre-flight:** Run zero-cost local checks (`.venv/bin/ruff check .`, `.venv/bin/pytest -m tier0`) in <100ms before multi-step agent reasoning loops.
+2. **Tier 0 Local Pre-flight & CI Parity Gate:** Run zero-cost local checks (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`, `.venv/bin/mypy src/ether`, `.venv/bin/pytest -m tier0`) before multi-step reasoning loops and before every `git push` to match CI's `Code Quality & Schema Verification` gate.
 3. **High-Density Technical Communication:** Omit conversational filler, repeating user prompts, or speculative essays. Focus strictly on concrete technical diffs, mechanical proofs, and verified commands.
 
 ---
