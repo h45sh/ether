@@ -174,7 +174,9 @@ class PinnedTransport:
             ssl_context=ssl_context if isinstance(ssl_context, ssl.SSLContext) else None,
         )
         transport: httpx.AsyncBaseTransport
-        if httpx.AsyncHTTPTransport is _ORIG_ASYNC_HTTP_TRANSPORT:
+        if isinstance(httpx.AsyncHTTPTransport, type) and getattr(
+            httpx.AsyncHTTPTransport, "__module__", ""
+        ).startswith("httpx"):
             transport = _PinnedPoolTransport(pool)
         else:
             transport = httpx.AsyncHTTPTransport(verify=verify_tls)
