@@ -108,7 +108,19 @@ class HTTPProbeAdapter(ToolAdapter):
         from ether.common.transport import PinnedTransport, SSRFPinnedError
 
         timeout_sec = float(params.get("timeout", 10.0))
-        verify_tls = bool(params.get("verify_tls", True))
+        flags_list = self.normalize_flags(params)
+        has_insecure_flag = any(tok in ("-k", "--insecure") for tok in flags_list)
+        explicit_insecure = has_insecure_flag or (params.get("verify_tls") is False)
+        if explicit_insecure and not is_unrestricted:
+            msg = "TLS verification bypass (-k/--insecure/verify_tls=False) is forbidden under GatePolicy.SAFE."
+            await context.spool_line(f"[!] Policy Violation: {msg}", is_error=True)
+            raise PolicyViolationError(msg)
+
+        verify_tls = (
+            False
+            if (explicit_insecure and is_unrestricted)
+            else bool(params.get("verify_tls", True))
+        )
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         if not verify_tls:
@@ -277,6 +289,7 @@ class HTTPProbeAdapter(ToolAdapter):
                 anchor_hash=endpoint_anchor,
                 body_preview=body_preview,
                 redirect_location=redirect_location,
+                tls_verified=verify_tls,
             )
             yield endpoint
 

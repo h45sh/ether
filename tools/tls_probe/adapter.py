@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import ssl
+import urllib.parse
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.common.context import ExecutionContext
@@ -23,10 +24,75 @@ class TlsProbeAdapter(ToolAdapter):
         """Pure-Python adapter with zero binary dependencies."""
         return True
 
+    @staticmethod
+    def _validate_port(raw_port: Any) -> int:
+        """Validate and return a TCP port integer in 1..65535."""
+        try:
+            port = int(str(raw_port).strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid TLS probe port: {raw_port!r}") from exc
+        if not (1 <= port <= 65535):
+            raise ValueError(f"TLS probe port out of range (1..65535): {port}")
+        return port
+
+    def _extract_flag_port(self, params: Dict[str, Any]) -> Optional[int]:
+        """Extract -p / --port value from params['flags'] if present."""
+        tokens = self.normalize_flags(params)
+        for idx, tok in enumerate(tokens):
+            if tok in ("-p", "--port"):
+                if idx + 1 >= len(tokens):
+                    raise ValueError(f"Missing port value after '{tok}' flag.")
+                return self._validate_port(tokens[idx + 1])
+            if tok.startswith("--port="):
+                return self._validate_port(tok.split("=", 1)[1])
+            if tok.startswith("-p") and len(tok) > 2 and tok[2:].isdigit():
+                return self._validate_port(tok[2:])
+        return None
+
+    def _resolve_target_host_port(
+        self, target: BaseFinding, params: Dict[str, Any], *, strict: bool = True
+    ) -> tuple[str, int]:
+        """Resolve (host, port) with precedence: explicit flag > URL/host:port > params['port'] > 443."""
+        raw_host = self.extract_host(target) or "127.0.0.1"
+        url_or_host_port: Optional[int] = None
+
+        if "://" in raw_host:
+            parsed = urllib.parse.urlparse(raw_host)
+            host = parsed.hostname or raw_host
+            if parsed.port is not None:
+                url_or_host_port = self._validate_port(parsed.port)
+        elif ":" in raw_host and not raw_host.startswith("[") and raw_host.count(":") == 1:
+            host_part, port_part = raw_host.rsplit(":", 1)
+            host = host_part
+            if port_part.isdigit():
+                url_or_host_port = self._validate_port(port_part)
+        else:
+            host = raw_host
+
+        try:
+            flag_port = self._extract_flag_port(params)
+        except ValueError:
+            if strict:
+                raise
+            flag_port = None
+        if flag_port is not None:
+            return host, flag_port
+
+        if url_or_host_port is not None:
+            return host, url_or_host_port
+
+        target_port = self.extract_port(target)
+        if target_port is not None:
+            return host, self._validate_port(target_port)
+
+        if params.get("port") is not None:
+            return host, self._validate_port(params["port"])
+
+        return host, 443
+
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """CLI shim if ever invoked via subprocess."""
-        host = self.extract_host(target) or "127.0.0.1"
-        port = self.extract_port(target) or 443
+        host, port = self._resolve_target_host_port(target, params, strict=False)
         return ["tls_probe", f"{host}:{port}"]
 
     async def parse_output(
@@ -43,8 +109,7 @@ class TlsProbeAdapter(ToolAdapter):
         context: ExecutionContext,
     ) -> AsyncIterator[BaseFinding]:
         """Perform zero-fork TLS handshake against target and yield certificate and cipher findings."""
-        host = self.extract_host(target) or "127.0.0.1"
-        port = self.extract_port(target) or 443
+        host, port = self._resolve_target_host_port(target, params)
 
         policy_str = str(getattr(context, "policy", "safe")).lower()
         is_unrestricted = "unrestricted" in policy_str

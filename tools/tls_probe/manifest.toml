@@ -25,6 +25,6 @@ supports_streaming_parse = true
 default_timeout_sec = 120.0
 
 [flags]
-allowed = []
+allowed = ["-p", "--port"]
 blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
 compound_delimiters = ["=", ":", ","]

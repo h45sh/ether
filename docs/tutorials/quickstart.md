@@ -34,10 +34,10 @@ Before beginning, ensure you have:
 Ether operates as a headless runtime engine supervising underlying security tools. First, verify that your environment, database, vector extensions, and tool adapters are healthy:
 
 ```bash
-ETHER_PLUGIN_TRUST_MODE=dev ether doctor
+ether doctor
 ```
 
-> **Note:** `ToolRegistry` defaults to `PluginTrustMode.STRICT`, which expects `.toml.sha256` and `.py.sig` sidecar files alongside each adapter. Set `ETHER_PLUGIN_TRUST_MODE=dev` when running from source or using bundled `tools/*` without sidecar digests.
+> **Note:** `ToolRegistry` defaults to `PluginTrustMode.STRICT`. Bundled `tools/*` adapters are verified automatically via `tools/bundle_lock.json`; set `ETHER_PLUGIN_TRUST_MODE=dev` only when loading unsigned third-party plugins or uncommitted local adapter edits.
 
 ### Expected Output:
 ```text

@@ -41,7 +41,7 @@ See [configuration.md](configuration.md) for the complete schema.
 
 ## 3. High-Velocity Adapter & Registry Contract
 
-1. **Lazy Adapter Loading:** `ToolRegistry.load_tools()` parses only `tools/*/manifest.toml` metadata at startup. `adapter.py` import and `PluginLoader` verification (`dev` or `strict` Ed25519/SHA-256 + AST checks) happen lazily on first execution.
+1. **Lazy Adapter Loading:** `ToolRegistry.load_tools()` parses only `tools/*/manifest.toml` metadata at startup. `adapter.py` import and `PluginLoader` verification (`tools/bundle_lock.json` for first-party bundled adapters, `.toml.sha256` + Ed25519 `.py.sig` for external plugins in `strict` mode, plus AST checks) happen lazily on first execution.
 2. **Profile-First Execution:** `profile` (`fast`, `standard`, `deep`) expands from `manifest.toml` `[profiles]` first, followed by explicit `flags: List[str]`. Coroutine tools without `[profiles]` gracefully resolve `profile="fast"` to `[]`.
 3. **Unified Flag & Macro Expansion:** `ToolAdapter.normalize_flags(params)` and `ToolAdapter.expand_flag_macros(...)` standardize `flags: List[str]`, `{url}`, `{domain}`, `{ip}`, `{target}`, and `{wordlist}` substitution across all 36 adapters.
 4. **Zero-Copy Streaming:** Raw output streams directly to disk (`LogSpooler`) and `ExecutionSession`'s `ByteBoundedRingBuffer` (2 MiB / 5000 chunks) without redundant adapter buffers.
