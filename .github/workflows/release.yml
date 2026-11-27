@@ -74,7 +74,7 @@ jobs:
     name: Build & Push Multi-Arch Image to GHCR
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
 
