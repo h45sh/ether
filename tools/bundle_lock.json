@@ -45,7 +45,7 @@
       "manifest_sha256": "9ec4dd5ca7974c254af3ed910187b622d3507049df62e3dedc31ce96e9391951"
     },
     "http_probe": {
-      "adapter_sha256": "d63c33a6a4810f9483489ec4fd3eafdb1c248972fcdbe5b1c7eaa77cb20822d6",
+      "adapter_sha256": "3628494b2c00978121b008a8d12a9549c5b2ab29524e587762a5eeda0e17a6aa",
       "manifest_sha256": "cc49767d4c92831567f2f315f60e70c172e808abda4cdae28f1c60eb306b52ef"
     },
     "hydra": {
@@ -53,7 +53,7 @@
       "manifest_sha256": "ccf76056ccd49d788a6d67b95258d922c3c53dc822b41e2721484642d315e649"
     },
     "imds_probe": {
-      "adapter_sha256": "9af9d03b64400680279da914053b95d531ec5f696174cc57848d94569d5cd997",
+      "adapter_sha256": "65d58fdf7228ca029a1ea8435af330a18a5da30f930a173907d1e68631e6d82e",
       "manifest_sha256": "cbf6d0f4bf0f322dcf3c2fa13bed5cd16c8c58ef2c4c6d9dab5390592e3801d4"
     },
     "katana": {

@@ -92,8 +92,10 @@ def is_blocked_destination(text: str, allow_loopback: bool = True) -> bool:
             if (
                 ScopeValidator.parse_ip(host) is not None
                 or host in METADATA_HOSTNAMES
-                or "nip.io" in host
-                or "localtest.me" in host
+                or host == "nip.io"
+                or host.endswith(".nip.io")
+                or host == "localtest.me"
+                or host.endswith(".localtest.me")
             ):
                 verdict = ScopeValidator.is_in_scope(
                     sub_tok, metadata_scope, policy_is_unrestricted=False

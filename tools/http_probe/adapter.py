@@ -187,12 +187,20 @@ class HTTPProbeAdapter(ToolAdapter):
                     f"[-] Could not retrieve TLS certificate directly: {ssl_err}"
                 )
 
-        async with PinnedTransport.create_client(
-            scope=getattr(context, "scope", None),
-            verify_tls=verify_tls,
-            timeout=timeout_sec,
-            policy_is_unrestricted=is_unrestricted,
-        ) as client:
+        client_cm = (
+            PinnedTransport.create_client(
+                scope=getattr(context, "scope", None),
+                timeout=timeout_sec,
+                policy_is_unrestricted=is_unrestricted,
+            )
+            if verify_tls
+            else PinnedTransport.create_unverified_client(
+                scope=getattr(context, "scope", None),
+                timeout=timeout_sec,
+                policy_is_unrestricted=is_unrestricted,
+            )
+        )
+        async with client_cm as client:
             try:
                 response = await asyncio.wait_for(client.get(url), timeout=timeout_sec)
             except SSRFPinnedError as exc:

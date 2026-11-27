@@ -189,24 +189,22 @@ class PinnedTransport:
     """Factory for DNS-pinned, redirect-guarded httpx.AsyncClient instances."""
 
     @staticmethod
-    def create_client(
-        scope: Optional[EngagementScope] = None,
-        verify_tls: bool = True,
-        timeout: float = 10.0,
-        policy_is_unrestricted: bool = False,
-        max_redirects: int = 5,
+    def _build_client_with_ssl(
+        *,
+        effective_scope: EngagementScope,
+        ssl_context: Optional[ssl.SSLContext],
+        verify_flag: bool,
+        timeout: float,
+        policy_is_unrestricted: bool,
+        max_redirects: int,
     ) -> httpx.AsyncClient:
-        """Create an httpx.AsyncClient that pins DNS to validated IPs and guards redirects."""
-        effective_scope = scope or EngagementScope()
-        ssl_context = ssl.create_default_context() if verify_tls else False
-
         backend = _PinnedNetworkBackend(
             scope=effective_scope,
             policy_is_unrestricted=policy_is_unrestricted,
         )
         pool = httpcore.AsyncConnectionPool(
             network_backend=backend,
-            ssl_context=ssl_context if isinstance(ssl_context, ssl.SSLContext) else None,
+            ssl_context=ssl_context,
         )
         transport: httpx.AsyncBaseTransport
         if isinstance(httpx.AsyncHTTPTransport, type) and getattr(
@@ -214,7 +212,7 @@ class PinnedTransport:
         ).startswith("httpx"):
             transport = _PinnedPoolTransport(pool)
         else:
-            transport = httpx.AsyncHTTPTransport(verify=verify_tls)
+            transport = httpx.AsyncHTTPTransport(verify=verify_flag)
 
         async def _redirect_guard(response: httpx.Response) -> None:
             if response.status_code in (301, 302, 303, 307, 308):
@@ -234,9 +232,48 @@ class PinnedTransport:
 
         return httpx.AsyncClient(
             transport=transport,
-            verify=verify_tls,
+            verify=verify_flag,
             timeout=timeout,
             follow_redirects=True,
             max_redirects=max_redirects,
             event_hooks={"response": [_redirect_guard]},
+        )
+
+    @staticmethod
+    def create_client(
+        scope: Optional[EngagementScope] = None,
+        verify_tls: bool = True,
+        timeout: float = 10.0,
+        policy_is_unrestricted: bool = False,
+        max_redirects: int = 5,
+    ) -> httpx.AsyncClient:
+        """Create an httpx.AsyncClient that pins DNS to validated IPs and guards redirects."""
+        if not verify_tls:
+            raise ValueError("Use create_unverified_client() for explicit TLS verification bypass.")
+        effective_scope = scope or EngagementScope()
+        return PinnedTransport._build_client_with_ssl(
+            effective_scope=effective_scope,
+            ssl_context=ssl.create_default_context(),
+            verify_flag=True,
+            timeout=timeout,
+            policy_is_unrestricted=policy_is_unrestricted,
+            max_redirects=max_redirects,
+        )
+
+    @staticmethod
+    def create_unverified_client(
+        scope: Optional[EngagementScope] = None,
+        timeout: float = 10.0,
+        policy_is_unrestricted: bool = False,
+        max_redirects: int = 5,
+    ) -> httpx.AsyncClient:
+        """Create an unverified DNS-pinned httpx.AsyncClient (authorized UNRESTRICTED -k only)."""
+        effective_scope = scope or EngagementScope()
+        return PinnedTransport._build_client_with_ssl(
+            effective_scope=effective_scope,
+            ssl_context=None,
+            verify_flag=False,
+            timeout=timeout,
+            policy_is_unrestricted=policy_is_unrestricted,
+            max_redirects=max_redirects,
         )

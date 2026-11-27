@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import importlib.util
 import os
 import time
@@ -83,12 +84,14 @@ class CryptoEngine:
             raise ValueError("CryptoEngine requires a 32-byte encryption key.")
         self._key_buf = bytearray(key)
         self._aead = ChaCha20Poly1305(bytes(self._key_buf))
-        self._key_id = hashlib.sha256(bytes(self._key_buf)).hexdigest()[:12]
+        self._key_id = hmac.new(
+            b"ether-key-id-v1", bytes(self._key_buf), hashlib.sha256
+        ).hexdigest()[:12]
         self._previous_aeads: Dict[str, ChaCha20Poly1305] = {}
         for prev in previous_keys or ():
             if len(prev) != 32:
                 raise ValueError("CryptoEngine previous_keys entries must be 32 bytes.")
-            prev_id = hashlib.sha256(prev).hexdigest()[:12]
+            prev_id = hmac.new(b"ether-key-id-v1", prev, hashlib.sha256).hexdigest()[:12]
             self._previous_aeads[prev_id] = ChaCha20Poly1305(prev)
 
     @property

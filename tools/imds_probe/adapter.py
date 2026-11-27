@@ -58,10 +58,8 @@ class ImdsProbeAdapter(ToolAdapter):
 
         from ether.common.transport import PinnedTransport
 
-        verify_tls = bool(params.get("verify_tls", True))
         async with PinnedTransport.create_client(
             scope=getattr(context, "scope", None),
-            verify_tls=verify_tls,
             timeout=3.0,
             policy_is_unrestricted=not is_safe,
             max_redirects=0,
@@ -89,10 +87,8 @@ class ImdsProbeAdapter(ToolAdapter):
 
         from ether.common.transport import PinnedTransport
 
-        verify_tls = bool(params.get("verify_tls", True))
         async with PinnedTransport.create_client(
             scope=getattr(context, "scope", None),
-            verify_tls=verify_tls,
             timeout=3.0,
             policy_is_unrestricted=not is_safe,
             max_redirects=0,

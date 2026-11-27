@@ -130,7 +130,8 @@ async def test_http_probe_policy_gated_tls_override():
     with (
         patch("tools.http_probe.adapter.ScopeValidator.check_destination") as mock_scope,
         patch(
-            "ether.common.transport.PinnedTransport.create_client", return_value=mock_client
+            "ether.common.transport.PinnedTransport.create_unverified_client",
+            return_value=mock_client,
         ) as mock_pt,
     ):
         mock_scope.return_value = SimpleNamespace(allowed=True, reason="ok")
@@ -143,7 +144,7 @@ async def test_http_probe_policy_gated_tls_override():
             )
         ]
 
-    assert mock_pt.call_args.kwargs["verify_tls"] is False
+    assert mock_pt.called
     endpoints = [f for f in findings if f.schema_type == "web.endpoint"]
     assert len(endpoints) == 1
     assert endpoints[0].data["tls_verified"] is False
