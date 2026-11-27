@@ -189,15 +189,12 @@ class PinnedTransport:
     """Factory for DNS-pinned, redirect-guarded httpx.AsyncClient instances."""
 
     @staticmethod
-    def _build_client_with_ssl(
+    def _create_pinned_parts(
         *,
         effective_scope: EngagementScope,
         ssl_context: Optional[ssl.SSLContext],
-        verify_flag: bool,
-        timeout: float,
         policy_is_unrestricted: bool,
-        max_redirects: int,
-    ) -> httpx.AsyncClient:
+    ) -> tuple[_PinnedNetworkBackend, httpcore.AsyncConnectionPool, Any]:
         backend = _PinnedNetworkBackend(
             scope=effective_scope,
             policy_is_unrestricted=policy_is_unrestricted,
@@ -206,13 +203,6 @@ class PinnedTransport:
             network_backend=backend,
             ssl_context=ssl_context,
         )
-        transport: httpx.AsyncBaseTransport
-        if isinstance(httpx.AsyncHTTPTransport, type) and getattr(
-            httpx.AsyncHTTPTransport, "__module__", ""
-        ).startswith("httpx"):
-            transport = _PinnedPoolTransport(pool)
-        else:
-            transport = httpx.AsyncHTTPTransport(verify=verify_flag)
 
         async def _redirect_guard(response: httpx.Response) -> None:
             if response.status_code in (301, 302, 303, 307, 308):
@@ -230,14 +220,7 @@ class PinnedTransport:
                         f"Redirect to '{resolved_url}' blocked by EngagementScope: {verdict.reason}"
                     )
 
-        return httpx.AsyncClient(
-            transport=transport,
-            verify=verify_flag,
-            timeout=timeout,
-            follow_redirects=True,
-            max_redirects=max_redirects,
-            event_hooks={"response": [_redirect_guard]},
-        )
+        return backend, pool, _redirect_guard
 
     @staticmethod
     def create_client(
@@ -251,13 +234,26 @@ class PinnedTransport:
         if not verify_tls:
             raise ValueError("Use create_unverified_client() for explicit TLS verification bypass.")
         effective_scope = scope or EngagementScope()
-        return PinnedTransport._build_client_with_ssl(
+        _, pool, _redirect_guard = PinnedTransport._create_pinned_parts(
             effective_scope=effective_scope,
             ssl_context=ssl.create_default_context(),
-            verify_flag=True,
-            timeout=timeout,
             policy_is_unrestricted=policy_is_unrestricted,
+        )
+        transport: httpx.AsyncBaseTransport
+        if isinstance(httpx.AsyncHTTPTransport, type) and getattr(
+            httpx.AsyncHTTPTransport, "__module__", ""
+        ).startswith("httpx"):
+            transport = _PinnedPoolTransport(pool)
+        else:
+            transport = httpx.AsyncHTTPTransport(verify=True)
+
+        return httpx.AsyncClient(
+            transport=transport,
+            verify=True,
+            timeout=timeout,
+            follow_redirects=True,
             max_redirects=max_redirects,
+            event_hooks={"response": [_redirect_guard]},
         )
 
     @staticmethod
@@ -269,11 +265,24 @@ class PinnedTransport:
     ) -> httpx.AsyncClient:
         """Create an unverified DNS-pinned httpx.AsyncClient (authorized UNRESTRICTED -k only)."""
         effective_scope = scope or EngagementScope()
-        return PinnedTransport._build_client_with_ssl(
+        _, pool, _redirect_guard = PinnedTransport._create_pinned_parts(
             effective_scope=effective_scope,
             ssl_context=None,
-            verify_flag=False,
-            timeout=timeout,
             policy_is_unrestricted=policy_is_unrestricted,
+        )
+        transport: httpx.AsyncBaseTransport
+        if isinstance(httpx.AsyncHTTPTransport, type) and getattr(
+            httpx.AsyncHTTPTransport, "__module__", ""
+        ).startswith("httpx"):
+            transport = _PinnedPoolTransport(pool)
+        else:
+            transport = httpx.AsyncHTTPTransport(verify=False)
+
+        return httpx.AsyncClient(
+            transport=transport,
+            verify=False,
+            timeout=timeout,
+            follow_redirects=True,
             max_redirects=max_redirects,
+            event_hooks={"response": [_redirect_guard]},
         )
