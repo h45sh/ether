@@ -18,7 +18,7 @@ def adapter():
 def test_dnspython_build_command(adapter):
     # 1. Target is dns.record
     dns_rec = DnsRecord.create(domain="example.com", record_type="A", value="93.184.216.34")
-    cmd = adapter.build_command(dns_rec, {"raw_flags": "-t MX"})
+    cmd = adapter.build_command(dns_rec, {"flags": "-t MX"})
     assert "-m" in cmd
     assert "tools.dnspython.cli" in cmd
     target_idx = cmd.index("tools.dnspython.cli") + 1
@@ -29,7 +29,7 @@ def test_dnspython_build_command(adapter):
 
     # 2. Target is network.host
     host = NetworkHost.create(ip="8.8.8.8")
-    cmd_host = adapter.build_command(host, {"raw_flags": "-t PTR"})
+    cmd_host = adapter.build_command(host, {"flags": "-t PTR"})
     assert "8.8.8.8" in cmd_host
     assert "-t" in cmd_host
     assert "PTR" in cmd_host
@@ -119,7 +119,7 @@ async def test_dnspython_execute_action_native(adapter):
 
     target = DnsRecord.create(domain="example.com", record_type="A", value="")
     with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
-        findings = [f async for f in adapter.execute_action(target, {"raw_flags": "-t A,MX"}, ctx)]
+        findings = [f async for f in adapter.execute_action(target, {"flags": "-t A,MX"}, ctx)]
 
     # Verify findings
     assert len(findings) == 3  # DnsRecord(A), NetworkHost(93.184.216.34), DnsRecord(MX)
@@ -254,7 +254,7 @@ async def test_dnspython_ttl_and_soa_anchor_extraction(adapter):
 
     target = DnsRecord.create(domain="example.com", record_type="SOA", value="")
     with patch("dns.asyncresolver.Resolver.resolve", side_effect=mock_resolve):
-        findings = [f async for f in adapter.execute_action(target, {"raw_flags": "-t SOA"}, ctx)]
+        findings = [f async for f in adapter.execute_action(target, {"flags": "-t SOA"}, ctx)]
 
     assert len(findings) == 1
     soa_rec = findings[0]

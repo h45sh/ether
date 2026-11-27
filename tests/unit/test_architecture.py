@@ -7,6 +7,7 @@ Mechanically enforces invariants:
 """
 
 import ast
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -56,7 +57,13 @@ def test_layer_dag_schemas_are_pure():
     """Verify that ether.schemas only imports from ether.schemas, ether.common, or stdlib."""
     schemas_dir = SRC_ROOT / "schemas"
     violations = []
-    banned_in_schemas = {"ether.core", "ether.graph", "ether.gateway", "ether.registry"}
+    banned_in_schemas = {
+        "ether.core",
+        "ether.graph",
+        "ether.gateway",
+        "ether.registry",
+        "ether.services",
+    }
 
     for py_file in _get_python_files(schemas_dir):
         with open(py_file, "r", encoding="utf-8") as f:
@@ -131,7 +138,9 @@ def test_complete_unidirectional_layer_dag():
             "ether.registry",
             "ether.graph",
             "ether.core",
+            "ether.drift",
             "ether.gateway",
+            "ether.services",
             "ether.cli",
             "ether.mcp",
         ],
@@ -139,20 +148,35 @@ def test_complete_unidirectional_layer_dag():
             "ether.registry",
             "ether.graph",
             "ether.core",
+            "ether.drift",
             "ether.gateway",
+            "ether.services",
             "ether.cli",
             "ether.mcp",
         ],
         "registry": [
             "ether.graph",
             "ether.core",
+            "ether.drift",
             "ether.gateway",
+            "ether.services",
             "ether.cli",
             "ether.mcp",
         ],
-        "graph": ["ether.core", "ether.gateway", "ether.cli", "ether.mcp"],
-        "core": ["ether.gateway", "ether.cli", "ether.mcp"],
-        "gateway": ["ether.cli", "ether.mcp"],
+        "graph": [
+            "ether.core",
+            "ether.drift",
+            "ether.gateway",
+            "ether.services",
+            "ether.cli",
+            "ether.mcp",
+        ],
+        "core": ["ether.drift", "ether.gateway", "ether.services", "ether.cli", "ether.mcp"],
+        "drift": ["ether.core", "ether.gateway", "ether.services", "ether.cli", "ether.mcp"],
+        "gateway": ["ether.drift", "ether.services", "ether.cli", "ether.mcp"],
+        "services": ["ether.cli", "ether.mcp"],
+        "mcp": ["ether.cli"],
+        "cli": [],
     }
 
     violations = []
@@ -219,3 +243,53 @@ def test_tools_layer_purity():
         f"Layer DAG violation: Tools in tools/ must never import from higher layers:\n"
         + "\n".join(violations)
     )
+
+
+@pytest.mark.tier0
+def test_all_manifests_declare_target_types():
+    """Verify every tools/*/manifest.toml declares input.target_types as a non-empty list."""
+    tools_dir = Path(__file__).resolve().parent.parent.parent / "tools"
+    missing = []
+    for manifest_path in sorted(tools_dir.glob("*/manifest.toml")):
+        with open(manifest_path, "rb") as f:
+            data = tomllib.load(f)
+        target_types = data.get("input", {}).get("target_types")
+        if not isinstance(target_types, list) or not target_types:
+            missing.append(manifest_path.parent.name)
+
+    assert not missing, f"Manifests missing non-empty input.target_types: {missing}"
+
+
+@pytest.mark.tier0
+def test_manifest_and_adapter_execution_tier_match():
+    """Verify execution_tier in manifest.toml matches any explicit execution_tier on the adapter class."""
+    tools_dir = Path(__file__).resolve().parent.parent.parent / "tools"
+    mismatches = []
+    for manifest_path in sorted(tools_dir.glob("*/manifest.toml")):
+        adapter_path = manifest_path.parent / "adapter.py"
+        if not adapter_path.exists():
+            continue
+        with open(manifest_path, "rb") as f:
+            data = tomllib.load(f)
+        manifest_tier = data.get("meta", {}).get("execution_tier", "subprocess")
+
+        with open(adapter_path, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename=str(adapter_path))
+
+        adapter_tier = None
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                for stmt in node.body:
+                    if isinstance(stmt, ast.Assign):
+                        for target in stmt.targets:
+                            if isinstance(target, ast.Name) and target.id == "execution_tier":
+                                if isinstance(stmt.value, ast.Constant) and isinstance(
+                                    stmt.value.value, str
+                                ):
+                                    adapter_tier = stmt.value.value
+        if adapter_tier is not None and adapter_tier != manifest_tier:
+            mismatches.append(
+                f"{manifest_path.parent.name}: manifest={manifest_tier} != adapter={adapter_tier}"
+            )
+
+    assert not mismatches, f"execution_tier mismatches:\n" + "\n".join(mismatches)

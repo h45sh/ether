@@ -86,14 +86,22 @@ categories = ["Network", "PortScan"]
 binary = "nmap"
 tier = "binary"
 
-[modes]
-power = true
-
 [input]
 accepts = ["network.host"]
 
 [output]
 produces = ["network.host", "network.service"]
+
+[execution]
+tier = "subprocess"
+output_format = "xml"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-sV", "-Pn", "-p", "--top-ports"]
+blocked = ["-oG", "-oN", "--script"]
+compound_delimiters = ["=", ":", ","]
 ```
 
 ### Tier A In-Process Coroutine Manifest:
@@ -103,16 +111,24 @@ name = "http_probe"
 description = "Fast in-process HTTP/HTTPS probe with SSRF defense"
 category = "Web Reconnaissance"
 categories = ["web", "probe"]
-tier = "coroutine"
-
-[modes]
-power = true
+execution_tier = "coroutine"
 
 [input]
 accepts = ["network.host", "network.service"]
 
 [output]
 produces = ["web.endpoint", "web.technology"]
+
+[execution]
+tier = "coroutine"
+output_format = "coroutine"
+supports_streaming_parse = true
+default_timeout_sec = 30.0
+
+[flags]
+allowed = ["--verify-tls"]
+blocked = []
+compound_delimiters = ["=", ":", ","]
 ```
 
 ---
@@ -141,7 +157,7 @@ class NmapAdapter(ToolAdapter):
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct a safe argument vector from target and execution parameters."""
         ip = target.data.get("ip") or "127.0.0.1"
-        flags = params.get("raw_flags", "-sV -T4").split()
+        flags = params.get("flags", "-sV -T4").split()
         return ["nmap", *flags, ip]
 
     async def parse_output(

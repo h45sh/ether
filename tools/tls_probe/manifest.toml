@@ -1,0 +1,30 @@
+[meta]
+name = "tls_probe"
+description = "Pure-Python asynchronous TLS certificate, cipher suite, and SSL protocol discovery prober."
+one_line_summary = "zero-fork in-process TLS certificate and cipher suite inspector"
+category = "Network Reconnaissance"
+binary = ""
+execution_tier = "coroutine"
+categories = ["recon", "network", "tls", "crypto"]
+theory = """
+### TLS Protocol Handshake & Cryptographic Fingerprinting (RFC 8446)
+In-process asynchronous TLS probing initiates a standard ClientHello handshake directly against target TCP ports to extract X.509 certificate chains, SAN extensions, and negotiated cryptographic cipher suites without spawning external binaries.
+"""
+
+[input]
+accepts = ["network.service", "network.host", "web.endpoint"]
+target_types = ["ip", "domain", "url"]
+
+[output]
+produces = ["tls.certificate", "tls.cipher_suite"]
+
+[execution]
+tier = "coroutine"
+output_format = "coroutine"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-p", "--port"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]

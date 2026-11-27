@@ -27,7 +27,7 @@ def test_netexec_build_command(adapter):
     # 2. Custom protocol and flags
     cmd_ssh = adapter.build_command(
         target,
-        {"raw_flags": "ssh 10.10.10.5 -u root -p password"},
+        {"flags": "ssh 10.10.10.5 -u root -p password"},
     )
     assert cmd_ssh[0] in ("nxc", "netexec")
     assert cmd_ssh[1] == "ssh"

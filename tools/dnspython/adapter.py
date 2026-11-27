@@ -1,7 +1,6 @@
 """Pure-Python DNS Probe tool adapter."""
 
 import json
-import shlex
 import sys
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -58,8 +57,7 @@ class DnsPythonAdapter(ToolAdapter):
             )
             return
 
-        raw_flags = params.get("raw_flags", "").strip()
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.normalize_flags(params)
 
         record_types: List[str] = []
         nameserver: Optional[str] = params.get("nameserver")
@@ -229,8 +227,7 @@ class DnsPythonAdapter(ToolAdapter):
         elif target.schema_type == "network.host":
             query = target.pik.get("ip")
 
-        raw_flags = params.get("raw_flags", "").strip()
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.normalize_flags(params)
 
         # If user did not provide target query inside flags, attach resolved query
         args = [sys.executable, "-m", "tools.dnspython.cli"]

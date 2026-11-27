@@ -5,9 +5,11 @@ import os
 import shlex
 import shutil
 import subprocess
+from collections import deque
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import (
     Any,
     AsyncIterator,
@@ -22,9 +24,10 @@ from typing import (
 from uuid import UUID
 
 from ether.common.context import ExecutionContext
-from ether.core.executor import Executor, LogSpooler, sanitize_subprocess_env
+from ether.common.forensic_log import ForensicLogManager, LogSpooler
+from ether.common.secure_memory import wipe_credentials
+from ether.core.executor import Executor, sanitize_subprocess_env
 from ether.graph.store import GraphStore
-from ether.paths import get_action_log_path
 from ether.registry.adapter import ToolAdapter
 from ether.registry.registry import ToolRegistry
 from ether.schemas.base import BaseFinding
@@ -75,6 +78,34 @@ class PassthroughActionValidator:
         return text
 
     async def validate_action(self, action: ActionRequest) -> bool:
+        import re
+
+        from ether.common.scope import EngagementScope, ScopeValidator
+
+        flags_str = ""
+        if action.params:
+            flags_val = action.params.get("flags") or ""
+            if isinstance(flags_val, list):
+                flags_str = " ".join(str(f) for f in flags_val)
+            else:
+                flags_str = str(flags_val)
+        if flags_str and re.search(r"[|;&$`\n]", flags_str):
+            raise ValueError("Shell metacharacters are prohibited in command arguments.")
+
+        safe_scope = EngagementScope(allow_loopback=False)
+        for tok in str(flags_str).replace("=", " ").split():
+            clean_tok = tok.strip("\"'`()<>,;{}[]")
+            if not clean_tok or clean_tok.startswith("-"):
+                continue
+            host = ScopeValidator.parse_host_candidate(clean_tok)
+            if ScopeValidator.parse_ip(host) is not None or "." in host or "://" in clean_tok:
+                verdict = await ScopeValidator.check_destination(
+                    clean_tok, scope=safe_scope, policy_is_unrestricted=False
+                )
+                if not verdict.allowed:
+                    raise ValueError(
+                        f"Destination '{clean_tok}' blocked by SAFE scope policy ({verdict.reason})."
+                    )
         return True
 
 
@@ -107,46 +138,6 @@ class CommandRunner(Protocol):
     ) -> AsyncIterator[BaseFinding]: ...
 
     async def stop(self, task_id: str) -> None: ...
-
-
-class SubprocessCommandRunner(CommandRunner):
-    """Production CommandRunner delegating to Executor subprocess management."""
-
-    def __init__(self, executor: Executor):
-        self.executor = executor
-
-    async def run(
-        self,
-        adapter: ToolAdapter,
-        target: BaseFinding,
-        params: Dict[str, Any],
-        task_id: str,
-        cwd: str,
-        env: Optional[Dict[str, str]] = None,
-        use_shell: bool = False,
-        shell_path: Optional[str] = None,
-        on_output: Optional[Callable[[str], Any]] = None,
-        on_error_output: Optional[Callable[[str], Any]] = None,
-        timeout_seconds: Optional[int] = None,
-    ) -> AsyncIterator[BaseFinding]:
-        async for finding in self.executor.run_tool(
-            adapter=adapter,
-            target=target,
-            params=params,
-            session_id=None,
-            task_id=task_id,
-            cwd=cwd,
-            env=env,
-            use_shell=use_shell,
-            shell_path=shell_path,
-            on_output=on_output,
-            on_error_output=on_error_output,
-            timeout_seconds=timeout_seconds,
-        ):
-            yield finding
-
-    async def stop(self, task_id: str) -> None:
-        await self.executor.stop_task(task_id)
 
 
 # --- Typed Execution Events ---
@@ -186,7 +177,52 @@ class ExecutionFailed(ExecutionEvent):
     duration_seconds: float = 0.0
 
 
-# --- Internal Adapters ---
+# --- Internal Adapters & Buffers ---
+
+
+class ByteBoundedRingBuffer:
+    """Byte- and chunk-bounded ring buffer that evicts oldest chunks when limits are exceeded."""
+
+    def __init__(self, max_bytes: int = 2 * 1024 * 1024, max_chunks: Optional[int] = 5000):
+        self.max_bytes = max_bytes
+        self.max_chunks = max_chunks
+        self._chunks: deque[str] = deque()
+        self._current_bytes: int = 0
+        self.dropped_bytes_count: int = 0
+
+    def append(self, chunk: str) -> None:
+        chunk_bytes = len(chunk.encode("utf-8", errors="replace"))
+        self._chunks.append(chunk)
+        self._current_bytes += chunk_bytes
+        while self._chunks and (
+            self._current_bytes > self.max_bytes
+            or (self.max_chunks is not None and len(self._chunks) > self.max_chunks)
+        ):
+            oldest = self._chunks.popleft()
+            evicted_bytes = len(oldest.encode("utf-8", errors="replace"))
+            self._current_bytes -= evicted_bytes
+            self.dropped_bytes_count += evicted_bytes
+
+    def pop(self, default: Any = None) -> Optional[str]:
+        if self._chunks:
+            val = self._chunks.pop()
+            self._current_bytes -= len(val.encode("utf-8", errors="replace"))
+            return val
+        return default
+
+    def clear(self) -> None:
+        self._chunks.clear()
+        self._current_bytes = 0
+
+    def __iter__(self):
+        return iter(self._chunks)
+
+    def __len__(self) -> int:
+        return len(self._chunks)
+
+    @property
+    def total_bytes(self) -> int:
+        return self._current_bytes
 
 
 class InternalShellAdapter(ToolAdapter):
@@ -196,7 +232,10 @@ class InternalShellAdapter(ToolAdapter):
         return True
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
-        return shlex.split(params.get("raw_flags", ""))
+        flags_val = params.get("flags", [])
+        if isinstance(flags_val, list):
+            return [str(f) for f in flags_val if str(f).strip()]
+        return shlex.split(str(flags_val))
 
     async def parse_output(
         self,
@@ -219,30 +258,40 @@ class ExecutionSession:
 
     def __init__(
         self,
-        store: GraphStore,
-        gateway: ActionValidator,
-        registry: ToolRegistry,
-        command_runner: CommandRunner,
+        store: Optional[GraphStore] = None,
+        gateway: Optional[ActionValidator] = None,
+        registry: Optional[ToolRegistry] = None,
+        command_runner: Optional[CommandRunner] = None,
         user_env: Optional[Dict[str, str]] = None,
         user_shell: Optional[str] = None,
+        data_dir: Optional[str] = None,
     ):
-        self.store = store
-        self.gateway = gateway
-        self.registry = registry
-        self.runner = command_runner
+        self.store = store if store is not None else GraphStore(":memory:")
+        self.gateway = gateway if gateway is not None else PassthroughActionValidator()
+        self.registry = registry if registry is not None else ToolRegistry()
+        self.runner = command_runner if command_runner is not None else Executor()
         self.user_env = user_env or os.environ.copy()
         self.user_shell = user_shell or "/bin/bash"
+        if data_dir is not None:
+            self.data_dir: Optional[str] = data_dir
+        else:
+            db_path = getattr(self.store, "db_path", None)
+            if db_path and str(db_path) != ":memory:" and not str(db_path).startswith("file:"):
+                self.data_dir = str(Path(str(db_path)).parent)
+            else:
+                self.data_dir = None
 
         # Action tracking
         self._active_jobs: Dict[UUID, JobStatus] = {}
         self._job_actions: Dict[UUID, ActionRequest] = {}
-        self._job_buffers: Dict[UUID, List[str]] = {}
+        self._job_buffers: Dict[UUID, ByteBoundedRingBuffer] = {}
         self._event_queues: Dict[UUID, List[asyncio.Queue[Optional[ExecutionEvent]]]] = {}
         self._running_tasks: Dict[UUID, asyncio.Task] = {}
         self._status_listeners: List[Callable[[JobStatus], Any]] = []
         self._session_cwd: Dict[str, str] = {}
         self.closed_job_ids: set[str] = set()
         self._job_spoolers: Dict[UUID, LogSpooler] = {}
+        self.dropped_events_count: int = 0
 
     @classmethod
     def create(
@@ -253,16 +302,15 @@ class ExecutionSession:
         command_runner: Optional[CommandRunner] = None,
         user_env: Optional[Dict[str, str]] = None,
         user_shell: Optional[str] = None,
+        data_dir: Optional[str] = None,
     ) -> "ExecutionSession":
         """Create an ExecutionSession with standard defaults.
 
-        Automatically instantiates default ToolRegistry, Executor, and SubprocessCommandRunner
+        Automatically instantiates default ToolRegistry and Executor
         if not explicitly provided, eliminating caller assembly boilerplate.
         """
         reg = registry if registry is not None else ToolRegistry()
-        runner = (
-            command_runner if command_runner is not None else SubprocessCommandRunner(Executor())
-        )
+        runner = command_runner if command_runner is not None else Executor()
         gw = gateway if gateway is not None else PassthroughActionValidator()
         return cls(
             store=store,
@@ -271,6 +319,7 @@ class ExecutionSession:
             command_runner=runner,
             user_env=user_env,
             user_shell=user_shell,
+            data_dir=data_dir,
         )
 
     def add_status_listener(self, listener: Callable[[JobStatus], Any]) -> None:
@@ -306,7 +355,7 @@ class ExecutionSession:
 
     def append_job_buffer(self, action_id: UUID, chunk: str) -> None:
         """Append an output chunk to in-memory job buffer."""
-        buf = self._job_buffers.setdefault(action_id, [])
+        buf = self._job_buffers.setdefault(action_id, ByteBoundedRingBuffer())
         buf.append(chunk)
 
     def remove_job(self, action_id: UUID) -> Optional[JobStatus]:
@@ -369,9 +418,34 @@ class ExecutionSession:
         """Get all active/tracked jobs for a session."""
         return [j for j in self._active_jobs.values() if str(j.session_id) == str(session_id)]
 
+    def get_dropped_bytes(self, action_id: Optional[UUID] = None) -> int:
+        """Return dropped bytes count for an action or across all active buffers."""
+        if action_id is not None:
+            buf = self._job_buffers.get(action_id)
+            return buf.dropped_bytes_count if buf else 0
+        return sum(buf.dropped_bytes_count for buf in self._job_buffers.values())
+
+    def get_dropped_events(self) -> int:
+        """Return total dropped events due to subscriber queue backpressure."""
+        return self.dropped_events_count
+
+    def _queue_put_with_backpressure(
+        self, q: asyncio.Queue[Optional[ExecutionEvent]], event: Optional[ExecutionEvent]
+    ) -> None:
+        if q.full():
+            try:
+                q.get_nowait()
+                self.dropped_events_count += 1
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            q.put_nowait(event)
+        except Exception:
+            pass
+
     async def subscribe(self, action_id: UUID) -> AsyncIterator[ExecutionEvent]:
         """Subscribe to live typed execution events for an action with backlog replay."""
-        q: asyncio.Queue[Optional[ExecutionEvent]] = asyncio.Queue()
+        q: asyncio.Queue[Optional[ExecutionEvent]] = asyncio.Queue(maxsize=100)
         if action_id not in self._event_queues:
             self._event_queues[action_id] = []
         self._event_queues[action_id].append(q)
@@ -379,17 +453,23 @@ class ExecutionSession:
         # Replay backlog if already started
         buffer_chunks = self.get_output_history(action_id)
         for chunk in buffer_chunks:
-            await q.put(ExecutionChunk(action_id=action_id, text=chunk))
+            self._queue_put_with_backpressure(q, ExecutionChunk(action_id=action_id, text=chunk))
 
         job = self.get_job(action_id)
         if job and job.status != JobStatusEnum.RUNNING:
             if job.status == JobStatusEnum.DONE:
-                await q.put(ExecutionCompleted(action_id=action_id, status=job.status))
-            else:
-                await q.put(
-                    ExecutionFailed(action_id=action_id, error=job.error_snippet or "Failed")
+                self._queue_put_with_backpressure(
+                    q, ExecutionCompleted(action_id=action_id, status=job.status)
                 )
-            await q.put(None)
+            else:
+                self._queue_put_with_backpressure(
+                    q,
+                    ExecutionFailed(
+                        action_id=action_id,
+                        error=job.error_snippet or "Failed",
+                    ),
+                )
+            self._queue_put_with_backpressure(q, None)
 
         try:
             while True:
@@ -406,10 +486,7 @@ class ExecutionSession:
     async def _emit_event(self, action_id: UUID, event: Optional[ExecutionEvent]) -> None:
         queues = list(self._event_queues.get(action_id, []))
         for q in queues:
-            try:
-                await q.put(event)
-            except Exception:
-                pass
+            self._queue_put_with_backpressure(q, event)
 
     async def dispatch(
         self,
@@ -436,15 +513,28 @@ class ExecutionSession:
                 pik = json.loads(node_data.get("pik_json") or "{}")
 
         resolved_vars = self.gateway.resolve_entity_variables(pik)
-        raw_flags = action.params.get("raw_flags", "") if action.params else ""
-        raw_flags = self.gateway.interpolate_variables(raw_flags, resolved_vars)
-        if action.params:
-            action.params["raw_flags"] = raw_flags
+        if action.params is None:
+            action.params = {}
+        flags_val = action.params.get("flags", [])
+        if isinstance(flags_val, list):
+            flags_str = " ".join(str(x) for x in flags_val)
+        elif flags_val is not None:
+            flags_str = str(flags_val)
+        else:
+            flags_str = ""
+
+        flags_str = self.gateway.interpolate_variables(flags_str, resolved_vars)
+        if isinstance(action.params.get("flags"), list):
+            import shlex
+
+            action.params["flags"] = shlex.split(flags_str) if flags_str.strip() else []
+        else:
+            action.params["flags"] = flags_str
 
         # 2. Builtin 'cd' handling
         tool_data = self.registry.get_tool(action.tool_name)
         if not tool_data and action.tool_name == "cd":
-            dest = raw_flags.strip()
+            dest = flags_str.strip()
             current = self.get_cwd(str(action.session_id))
             new_path = os.path.abspath(os.path.join(current, dest))
             if os.path.isdir(new_path):
@@ -458,10 +548,12 @@ class ExecutionSession:
 
         # 3. Determine Adapter
         if action.is_explicit_shell:
-            action.params["raw_flags"] = f"{action.tool_name} {raw_flags}".strip()
+            if isinstance(action.params.get("flags"), list):
+                action.params["flags"] = [action.tool_name, *action.params["flags"]]
+            else:
+                action.params["flags"] = f"{action.tool_name} {flags_str}".strip()
             adapter = InternalShellAdapter()
         elif tool_data:
-            action.params["raw_flags"] = raw_flags
             adapter = tool_data["adapter"]
         else:
             raise ValueError(f"No tool or explicit shell prefix found for '{action.tool_name}'")
@@ -477,8 +569,23 @@ class ExecutionSession:
             raise
 
         # 5. Job status initialization
-        log_file_path = get_action_log_path(str(action.action_id))
-        cmd_raw = action.params.get("raw_flags", "") if action.params else ""
+        target_val = ""
+        if action.params:
+            target_val = str(action.params.get("target") or action.params.get("url") or "")
+        spooler, log_path = ForensicLogManager.open_action_spool(
+            session_id=str(action.session_id),
+            action_id=str(action.action_id),
+            tool=action.tool_name,
+            target=target_val or "target",
+            data_dir=self.data_dir,
+        )
+        log_file_path = str(log_path)
+        self._job_spoolers[action.action_id] = spooler
+        flags_val = action.params.get("flags", "") if action.params else ""
+        if isinstance(flags_val, list):
+            cmd_raw = " ".join(str(x) for x in flags_val)
+        else:
+            cmd_raw = str(flags_val) if flags_val is not None else ""
         cmd_snippet = f"{action.tool_name} {cmd_raw}".strip() if cmd_raw else action.tool_name
 
         job = JobStatus(
@@ -491,7 +598,7 @@ class ExecutionSession:
         )
         self._active_jobs[job.job_id] = job
         self._job_actions[job.job_id] = action
-        self._job_buffers[job.job_id] = []
+        self._job_buffers[job.job_id] = ByteBoundedRingBuffer()
         self._notify_status(job)
 
         # 6. Resolve target finding
@@ -545,10 +652,8 @@ class ExecutionSession:
     async def _append_chunk(
         self, action_id: UUID, text: str, log_file_path: str, is_error: bool = False
     ) -> None:
-        buf = self._job_buffers.setdefault(action_id, [])
+        buf = self._job_buffers.setdefault(action_id, ByteBoundedRingBuffer())
         buf.append(text)
-        if len(buf) > 5000:
-            self._job_buffers[action_id] = buf[-2500:]
 
         spooler = self._job_spoolers.get(action_id)
         if spooler:
@@ -564,6 +669,158 @@ class ExecutionSession:
             action_id, ExecutionChunk(action_id=action_id, text=text, is_error=is_error)
         )
 
+    def _finalize_action_spool(
+        self,
+        action: ActionRequest,
+        job: JobStatus,
+        log_file_path: str,
+        end_label: str,
+        err_msg: Optional[str],
+    ) -> None:
+        """Close action spooler, populate job.exit_code, and record forensic audit completion."""
+        runner_exit: Optional[int] = None
+        get_exit_fn = getattr(self.runner, "get_exit_code", None)
+        if callable(get_exit_fn):
+            runner_exit = get_exit_fn(str(action.action_id))
+
+        if runner_exit is not None:
+            job.exit_code = runner_exit
+        elif job.exit_code is None:
+            job.exit_code = 0 if job.status == JobStatusEnum.DONE else 1
+
+        if err_msg and not job.error_snippet:
+            job.error_snippet = err_msg
+
+        spooler = self._job_spoolers.pop(action.action_id, None)
+        status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
+        if spooler:
+            spooler.write(
+                f"\n\n=== {end_label}: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            )
+            spooler.close()
+
+        target_str = (
+            str(action.params.get("target") or action.params.get("url") or "")
+            if action.params
+            else ""
+        )
+        ForensicLogManager.record_action_completion(
+            session_id=str(action.session_id),
+            action_id=str(action.action_id),
+            tool=action.tool_name,
+            target=target_str or "target",
+            exit_code=job.exit_code,
+            log_path=Path(log_file_path),
+            data_dir=self.data_dir,
+        )
+        wipe_credentials(job)
+
+    async def _begin_action_execution(
+        self,
+        action: ActionRequest,
+        job: JobStatus,
+        tool_name: str,
+        header_title: str,
+        log_file_path: str,
+    ) -> float:
+        """Write the execution header to the spooler and emit ExecutionStarted."""
+        start_time = asyncio.get_event_loop().time()
+        spooler = self._job_spoolers.get(action.action_id)
+        if spooler:
+            spooler.write(
+                f"=== {header_title}: {datetime.now(UTC).isoformat()} ===\n"
+                f"Tool: {tool_name}\n"
+                f"Session: {action.session_id}\n"
+                f"Action ID: {action.action_id}\n"
+                f"{'=' * 50}\n\n"
+            )
+
+        await self._emit_event(
+            action.action_id,
+            ExecutionStarted(
+                action_id=action.action_id,
+                tool_name=tool_name,
+                command_snippet=job.command_snippet or "",
+                log_file=log_file_path,
+            ),
+        )
+        return start_time
+
+    async def _complete_action_execution(
+        self,
+        action: ActionRequest,
+        job: JobStatus,
+        log_file_path: str,
+        start_time: float,
+        end_label: str,
+        command_summary: str,
+        err_msg: Optional[str],
+        findings_count: int = 0,
+        remove_if_closed: bool = False,
+        on_complete: Optional[Callable[[], Any]] = None,
+    ) -> None:
+        """Finalize spooling, persist event log, emit terminal events, and notify listeners."""
+        elapsed = asyncio.get_event_loop().time() - start_time
+        job.completed_at = datetime.now(UTC)
+        self._finalize_action_spool(action, job, log_file_path, end_label, err_msg)
+
+        if self.store is not None:
+            try:
+                buf_output = "".join(self.get_output_history(action.action_id))
+                if len(buf_output) > 200_000:
+                    db_output = (
+                        buf_output[:100_000]
+                        + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
+                        + buf_output[-100_000:]
+                    )
+                else:
+                    db_output = buf_output
+
+                await self.store.append_event(
+                    str(action.session_id),
+                    action,
+                    {"output": db_output, "log_file": log_file_path, "error": err_msg},
+                    command_summary + (f" (failed: {err_msg})" if err_msg else ""),
+                )
+                if str(action.action_id) in self.closed_job_ids:
+                    if remove_if_closed:
+                        self.remove_job(action.action_id)
+                    else:
+                        await self.store.mark_event_closed(
+                            str(action.action_id), session_id=str(action.session_id)
+                        )
+            except Exception:
+                pass
+
+        self._notify_status(job)
+
+        if job.status == JobStatusEnum.DONE:
+            await self._emit_event(
+                action.action_id,
+                ExecutionCompleted(
+                    action_id=action.action_id,
+                    status=JobStatusEnum.DONE,
+                    findings_count=findings_count,
+                    duration_seconds=elapsed,
+                ),
+            )
+        else:
+            await self._emit_event(
+                action.action_id,
+                ExecutionFailed(
+                    action_id=action.action_id,
+                    error=err_msg or "Failed",
+                    duration_seconds=elapsed,
+                ),
+            )
+        await self._emit_event(action.action_id, None)
+
+        if on_complete:
+            try:
+                await on_complete()
+            except Exception:
+                pass
+
     async def _run_privileged_action(
         self,
         action: ActionRequest,
@@ -574,29 +831,14 @@ class ExecutionSession:
         on_chunk: Optional[Callable[[str], Any]],
         on_complete: Optional[Callable[[], Any]],
     ) -> None:
-        start_time = asyncio.get_event_loop().time()
         cwd = self.get_cwd(str(action.session_id))
         clean_env = sanitize_subprocess_env(self.user_env)
-
-        # Initialize LogSpooler with 64KB buffering
-        spooler = LogSpooler(log_file_path)
-        self._job_spoolers[action.action_id] = spooler
-        spooler.write(
-            f"=== Privileged Execution Start: {datetime.now(UTC).isoformat()} ===\n"
-            f"Tool: sudo\n"
-            f"Session: {action.session_id}\n"
-            f"Action ID: {action.action_id}\n"
-            f"{'=' * 50}\n\n"
-        )
-
-        await self._emit_event(
-            action.action_id,
-            ExecutionStarted(
-                action_id=action.action_id,
-                tool_name="sudo",
-                command_snippet=job.command_snippet or "",
-                log_file=log_file_path,
-            ),
+        start_time = await self._begin_action_execution(
+            action,
+            job,
+            tool_name="sudo",
+            header_title="Privileged Execution Start",
+            log_file_path=log_file_path,
         )
 
         err_msg = None
@@ -683,7 +925,7 @@ class ExecutionSession:
                 data={},
                 status="confirmed",
             )
-            params = {"raw_flags": shlex.join(cmd_args)}
+            params = {"flags": shlex.join(cmd_args)}
 
             async for _ in self.runner.run(
                 adapter=adapter,
@@ -705,9 +947,11 @@ class ExecutionSession:
         except asyncio.CancelledError:
             err_msg = "Job cancelled"
             job.status = JobStatusEnum.FAILED
+            job.error_snippet = err_msg
         except Exception as e:
             job.status = JobStatusEnum.FAILED
             err_msg = str(e)
+            job.error_snippet = err_msg
             await self._append_chunk(
                 action.action_id,
                 f"[Privileged execution error: {e}]\n",
@@ -720,72 +964,20 @@ class ExecutionSession:
                 except Exception:
                     pass
         finally:
-            elapsed = asyncio.get_event_loop().time() - start_time
-            job.completed_at = datetime.now(UTC)
-            self._notify_status(job)
-
-            # Record final status in disk log and close spooler
-            status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
-            spooler.write(
-                f"\n\n=== Privileged Execution End: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            command_summary = (
+                f"Ran sudo {shlex.join(target_args)}" if target_args else f"Ran sudo {cmd_raw}"
             )
-            spooler.close()
-            self._job_spoolers.pop(action.action_id, None)
-
-            if job.status == JobStatusEnum.DONE:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionCompleted(
-                        action_id=action.action_id,
-                        status=JobStatusEnum.DONE,
-                        duration_seconds=elapsed,
-                    ),
-                )
-            else:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionFailed(
-                        action_id=action.action_id,
-                        error=err_msg or "Failed",
-                        duration_seconds=elapsed,
-                    ),
-                )
-            await self._emit_event(action.action_id, None)
-
-            # Persist to database event log
-            if not getattr(self.store, "_closed", False):
-                try:
-                    buf_output = "".join(self.get_output_history(action.action_id))
-                    if len(buf_output) > 200_000:
-                        db_output = (
-                            buf_output[:100_000]
-                            + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
-                            + buf_output[-100_000:]
-                        )
-                    else:
-                        db_output = buf_output
-
-                    command_summary = (
-                        f"Ran sudo {shlex.join(target_args)}"
-                        if target_args
-                        else f"Ran sudo {cmd_raw}"
-                    )
-                    await self.store.append_event(
-                        str(action.session_id),
-                        action,
-                        {"output": db_output, "log_file": log_file_path, "error": err_msg},
-                        command_summary + (f" (failed: {err_msg})" if err_msg else ""),
-                    )
-                    if str(action.action_id) in self.closed_job_ids:
-                        self.remove_job(action.action_id)
-                except Exception:
-                    pass
-
-            if on_complete:
-                try:
-                    await on_complete()
-                except Exception:
-                    pass
+            await self._complete_action_execution(
+                action=action,
+                job=job,
+                log_file_path=log_file_path,
+                start_time=start_time,
+                end_label="Privileged Execution End",
+                command_summary=command_summary,
+                err_msg=err_msg,
+                remove_if_closed=True,
+                on_complete=on_complete,
+            )
 
     async def _run_background_action(
         self,
@@ -797,29 +989,14 @@ class ExecutionSession:
         on_chunk: Optional[Callable[[str], Any]],
         on_complete: Optional[Callable[[], Any]],
     ) -> None:
-        start_time = asyncio.get_event_loop().time()
         cwd = self.get_cwd(str(action.session_id))
         clean_env = sanitize_subprocess_env(self.user_env)
-
-        # Initialize LogSpooler with 64KB buffering
-        spooler = LogSpooler(log_file_path)
-        self._job_spoolers[action.action_id] = spooler
-        spooler.write(
-            f"=== Execution Start: {datetime.now(UTC).isoformat()} ===\n"
-            f"Tool: {action.tool_name}\n"
-            f"Session: {action.session_id}\n"
-            f"Action ID: {action.action_id}\n"
-            f"{'=' * 50}\n\n"
-        )
-
-        await self._emit_event(
-            action.action_id,
-            ExecutionStarted(
-                action_id=action.action_id,
-                tool_name=action.tool_name,
-                command_snippet=job.command_snippet or "",
-                log_file=log_file_path,
-            ),
+        start_time = await self._begin_action_execution(
+            action,
+            job,
+            tool_name=action.tool_name,
+            header_title="Execution Start",
+            log_file_path=log_file_path,
         )
 
         async def handle_spool(text: str, is_error: bool = False) -> None:
@@ -858,7 +1035,7 @@ class ExecutionSession:
             to_flush = list(finding_buffer)
             finding_buffer.clear()
             last_flush = asyncio.get_event_loop().time()
-            if not getattr(self.store, "_closed", False):
+            if self.store is not None:
                 try:
                     await self.store.upsert_findings_batch(
                         str(action.session_id), to_flush, action_id=str(action.action_id)
@@ -884,75 +1061,24 @@ class ExecutionSession:
         except asyncio.CancelledError:
             err_msg = "Job cancelled"
             job.status = JobStatusEnum.FAILED
+            job.error_snippet = err_msg
         except Exception as e:
             err_msg = str(e)
             job.status = JobStatusEnum.FAILED
+            job.error_snippet = err_msg
         finally:
-            elapsed = asyncio.get_event_loop().time() - start_time
-            job.completed_at = datetime.now(UTC)
-
-            # Record final status in disk log and close spooler
-            status_str = "SUCCESS" if job.status == JobStatusEnum.DONE else f"FAILED ({err_msg})"
-            spooler.write(
-                f"\n\n=== Execution End: {datetime.now(UTC).isoformat()} [{status_str}] ===\n"
+            await self._complete_action_execution(
+                action=action,
+                job=job,
+                log_file_path=log_file_path,
+                start_time=start_time,
+                end_label="Execution End",
+                command_summary=f"Ran {action.tool_name}",
+                err_msg=err_msg,
+                findings_count=findings_count,
+                remove_if_closed=False,
+                on_complete=on_complete,
             )
-            spooler.close()
-            self._job_spoolers.pop(action.action_id, None)
-
-            # Persist to database event log
-            if not getattr(self.store, "_closed", False):
-                try:
-                    buf_output = "".join(self.get_output_history(action.action_id))
-                    if len(buf_output) > 200_000:
-                        db_output = (
-                            buf_output[:100_000]
-                            + f"\n\n... [Log truncated for database storage. Full log at {log_file_path}] ...\n\n"
-                            + buf_output[-100_000:]
-                        )
-                    else:
-                        db_output = buf_output
-
-                    await self.store.append_event(
-                        str(action.session_id),
-                        action,
-                        {"output": db_output, "log_file": log_file_path, "error": err_msg},
-                        f"Ran {action.tool_name}" + (f" (failed: {err_msg})" if err_msg else ""),
-                    )
-                    if str(action.action_id) in self.closed_job_ids:
-                        await self.store.mark_event_closed(
-                            str(action.action_id), session_id=str(action.session_id)
-                        )
-                except Exception:
-                    pass
-
-            self._notify_status(job)
-
-            if job.status == JobStatusEnum.DONE:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionCompleted(
-                        action_id=action.action_id,
-                        status=JobStatusEnum.DONE,
-                        findings_count=findings_count,
-                        duration_seconds=elapsed,
-                    ),
-                )
-            else:
-                await self._emit_event(
-                    action.action_id,
-                    ExecutionFailed(
-                        action_id=action.action_id,
-                        error=err_msg or "Failed",
-                        duration_seconds=elapsed,
-                    ),
-                )
-            await self._emit_event(action.action_id, None)
-
-            if on_complete:
-                try:
-                    await on_complete()
-                except Exception:
-                    pass
 
     async def kill_job(self, action_id: UUID) -> bool:
         """Cancel and terminate an active execution."""

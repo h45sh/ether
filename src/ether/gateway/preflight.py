@@ -7,14 +7,16 @@ import re
 import shutil
 import urllib.parse
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, List, Literal, Optional, Set, Tuple
 
-from ether import paths
-from ether.gateway.gate import GatePolicy, is_blocked_destination
-from ether.registry.wordlists import (
+from ether.gateway.gate import GatePolicy
+from ether.gateway.scope import EngagementScope, ScopeValidator
+from ether.registry.assets import (
     DEFAULT_WORDLIST_NAME,
     WORDLIST_MACRO_REGEX,
-    seed_bundled_wordlists,
+    AssetNotFoundError,
+    resolve_wordlist,
 )
 
 WORDLIST_FLAG_REGEX = re.compile(
@@ -36,284 +38,162 @@ INSTALLATION_HINTS: dict[str, str] = {
     "searchsploit": "sudo apt install exploitdb  (or: git clone https://gitlab.com/exploit-database/exploitdb.git)",
 }
 
-WEB_TOOLS: Set[str] = {"gobuster", "ffuf", "nikto", "nuclei", "sqlmap"}
-NETWORK_TOOLS: Set[str] = {"nmap", "netexec", "nxc"}
-DOMAIN_TOOLS: Set[str] = {"subfinder", "whois", "dnspython"}
-WORDLIST_TOOLS: Set[str] = {"gobuster", "ffuf"}
 
-DEFAULT_TOOL_TARGETS: dict[str, str] = {
-    "nmap": "127.0.0.1",
-    "netexec": "127.0.0.1",
-    "gobuster": "http://scanme.nmap.org",
-    "nikto": "http://scanme.nmap.org",
-    "ffuf": "http://scanme.nmap.org",
-    "nuclei": "http://scanme.nmap.org",
-    "sqlmap": "http://testphp.vulnweb.com/listproducts.php?cat=1",
-    "subfinder": "example.com",
-    "whois": "example.com",
-    "dnspython": "example.com",
-    "searchsploit": "Apache 2.4.49",
-    "http_probe": "http://scanme.nmap.org",
-}
+def _check_destination_sync(target: str, scope: EngagementScope) -> Any:
+    """Run ScopeValidator.check_destination synchronously from preflight checks."""
+    import asyncio
+    import concurrent.futures
 
-TOOL_TARGET_GUIDANCE: dict[str, dict[str, Any]] = {
-    "nmap": {
-        "expected_format": "IPv4 (127.0.0.1), IPv6 (::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)",
-        "safe_sandbox": "127.0.0.1 (local loopback) or scanme.nmap.org (Nmap authorized test server)",
-        "permissible": [
-            "Local loopback (127.0.0.1, localhost) for inspecting locally listening daemons and ports.",
-            "Official Nmap project sandbox (scanme.nmap.org) for testing version and script scans.",
-            "Private lab subnets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and container bridge networks with explicit authorization.",
-        ],
-        "prohibited": [
-            "Cloud metadata endpoints (169.254.169.254, 169.254.169.250, fd00:ec2::254) — potential SSRF vulnerability.",
-            "Third-party production infrastructure, government, banking, healthcare, or military IP ranges without written Rules of Engagement (RoE).",
-            "Broadcast or multicast addresses (e.g. 255.255.255.255, 224.0.0.1) which can cause network amplification storms.",
-        ],
-        "precautions": [
-            "Aggressive timing templates (-T4, -T5) and full port sweeps (-p-) can saturate network firewalls, exhaust state tables, or crash fragile legacy embedded hardware.",
-            "SYN half-open scans (-sS) require raw socket capabilities (root/sudo privileges).",
-            "UDP scanning (-sU) is subject to OS-level ICMP rate limits (RFC 1812); expect scans to run significantly slower.",
-        ],
-        "general_knowledge": "Nmap interrogates the target's TCP/IP stack implementation using raw socket probes. It distinguishes open, closed, and filtered states via SYN-ACK, RST, or ICMP unreachable responses. Service versioning (-sV) probes matching service banners against nmap-service-probes.",
-    },
-    "netexec": {
-        "expected_format": "Target IPv4 (127.0.0.1), CIDR subnet (192.168.1.0/24), or NetBIOS/FQDN hostname (dc01.corp.local)",
-        "safe_sandbox": "127.0.0.1 (local Samba/SSH services) or dedicated Active Directory lab ranges (e.g., GOAD, HackTheBox)",
-        "permissible": [
-            "Local machine (127.0.0.1) for testing null sessions or guest share enumerations against local SMB daemons.",
-            "Isolated Active Directory lab environments configured specifically for pentesting education.",
-            "Authorized enterprise client subnets during approved engagement windows.",
-        ],
-        "prohibited": [
-            "Production Active Directory Domain Controllers during business hours without explicit change approval.",
-            "Internet-facing public SMB (port 445) endpoints not owned by you.",
-            "Cloud metadata endpoints.",
-        ],
-        "precautions": [
-            "NetExec can trigger Active Directory account lockouts if password spraying against domains with aggressive lockout policies (badPwdCount thresholds).",
-            "SMB credential checks generate event ID 4625 (failed logon) and 4624 (successful logon) on the Domain Controller security event log.",
-            "The --rid-brute flag generates sequential RPC queries that can alert SIEM rules detecting credential access.",
-        ],
-        "general_knowledge": "NetExec (formerly CrackMapExec) is a post-exploitation and network reconnaissance tool automating assessment of large Active Directory networks via SMB, WMI, WinRM, LDAP, MSSQL, and SSH protocols.",
-    },
-    "gobuster": {
-        "expected_format": "Complete HTTP or HTTPS URL (http://127.0.0.1:8080, https://scanme.nmap.org)",
-        "safe_sandbox": "http://scanme.nmap.org or local containerized test targets (http://127.0.0.1:8080)",
-        "permissible": [
-            "Local loopback web servers (http://127.0.0.1, http://localhost:8000) for testing wordlist traversal.",
-            "Authorized client web applications during penetration tests.",
-            "Dedicated CTF or training web targets (DVWA, OWASP Juice Shop).",
-        ],
-        "prohibited": [
-            "Third-party websites, production e-commerce platforms, or SaaS portals without explicit scope inclusion.",
-            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/).",
-        ],
-        "precautions": [
-            "High concurrency (-t 50+) can overwhelm low-spec web servers, exhausting Apache/Nginx worker pools and causing HTTP 503 Service Unavailable.",
-            "Brute-forcing on applications with automatic WAF or anti-bot systems (Cloudflare, AWS WAF) will trigger IP bans.",
-            "Be mindful of wordlist size: large wordlists (100k+ paths) generate massive access log files that consume server disk space.",
-        ],
-        "general_knowledge": "Gobuster performs deterministic dictionary traversal by appending wordlist entries to the base URL and inspecting HTTP response status codes (200 OK, 301/302 Redirect, 403 Forbidden). It runs concurrent goroutines for maximum throughput.",
-    },
-    "nikto": {
-        "expected_format": "Hostname (scanme.nmap.org), IP (127.0.0.1), or HTTP/HTTPS URL (http://scanme.nmap.org)",
-        "safe_sandbox": "http://scanme.nmap.org or local Apache/Nginx web server instances",
-        "permissible": [
-            "Local web servers (http://127.0.0.1:8080) to inspect default files, outdated modules, and missing security headers.",
-            "Authorized client web applications during penetration tests.",
-            "Designated academic or lab targets.",
-        ],
-        "prohibited": [
-            "Third-party production websites without written authorization.",
-            "Any target where stealth is required: Nikto is completely unstealthy and intentionally issues thousands of noisy exploit requests.",
-            "Cloud metadata endpoints (169.254.169.254).",
-        ],
-        "precautions": [
-            "Nikto issues over 6,700 known vulnerability checks, dangerous CGI paths, and obsolete file requests. It WILL trigger IDS/IPS and SOC alerts.",
-            "Avoid running full scans (-Tuning 2,4,b) against fragile legacy web servers or embedded IoT web interfaces, as old CGIs may cause crashes.",
-            "Use -ssl when targeting HTTPS endpoints, and -p to specify custom ports.",
-        ],
-        "general_knowledge": "Nikto is a comprehensive web server misconfiguration scanner. It checks for over 6,700 potentially dangerous files/CGIs, outdated server software, insecure HTTP methods (TRACE, PUT), and missing defense headers (X-Frame-Options, CSP, HSTS).",
-    },
-    "ffuf": {
-        "expected_format": "Complete HTTP/HTTPS URL containing the 'FUZZ' keyword (http://scanme.nmap.org/FUZZ, http://target/?FUZZ=1)",
-        "safe_sandbox": "http://scanme.nmap.org/FUZZ or local lab applications (http://127.0.0.1:8000/FUZZ)",
-        "permissible": [
-            "Local and lab web services for directory fuzzing, virtual host discovery, and parameter enumeration.",
-            "Authorized bug bounty targets that permit automated fuzzing within scope.",
-            "scanme.nmap.org/FUZZ for syntax and rate testing.",
-        ],
-        "prohibited": [
-            "Form endpoints that trigger emails, database writes, or financial transactions (e.g. /contact.php?email=FUZZ, /checkout?item=FUZZ).",
-            "Cloud metadata endpoints (http://169.254.169.254).",
-            "Out-of-scope third-party websites.",
-        ],
-        "precautions": [
-            "ffuf is written in Go and can exceed 2,000+ requests per second. Always enforce rate limits (-rate 30 -p 0.1) on shared infrastructure.",
-            "Match and filter flags (-mc, -fc, -fs, -fl) are essential: without proper filtering, wildcard responses will flood your results.",
-            "Virtual host fuzzing requires proper Host header syntax (-H 'Host: FUZZ.domain.com') with a clean domain name.",
-        ],
-        "general_knowledge": "ffuf (Fuzz Faster U Fool) replaces the FUZZ keyword in URLs, headers, or request bodies with entries from a wordlist. It analyzes response length, word count, line count, and status code distributions to identify anomalous responses.",
-    },
-    "nuclei": {
-        "expected_format": "Complete HTTP or HTTPS URL (http://scanme.nmap.org, https://example.com) or network host",
-        "safe_sandbox": "http://scanme.nmap.org or intentionally vulnerable test applications (Vulnweb, DVWA)",
-        "permissible": [
-            "Local lab applications, Dockerized targets, and authorized bug bounty scopes.",
-            "scanme.nmap.org for benign technology and SSL/TLS fingerprinting.",
-            "Production assets when restricted to informational or passive templates (-severity info -tags tech).",
-        ],
-        "prohibited": [
-            "Running intrusive exploit templates (-tags rce,sqli,takeover) against production systems without explicit authorization.",
-            "Cloud metadata endpoints (169.254.169.254).",
-            "Denial of service templates (-tags dos).",
-        ],
-        "precautions": [
-            "Nuclei executes YAML-based protocol templates (HTTP, DNS, TCP, SSL). Running full template sets without severity filters sends tens of thousands of requests.",
-            "Always specify severity levels (-severity low,medium) during initial recon.",
-            "Use -rate-limit to keep requests per second within acceptable thresholds for the target infrastructure.",
-        ],
-        "general_knowledge": "Nuclei uses community-curated YAML templates to send targeted protocol requests and match patterns in responses. It enables fast zero-day detection and automated vulnerability confirmation.",
-    },
-    "sqlmap": {
-        "expected_format": "Target HTTP/HTTPS URL with parameters (http://testphp.vulnweb.com/listproducts.php?cat=1)",
-        "safe_sandbox": "http://testphp.vulnweb.com/listproducts.php?cat=1 (Acrobot authorized testbed) or local DVWA/bWAPP targets",
-        "permissible": [
-            "Authorized penetration test endpoints with confirmed dynamic SQL parameters.",
-            "Intentionally vulnerable testbeds (testphp.vulnweb.com, DVWA, WebGoat).",
-            "Local applications you developed and have root database access to verify.",
-        ],
-        "prohibited": [
-            "Any third-party database without explicit pentest contract authorizing active SQL injection attempts.",
-            "Financial, healthcare, or personal identity endpoints where data corruption or leakage is catastrophic.",
-            "Cloud metadata URIs.",
-        ],
-        "precautions": [
-            "Time-based blind SQLi (WAITFOR DELAY, pg_sleep) locks database threads and can lead to resource starvation.",
-            "Do NOT use --os-shell or --sql-shell unless explicitly permitted by your Rules of Engagement.",
-            "Be cautious with --risk 3 and --level 5: heavy OR-based injection tests can inadvertently UPDATE or DELETE database rows.",
-        ],
-        "general_knowledge": "sqlmap automates the detection and exploitation of SQL injection flaws. It fingerprints database management systems (DBMS), extracts schema hierarchies, retrieves table data, and can access the underlying operating system file system.",
-    },
-    "subfinder": {
-        "expected_format": "Base root domain name without protocol or path (example.com, nmap.org)",
-        "safe_sandbox": "example.com (IANA reserved domain) or your own registered domain assets",
-        "permissible": [
-            "example.com for testing passive query execution and verifying DNS parsing pipelines.",
-            "Client domains explicitly in scope for reconnaissance during authorized pentest engagements.",
-            "Bug bounty programs that permit passive subdomain enumeration.",
-        ],
-        "prohibited": [
-            "Internal network names (e.g. .local, .internal, .lan) which have no public DNS presence.",
-            "URLs with protocols (http://) or paths (/api) — subfinder strictly expects a clean domain name.",
-            "IP addresses (subfinder resolves subdomains for domain names, not IP addresses).",
-        ],
-        "precautions": [
-            "Subfinder is completely passive: it queries public data sources (Search engines, Certificate Transparency logs, VirusTotal, Censys) and never sends packets to the target domain directly.",
-            "Respect public API rate limits: configure provider API keys in subfinder configuration to avoid IP throttling.",
-            "Subdomains discovered may point to decommissioned servers (potential Subdomain Takeover vulnerability).",
-        ],
-        "general_knowledge": "Subfinder discovers valid subdomains for websites by using passive online sources. It operates silently without generating IDS/IPS alerts on the target's infrastructure, making it ideal for the initial OSINT phase.",
-    },
-    "whois": {
-        "expected_format": "Domain name (example.com), Autonomous System Number (AS15169), or IP address (93.184.216.34)",
-        "safe_sandbox": "example.com (IANA test domain) or public IP addresses (e.g. 8.8.8.8)",
-        "permissible": [
-            "example.com for verifying registrar and ownership data structures.",
-            "Any public domain, IP address, or ASN within standard registry lookup terms.",
-            "Client domains and allocated netblocks during initial reconnaissance.",
-        ],
-        "prohibited": [
-            "High-frequency automated scraping loops that violate Regional Internet Registry (RIR) acceptable use policies.",
-            "Internal private IP addresses (10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12) which yield no public registry data.",
-        ],
-        "precautions": [
-            "WHOIS servers (TCP port 43) strictly enforce IP rate limits. Exceeding query thresholds will result in temporary or permanent IP bans.",
-            "Modern GDPR and ICANN privacy redaction policies frequently mask personal registrant names and emails behind privacy proxies.",
-            "Use -h to query specific regional registries directly (e.g., whois.arin.net, whois.ripe.net).",
-        ],
-        "general_knowledge": "The WHOIS protocol (RFC 3912) queries distributed databases maintained by TLD registries, registrars, and Regional Internet Registries (ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC) to determine domain registration, nameservers, and IP allocations.",
-    },
-    "dnspython": {
-        "expected_format": "Domain name (example.com) or IPv4 address for reverse pointer lookups (e.g. 93.184.216.34)",
-        "safe_sandbox": "example.com (RFC 2606 safe domain) or local DNS test environments (BIND9, CoreDNS)",
-        "permissible": [
-            "example.com for querying A, AAAA, MX, NS, TXT, and SOA records.",
-            "Your authorized target domains for DNS configuration auditing and mail routing inspection.",
-            "Local or lab DNS servers for testing Zone Transfers (AXFR).",
-        ],
-        "prohibited": [
-            "Unauthorized Zone Transfer (AXFR) attempts against production third-party nameservers.",
-            "DNS amplification or flooding attacks against public recursive resolvers (8.8.8.8, 1.1.1.1).",
-            "Cloud metadata endpoints.",
-        ],
-        "precautions": [
-            "Zone Transfers (AXFR) will be logged on authoritative nameservers. An open zone transfer is a high-severity finding that leaks entire internal network namespaces.",
-            "When auditing email anti-spoofing (SPF, DMARC), verify that TXT records are syntactically valid and enforce reject policies (p=reject).",
-            "Be aware of DNS caching: queries might return cached intermediate results from your upstream resolver rather than authoritative values.",
-        ],
-        "general_knowledge": "dnspython is a pure-Python DNS toolkit. It constructs standard RFC 1035 UDP/TCP wire packets to interrogate nameservers directly. It verifies record types (A, MX, NS, TXT, PTR) and evaluates defensive controls like DNSSEC and zone transfer ACLs.",
-    },
-    "searchsploit": {
-        "expected_format": "Software name and version string (Apache 2.4.49, OpenSSH 7.2p2) or CVE ID (2021-41773). Do NOT use URLs or IPs.",
-        "safe_sandbox": "Apache 2.4.49 (famous CVE-2021-41773 RCE), ProFTPD 1.3.5, vsftpd 2.3.4",
-        "permissible": [
-            "Searching for known public exploits, PoC scripts, and papers from the local Exploit-DB archive.",
-            "Filtering by title, CVE identifier, platform (Linux/Windows), or remote exploit type.",
-            "Offline query analysis with zero network footprint.",
-        ],
-        "prohibited": [
-            "NEVER compile or execute downloaded public exploit code against live systems without auditing the source code in an isolated VM sandbox first!",
-            "Do not enter raw IP addresses or URLs as search terms; searchsploit searches text descriptions and version metadata.",
-        ],
-        "precautions": [
-            "Public exploits on Exploit-DB often require modification (offsets, shellcode, return addresses) to function on specific target builds.",
-            "Malicious actors sometimes upload backdoored exploit scripts to public databases. Always perform code review before running third-party exploit code.",
-            "Keep the local exploit database updated using searchsploit -u.",
-        ],
-        "general_knowledge": "searchsploit is a command-line search tool for Exploit-DB that operates entirely offline. It matches search terms against an offline index (files_exploits.csv) to discover proof-of-concept exploits, shellcodes, and security papers.",
-    },
-    "http_probe": {
-        "expected_format": "Complete HTTP or HTTPS URL (http://scanme.nmap.org, https://example.com)",
-        "safe_sandbox": "http://scanme.nmap.org or https://example.com",
-        "permissible": [
-            "Local or remote authorized web endpoints for service and title discovery.",
-            "scanme.nmap.org or example.com for syntax and response verification.",
-            "Authorized client web assets during penetration testing.",
-        ],
-        "prohibited": [
-            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/).",
-            "Loopback interfaces under GatePolicy.SAFE without explicit authorization.",
-            "Unauthorized external systems.",
-        ],
-        "precautions": [
-            "High concurrency can trigger rate limits or WAF blocks.",
-            "SSRF pre-connect checks strictly abort attempts against link-local or metadata addresses.",
-        ],
-        "general_knowledge": "http_probe is a high-performance in-process HTTP discovery adapter extracting response codes, server banners, page titles, and web technologies.",
-    },
-}
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(
+            ScopeValidator.check_destination(target, scope=scope, policy_is_unrestricted=False)
+        )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(
+            asyncio.run,
+            ScopeValidator.check_destination(target, scope=scope, policy_is_unrestricted=False),
+        ).result()
 
 
 def get_tool_target_guidance(tool_name: str) -> str:
-    """Return formatted Markdown target guidance for a specified security tool."""
-    guidance = TOOL_TARGET_GUIDANCE.get(tool_name.lower())
-    if not guidance:
-        return f"# Target Guidance: {tool_name}\n\n*General Security Target:* Provide an authorized IP, hostname, or URL."
+    """Return formatted Markdown target guidance dynamically generated for a specified security tool."""
+    tool_lower = tool_name.lower()
 
-    perm_bullets = "\n".join(f"- {p}" for p in guidance["permissible"])
-    proh_bullets = "\n".join(f"- {p}" for p in guidance["prohibited"])
-    prec_bullets = "\n".join(f"- {p}" for p in guidance["precautions"])
+    # Retrieve tool metadata and protocol theory if available in registry
+    theory = ""
+    description = ""
+    reg = None
+    try:
+        from ether.registry.registry import ToolRegistry
+
+        reg = ToolRegistry()
+        reg.load_tools()
+        t = reg.get_tool(tool_lower)
+        if t and t.get("manifest"):
+            m = t["manifest"]
+            tool_meta = getattr(m, "meta", None)
+            if tool_meta:
+                description = getattr(tool_meta, "description", "")
+                theory = getattr(tool_meta, "theory", "")
+    except Exception:
+        pass
+
+    # Determine capabilities & target profile dynamically using the loaded registry
+    verifier = PreflightVerifier(registry=reg)
+    target_types = verifier.get_tool_target_types(tool_lower)
+
+    if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
+        expected_format = (
+            "Complete HTTP or HTTPS URL (https://scanme.nmap.org, http://10.10.10.10:8080)"
+        )
+        safe_sandbox = "http://scanme.nmap.org (or http://127.0.0.1:8080 with allow_loopback=True)"
+        permissible = [
+            "Official sandbox testbeds (scanme.nmap.org, testphp.vulnweb.com).",
+            "Local loopback web servers (http://127.0.0.1, http://localhost:8000) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
+            "Authorized client web applications during penetration tests within defined Rules of Engagement.",
+        ]
+        prohibited = [
+            "Cloud metadata URIs (http://169.254.169.254/latest/meta-data/, fd00:ec2::254).",
+            "Third-party websites, production e-commerce platforms, or SaaS portals without explicit scope inclusion.",
+            "Form endpoints that trigger emails, database writes, or financial transactions without authorization.",
+        ]
+        precautions = [
+            "High concurrency can overwhelm low-spec web servers, exhausting worker pools and causing HTTP 503.",
+            "Brute-forcing on applications with automatic WAF or anti-bot systems will trigger IP bans.",
+            "Ensure rate limits are enforced to respect target infrastructure bandwidth.",
+        ]
+    elif "domain" in target_types and "ip" not in target_types:
+        expected_format = "Base root domain name without protocol or path (example.com, nmap.org)"
+        safe_sandbox = "example.com (IANA reserved domain) or your own registered domain assets"
+        permissible = [
+            "example.com for verifying DNS resolution and parsing pipelines.",
+            "Client domains explicitly in scope for reconnaissance during authorized pentest engagements.",
+            "Bug bounty programs that permit passive reconnaissance within scope.",
+        ]
+        prohibited = [
+            "Internal network names (e.g. .local, .internal, .lan) which have no public DNS presence.",
+            "URLs with protocols (http://) or paths (/api) — domain tools strictly expect a clean domain name.",
+            "IP addresses (domain tools resolve records for domain names, not IP addresses).",
+        ]
+        precautions = [
+            "Respect public API rate limits when querying upstream data sources to avoid IP throttling.",
+            "Be aware of DNS caching: queries might return cached intermediate results from upstream resolvers.",
+            "Zone Transfers (AXFR) will be logged on authoritative nameservers and can leak internal namespaces.",
+        ]
+    elif tool_lower in {"searchsploit"}:
+        expected_format = "Software name and version string (Apache 2.4.49, OpenSSH 7.2p2) or CVE ID (2021-41773). Do NOT use URLs or IPs."
+        safe_sandbox = "Apache 2.4.49 (famous CVE-2021-41773 RCE), ProFTPD 1.3.5, vsftpd 2.3.4"
+        permissible = [
+            "Searching for known public exploits, PoC scripts, and papers from local vulnerability archives.",
+            "Filtering by title, CVE identifier, platform (Linux/Windows), or remote exploit type.",
+            "Offline query analysis with zero network footprint.",
+        ]
+        prohibited = [
+            "NEVER compile or execute downloaded public exploit code against live systems without auditing source code first!",
+            "Do not enter raw IP addresses or URLs as search terms; searchsploit searches text descriptions.",
+        ]
+        precautions = [
+            "Public exploits often require manual modification (offsets, shellcode, return addresses) to function.",
+            "Always perform code review before running third-party exploit code.",
+            "Keep the local exploit database updated using searchsploit -u.",
+        ]
+    elif tool_lower in {"netexec", "nxc"}:
+        expected_format = "Target IPv4 (10.10.10.10), CIDR subnet (192.168.1.0/24), or NetBIOS/FQDN hostname (dc01.corp.local)"
+        safe_sandbox = "Dedicated Active Directory lab ranges (e.g., GOAD, HackTheBox) or 127.0.0.1 with allow_loopback=True"
+        permissible = [
+            "Isolated Active Directory lab environments configured specifically for pentesting education.",
+            "Local machine (127.0.0.1) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
+            "Authorized enterprise client subnets during approved engagement windows.",
+        ]
+        prohibited = [
+            "Production Active Directory Domain Controllers during business hours without explicit change approval.",
+            "Internet-facing public SMB (port 445) endpoints not owned by you.",
+            "Cloud metadata endpoints.",
+        ]
+        precautions = [
+            "Can trigger Active Directory account lockouts if password spraying against domains with lockout policies.",
+            "SMB credential checks generate event ID 4625 and 4624 on the Domain Controller security event log.",
+            "Sequential RPC queries can alert SIEM rules detecting credential access.",
+        ]
+    else:
+        expected_format = "IPv4 (10.10.10.10), IPv6 (2001:db8::1), CIDR (192.168.1.0/24), IP Range (10.0.0.1-50), or Hostname (scanme.nmap.org)"
+        safe_sandbox = (
+            "scanme.nmap.org (authorized test server) or 127.0.0.1 with allow_loopback=True"
+        )
+        permissible = [
+            "Official project sandbox (scanme.nmap.org) for testing version and script scans.",
+            "Local loopback (127.0.0.1, localhost) when EngagementScope(allow_loopback=True) or --policy unrestricted is enabled.",
+            "Private lab subnets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and container bridge networks with explicit authorization.",
+        ]
+        prohibited = [
+            "Cloud metadata endpoints (169.254.169.254, 169.254.169.250, fd00:ec2::254) — potential SSRF vulnerability.",
+            "Third-party production infrastructure, government, banking, or military IP ranges without written Rules of Engagement.",
+            "Broadcast or multicast addresses (e.g. 255.255.255.255, 224.0.0.1) which can cause network amplification storms.",
+        ]
+        precautions = [
+            "Aggressive timing templates and full port sweeps can saturate network firewalls, exhaust state tables, or crash fragile hardware.",
+            "SYN half-open scans require raw socket capabilities (root/sudo privileges).",
+            "UDP scanning is subject to OS-level ICMP rate limits (RFC 1812); expect scans to run slower.",
+        ]
+
+    mechanics = (
+        theory.strip() or description.strip() or f"Automated security tool adapter for {tool_name}."
+    )
+
+    perm_bullets = "\n".join(f"- {p}" for p in permissible)
+    proh_bullets = "\n".join(f"- {p}" for p in prohibited)
+    prec_bullets = "\n".join(f"- {p}" for p in precautions)
 
     return (
         f"# Target Scope & Safety Guidance: {tool_name.upper()}\n\n"
-        f"**Expected Format:** `{guidance['expected_format']}`\n\n"
-        f"**Safe Sandbox Target:** `{guidance['safe_sandbox']}`\n\n"
+        f"**Expected Format:** `{expected_format}`\n\n"
+        f"**Safe Sandbox Target:** `{safe_sandbox}`\n\n"
         f"## Permissible & Effective Targets\n{perm_bullets}\n\n"
         f"## Strictly Prohibited & Dangerous Targets\n{proh_bullets}\n\n"
         f"## Operational Precautions & Ethics\n{prec_bullets}\n\n"
-        f"## Protocol Mechanics & Behavior\n{guidance['general_knowledge']}\n"
+        f"## Protocol Mechanics & Behavior\n{mechanics}\n"
     )
 
 
@@ -375,10 +255,12 @@ class PreflightVerifier:
         registry: Optional[Any] = None,
         wordlists_dir: Optional[str] = None,
         policy: GatePolicy = GatePolicy.SAFE,
+        scope: Optional[EngagementScope] = None,
     ):
         self.registry = registry
         self.wordlists_dir = wordlists_dir
         self.policy = policy
+        self.scope = scope if scope is not None else EngagementScope()
 
     def verify(
         self,
@@ -431,18 +313,38 @@ class PreflightVerifier:
         target: str,
         flags: str = "",
         policy: GatePolicy = GatePolicy.SAFE,
+        registry: Optional[Any] = None,
+        scope: Optional[EngagementScope] = None,
     ) -> Optional[str]:
         """Perform a fast, non-blocking check returning a single concise warning string if any issue exists."""
         clean_target = (target or "").strip()
         clean_flags = (flags or "").strip()
         clean_tool = (tool_name or "").strip().lower()
+        active_scope = scope if scope is not None else EngagementScope()
+
+        from ether.gateway.flags import SHELL_METACHAR_RE
+
+        if SHELL_METACHAR_RE.search(clean_flags):
+            return "[!] Shell metacharacters are prohibited in command flags."
 
         if policy == GatePolicy.SAFE:
             if re.search(r"\bsudo\b", clean_flags) or re.search(r"\bsudo\b", clean_target):
                 return "[!] Sudo execution is prohibited under Safe GatePolicy."
 
-            if clean_target and is_blocked_destination(clean_target):
-                return "[!] Target is blocked by cloud metadata policy."
+            if clean_flags:
+                from ether.gateway.gate import is_blocked_destination
+
+                if is_blocked_destination(clean_flags, allow_loopback=active_scope.allow_loopback):
+                    return "[!] Command flags contain prohibited destination or metadata endpoint."
+
+            if clean_target:
+                verdict = ScopeValidator.is_in_scope(
+                    clean_target, active_scope, policy_is_unrestricted=False
+                )
+                if not verdict.allowed:
+                    if verdict.reason == "BLOCKED_LOOPBACK_UNAUTHORIZED":
+                        return "[!] Loopback target is blocked under Safe GatePolicy unless allow_loopback=True."
+                    return "[!] Target is blocked by cloud metadata or scope policy."
 
         if not clean_target:
             return "[!] Target address or host is required."
@@ -450,12 +352,21 @@ class PreflightVerifier:
         if any(var in clean_target for var in ("$TARGET", "{target}", "{url}", "$PORT")):
             return "[!] Target contains unexpanded variable placeholder."
 
-        if clean_tool in WEB_TOOLS:
-            if not clean_target.startswith("http://") and not clean_target.startswith("https://"):
+        if registry and clean_tool:
+            target_types = PreflightVerifier(
+                registry=registry, policy=policy, scope=active_scope
+            ).get_tool_target_types(clean_tool)
+            is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
+            is_network = (
+                "ip" in target_types or "cidr" in target_types
+            ) and "url" not in target_types
+            if is_web and not (
+                clean_target.startswith("http://") or clean_target.startswith("https://")
+            ):
                 return f"[!] Web tool '{clean_tool}' expects 'http://' or 'https://' prefix."
-
-        if clean_tool in NETWORK_TOOLS:
-            if clean_target.startswith("http://") or clean_target.startswith("https://"):
+            if is_network and (
+                clean_target.startswith("http://") or clean_target.startswith("https://")
+            ):
                 return f"[!] Network tool '{clean_tool}' expects bare IP or hostname, not URL."
 
         return None
@@ -474,13 +385,7 @@ class PreflightVerifier:
         action = issue.remedy_action
         payload = issue.remedy_payload
 
-        if action == "seed_wordlists":
-            dest_dir = self.wordlists_dir or paths.get_default_wordlists_dir()
-            extracted = seed_bundled_wordlists(dest_dir)
-            msg = f"Extracted {len(extracted)} starter wordlists to {dest_dir}."
-            return target, flags, msg
-
-        elif action == "fix_target_scheme":
+        if action == "fix_target_scheme":
             new_target = payload if payload else f"http://{target.strip()}"
             return new_target, flags, f"Updated target to: {new_target}"
 
@@ -489,7 +394,7 @@ class PreflightVerifier:
             return new_target, flags, f"Stripped URL scheme: {new_target}"
 
         elif action == "set_default_target":
-            new_target = payload or "127.0.0.1"
+            new_target = payload or "scanme.nmap.org"
             return new_target, flags, f"Set target to test address: {new_target}"
 
         elif action == "remove_sudo":
@@ -554,6 +459,24 @@ class PreflightVerifier:
             is_installed = bool(shutil.which(binary_name))
 
         if not is_installed:
+            from ether.core.container import ContainerizedToolRunner
+
+            exec_tier = getattr(adapter, "execution_tier", None)
+            if ContainerizedToolRunner.should_use_container(binary_name, exec_tier):
+                report.issues.append(
+                    PreflightIssue(
+                        category="binary",
+                        severity="warning",
+                        title=f"Tool binary '{binary_name}' executing via container fallback",
+                        description=(
+                            f"Host binary '{binary_name}' was not found; container fallback is enabled "
+                            f"using OCI image '{ContainerizedToolRunner.get_image()}'."
+                        ),
+                        remediation_hint="Install local binary for native host execution, or continue via container.",
+                    )
+                )
+                return
+
             hint = (
                 INSTALLATION_HINTS.get(tool_name)
                 or INSTALLATION_HINTS.get(binary_name)
@@ -581,6 +504,32 @@ class PreflightVerifier:
         report: PreflightReport,
     ) -> None:
         """Enforce sandbox security restrictions (sudo ban, SSRF link-local gating under SAFE policy)."""
+        from ether.gateway.gate import is_blocked_destination
+
+        if flags:
+            from ether.gateway.flags import FlagFirewall, FlagFirewallError
+
+            try:
+                FlagFirewall(registry=self.registry).validate_arguments(
+                    tool_name, flags, self.policy
+                )
+            except FlagFirewallError as fw_err:
+                err_msg = str(fw_err)
+                issue_title = (
+                    "Shell metacharacters prohibited in flags"
+                    if "shell metacharacter" in err_msg.lower()
+                    else "Flag blocked by FlagFirewall"
+                )
+                report.issues.append(
+                    PreflightIssue(
+                        category="security",
+                        severity="error",
+                        title=issue_title,
+                        description=err_msg,
+                        remediation_hint="Remove shell metacharacters and use only allowed flags declared in the tool manifest.",
+                    )
+                )
+
         if self.policy == GatePolicy.SAFE:
             # Sudo ban in Safe Policy
             if re.search(r"\bsudo\b", flags) or re.search(r"\bsudo\b", target):
@@ -598,21 +547,83 @@ class PreflightVerifier:
                     )
                 )
 
-            # SSRF Link-Local Metadata Protection
-            if target and is_blocked_destination(target):
+            # Flag smuggling checks
+            if flags and is_blocked_destination(flags, allow_loopback=self.scope.allow_loopback):
                 report.issues.append(
                     PreflightIssue(
                         category="security",
                         severity="error",
-                        title=f"Target '{target}' is blocked by security policy",
-                        description="Target destination matches prohibited cloud provider metadata or link-local subnet.",
-                        remediation_hint="Choose a valid authorized target or local loopback address (127.0.0.1).",
-                        can_auto_remedy=True,
-                        remedy_label="Set 127.0.0.1",
-                        remedy_action="set_default_target",
-                        remedy_payload="127.0.0.1",
+                        title="Command flags contain prohibited destination",
+                        description="Extracted host/IP in command parameters violates loopback, cloud metadata, or CIDR scope boundaries.",
+                        remediation_hint="Remove prohibited target arguments from command flags.",
                     )
                 )
+
+            # Unified ScopeValidator SSRF / Loopback / DNS / Scope Protection
+            if target:
+                verdict = _check_destination_sync(target, self.scope)
+                if not verdict.allowed:
+                    if verdict.reason == "BLOCKED_LOOPBACK_UNAUTHORIZED":
+                        report.issues.append(
+                            PreflightIssue(
+                                category="security",
+                                severity="error",
+                                title=f"Target '{target}' is blocked by loopback policy",
+                                description="Loopback addresses (127.0.0.0/8, ::1) are blocked under SAFE policy unless EngagementScope(allow_loopback=True) is set.",
+                                remediation_hint="Enable allow_loopback=True in EngagementScope or use an authorized target (scanme.nmap.org).",
+                                can_auto_remedy=True,
+                                remedy_label="Set scanme.nmap.org",
+                                remedy_action="set_default_target",
+                                remedy_payload="scanme.nmap.org",
+                            )
+                        )
+                    else:
+                        report.issues.append(
+                            PreflightIssue(
+                                category="security",
+                                severity="error",
+                                title=f"Target '{target}' is blocked by security policy",
+                                description=f"Target destination rejected by ScopeValidator ({verdict.reason}).",
+                                remediation_hint="Choose a valid authorized target (e.g. scanme.nmap.org).",
+                                can_auto_remedy=True,
+                                remedy_label="Set scanme.nmap.org",
+                                remedy_action="set_default_target",
+                                remedy_payload="scanme.nmap.org",
+                            )
+                        )
+
+    def get_tool_target_types(self, tool_name: str) -> Set[str]:
+        """Dynamically extract supported target types ('url', 'ip', 'cidr', 'domain') from ToolRegistry."""
+        if self.registry:
+            tool_data = self.registry.get_tool(tool_name)
+            if tool_data and isinstance(tool_data, dict):
+                manifest = tool_data.get("manifest")
+                if manifest:
+                    input_cfg = getattr(manifest, "input", {})
+                    if isinstance(input_cfg, dict) and "target_types" in input_cfg:
+                        return set(input_cfg["target_types"])
+                    if hasattr(manifest, "target_types") and manifest.target_types:
+                        return set(manifest.target_types)
+
+                    accepts = (
+                        input_cfg.get("accepts", [])
+                        if isinstance(input_cfg, dict)
+                        else getattr(input_cfg, "accepts", [])
+                    )
+                    types: Set[str] = set()
+                    for schema in accepts:
+                        if schema in ("web.endpoint", "web.url"):
+                            types.add("url")
+                        elif schema in ("network.host", "network.service"):
+                            types.update({"ip", "cidr", "domain"})
+                        elif schema in ("domain.info", "dns.record"):
+                            types.update({"domain", "ip"})
+                    if types:
+                        return types
+
+        return {"url", "ip", "cidr", "domain"}
+
+    _get_tool_target_types = get_tool_target_types
 
     def _check_target(
         self,
@@ -621,10 +632,19 @@ class PreflightVerifier:
         report: PreflightReport,
     ) -> None:
         """Validate target presence, unresolved variable placeholders, and tool scheme alignment."""
-        is_web = tool_name in WEB_TOOLS
-        default_target = DEFAULT_TOOL_TARGETS.get(
-            tool_name, "http://127.0.0.1:8888" if is_web else "127.0.0.1"
-        )
+        target_types = self.get_tool_target_types(tool_name)
+        is_web = "url" in target_types and not any(t in target_types for t in ("ip", "cidr"))
+        is_network_or_domain = (
+            "ip" in target_types or "domain" in target_types
+        ) and "url" not in target_types
+        if is_web:
+            default_target = (
+                "http://127.0.0.1:8888" if self.scope.allow_loopback else "http://scanme.nmap.org"
+            )
+        elif "domain" in target_types and "ip" not in target_types:
+            default_target = "example.com"
+        else:
+            default_target = "127.0.0.1" if self.scope.allow_loopback else "scanme.nmap.org"
 
         if not target:
             report.issues.append(
@@ -662,43 +682,46 @@ class PreflightVerifier:
             )
             return
 
-        # Scheme rules for Web tools
-        if is_web:
-            has_scheme = target.startswith("http://") or target.startswith("https://")
-            if not has_scheme:
-                fixed_target = f"http://{target}"
-                report.issues.append(
-                    PreflightIssue(
-                        category="target",
-                        severity="error",
-                        title=f"Web tool '{tool_name}' requires an HTTP/HTTPS URL",
-                        description=f"Target '{target}' is missing the protocol scheme ('http://' or 'https://').",
-                        remediation_hint=f"Prepend 'http://' to the target URL: '{fixed_target}'.",
-                        can_auto_remedy=True,
-                        remedy_label=f"Set '{fixed_target}'",
-                        remedy_action="fix_target_scheme",
-                        remedy_payload=fixed_target,
-                    )
-                )
+        has_scheme = target.startswith("http://") or target.startswith("https://")
+        # Recognize IP:PORT / [IPv6]:PORT as valid network.service targets
+        from ether.registry.target_inference import infer_target_finding
 
-        # Scheme rules for Network and Domain tools (warnings)
-        elif tool_name in NETWORK_TOOLS or tool_name in DOMAIN_TOOLS:
-            has_scheme = target.startswith("http://") or target.startswith("https://")
-            if has_scheme:
-                clean_host = self._extract_clean_hostname(target)
-                report.issues.append(
-                    PreflightIssue(
-                        category="target",
-                        severity="warning",
-                        title=f"Tool '{tool_name}' expects a host or IP, not a URL",
-                        description=f"Target '{target}' contains a URL scheme and/or path which may cause probe errors.",
-                        remediation_hint=f"Strip URL scheme and path to use bare hostname '{clean_host}'.",
-                        can_auto_remedy=True,
-                        remedy_label=f"Strip to '{clean_host}'",
-                        remedy_action="strip_url_scheme",
-                        remedy_payload=clean_host,
-                    )
+        inferred = infer_target_finding(target)
+        is_service_target = inferred.schema_type == "network.service"
+
+        # Scheme rules for tools that ONLY accept Web URL
+        if is_web and not has_scheme:
+            fixed_target = f"http://{target}"
+            report.issues.append(
+                PreflightIssue(
+                    category="target",
+                    severity="error",
+                    title=f"Web tool '{tool_name}' requires an HTTP/HTTPS URL",
+                    description=f"Target '{target}' is missing the protocol scheme ('http://' or 'https://').",
+                    remediation_hint=f"Prepend 'http://' to the target URL: '{fixed_target}'.",
+                    can_auto_remedy=True,
+                    remedy_label=f"Set '{fixed_target}'",
+                    remedy_action="fix_target_scheme",
+                    remedy_payload=fixed_target,
                 )
+            )
+
+        # Scheme rules for Network and Domain tools that do NOT accept URLs (warnings)
+        elif is_network_or_domain and has_scheme and not is_service_target:
+            clean_host = self._extract_clean_hostname(target)
+            report.issues.append(
+                PreflightIssue(
+                    category="target",
+                    severity="warning",
+                    title=f"Tool '{tool_name}' expects a host or IP, not a URL",
+                    description=f"Target '{target}' contains a URL scheme and/or path which may cause probe errors.",
+                    remediation_hint=f"Strip URL scheme and path to use bare hostname '{clean_host}'.",
+                    can_auto_remedy=True,
+                    remedy_label=f"Strip to '{clean_host}'",
+                    remedy_action="strip_url_scheme",
+                    remedy_payload=clean_host,
+                )
+            )
 
     def _check_wordlists(
         self,
@@ -706,9 +729,8 @@ class PreflightVerifier:
         flags: str,
         report: PreflightReport,
     ) -> None:
-        """Inspect command flags for wordlist dependencies and ensure required files exist."""
-        dest_dir = self.wordlists_dir or paths.get_default_wordlists_dir()
-        dest_path = os.path.abspath(dest_dir)
+        """Inspect command flags for wordlist dependencies and verify resolution."""
+        search_roots = [Path(self.wordlists_dir)] if self.wordlists_dir else None
 
         # 1. Macro Tokens: {wordlist:name} or {wordlist}
         macro_matches = WORDLIST_MACRO_REGEX.findall(flags)
@@ -717,27 +739,49 @@ class PreflightVerifier:
             if wl_key.endswith(".txt"):
                 wl_key = wl_key[:-4]
 
-            candidate_path = os.path.join(dest_dir, f"{wl_key}.txt")
-            if not os.path.exists(candidate_path):
+            try:
+                resolve_wordlist(
+                    f"{{wordlist:{wl_key}}}",
+                    search_roots=search_roots,
+                    allow_fallback=False,
+                )
+            except AssetNotFoundError:
                 report.issues.append(
                     PreflightIssue(
                         category="wordlist",
-                        severity="error",
-                        title=f"Wordlist '{wl_key}' is not available on disk",
-                        description=f"The required wordlist asset '{wl_key}.txt' is missing from {dest_dir}.",
-                        remediation_hint=f"Install bundled starter wordlists into {dest_dir}.",
-                        can_auto_remedy=True,
-                        remedy_label="Seed Bundled Wordlists",
-                        remedy_action="seed_wordlists",
-                        remedy_payload=wl_key,
+                        severity="warning",
+                        title=f"Wordlist '{wl_key}' not found; will fall back to minimal.txt",
+                        description=(
+                            f"Wordlist asset '{wl_key}' was not found in $ETHER_WORDLISTS_DIR, "
+                            "user wordlists, or system SecLists; runtime will use minimal.txt."
+                        ),
+                        remediation_hint=(
+                            "Set ETHER_WORDLISTS_DIR or install SecLists at /usr/share/seclists."
+                        ),
+                        can_auto_remedy=False,
                     )
                 )
 
         # 2. CLI flags: -w <path> or --wordlist <path> or -w @<macro>
-        is_wordlist_tool = tool_name in WORDLIST_TOOLS or "--wordlist" in flags or "-w" in flags
+        manifest_uses_wordlist = False
+        if self.registry:
+            tool_data = self.registry.get_tool(tool_name)
+            manifest = tool_data.get("manifest") if isinstance(tool_data, dict) else None
+            profiles = getattr(manifest, "profiles", None) if manifest else None
+            flags_cfg = getattr(manifest, "flags", None) if manifest else None
+            allowed_flags = getattr(flags_cfg, "allowed", []) if flags_cfg else []
+            if "-w" in allowed_flags or "--wordlist" in allowed_flags:
+                manifest_uses_wordlist = True
+            elif profiles:
+                manifest_uses_wordlist = any(
+                    "-w" in vec or "--wordlist" in vec or any("{wordlist:" in f for f in vec)
+                    for vec in profiles.values()
+                )
+
+        is_wordlist_tool = manifest_uses_wordlist or "--wordlist" in flags or "-w" in flags
         if is_wordlist_tool:
             flag_matches = WORDLIST_FLAG_REGEX.findall(flags)
-            if not flag_matches and tool_name in WORDLIST_TOOLS and not macro_matches:
+            if not flag_matches and manifest_uses_wordlist and not macro_matches:
                 report.issues.append(
                     PreflightIssue(
                         category="wordlist",
@@ -759,19 +803,26 @@ class PreflightVerifier:
                     wl_name = clean_path[1:]
                     if wl_name.endswith(".txt"):
                         wl_name = wl_name[:-4]
-                    candidate = paths.get_wordlist_path(wl_name, data_dir=self.wordlists_dir)
-                    if not os.path.exists(candidate):
+                    try:
+                        resolve_wordlist(
+                            clean_path,
+                            search_roots=search_roots,
+                            allow_fallback=False,
+                        )
+                    except AssetNotFoundError:
                         report.issues.append(
                             PreflightIssue(
                                 category="wordlist",
                                 severity="warning",
-                                title=f"Wordlist macro '@{wl_name}' is not yet seeded",
-                                description=f"The requested wordlist file does not exist at '{candidate}'.",
-                                remediation_hint="Extract bundled wordlists to initialize local dictionaries.",
-                                can_auto_remedy=True,
-                                remedy_label="Extract Wordlists",
-                                remedy_action="seed_wordlists",
-                                remedy_payload=wl_name,
+                                title=f"Wordlist macro '@{wl_name}' not found; will fall back to minimal.txt",
+                                description=(
+                                    f"Requested wordlist '{wl_name}' was not found; "
+                                    "runtime will fall back to embedded minimal.txt."
+                                ),
+                                remediation_hint=(
+                                    "Set ETHER_WORDLISTS_DIR or install SecLists at /usr/share/seclists."
+                                ),
+                                can_auto_remedy=False,
                             )
                         )
                 else:
@@ -783,11 +834,10 @@ class PreflightVerifier:
                                 severity="error",
                                 title=f"Specified wordlist file not found: '{clean_path}'",
                                 description=f"Path '{expanded}' does not exist on disk.",
-                                remediation_hint="Verify the wordlist path or seed bundled starter dictionaries.",
-                                can_auto_remedy=True,
-                                remedy_label="Seed Bundled Wordlists",
-                                remedy_action="seed_wordlists",
-                                remedy_payload=DEFAULT_WORDLIST_NAME,
+                                remediation_hint=(
+                                    "Verify the wordlist path or set ETHER_WORDLISTS_DIR / install SecLists."
+                                ),
+                                can_auto_remedy=False,
                             )
                         )
 

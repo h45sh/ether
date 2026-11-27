@@ -24,24 +24,28 @@ Ether solves this through a **"Smart Adapter / Simple Core"** architecture:
 ├────────────────────────────────────────────────────────────────────────┤
 │                       GATEWAYS & SECURITY POLICY                       │
 │  - ActionGateway (GatePolicy.SAFE vs GatePolicy.UNRESTRICTED)          │
-│  - CIDR Scope Containment, SSRF & Cloud Metadata Defense               │
+│  - ScopeValidator (Radix Trie CIDR Containment & IMDS Defense)         │
+│  - PreflightVerifier (Dynamic Manifest-Driven Target Guidance)         │
 ├────────────────────────────────────────────────────────────────────────┤
 │                     CORE EXECUTION & SUPERVISION                       │
 │  - ExecutionSession (Asyncio Subprocess & Native Tier A Coroutines)    │
 │  - LogSpooler (64KB buffered disk stream), RingBuffer (<10MB RAM cap)  │
+│  - ForensicLogManager (SHA-256 Hash Chaining & Session Gzip Compaction)│
 │  - Subprocess Environment Secret Scrubbing (sanitize_subprocess_env)   │
 ├────────────────────────────────────────────────────────────────────────┤
 │                      STATE & GRAPH STORAGE (SQLite)                    │
-│  - GraphStore (Deterministic SHA-256 PIKs, Idempotent Upsert, WAL)     │
+│  - GraphStore Facade (Deterministic SHA-256 PIKs, Idempotent Upsert)   │
+│  - WriteQueue (Exact-Ownership PIK Batch Serialization Queue)         │
+│  - VectorIndex (sqlite-vec vec0 Offline Embeddings & Semantic Search)  │
 │  - Temporal State Decay (TTL Windows: confirmed -> flapping -> stale)   │
 │  - Invariant Identity Anchoring (TLS/SSH/Favicon Cryptographic Hashes) │
-│  - Embedded Offline Vector Memory & Finding RAG (sqlite-vec vec0)      │
 │  - GraphTelemetryCompiler (Knapsack Token Budgeting & Zero-Token Diffs)│
 │  - GraphAnalyticsEngine (Attack Paths, Blast Radius, Centrality)       │
 ├────────────────────────────────────────────────────────────────────────┤
 │                     PLUGGABLE TOOL ADAPTERS (tools/*)                  │
 │  - Tier A: In-process async coroutines (http_probe, dnspython)         │
 │  - Tier B: Binary subprocesses (nmap, nuclei, ffuf, etc.)              │
+│  - AssetResolver: 5-tier wordlist resolution & prefix stripping        │
 ├────────────────────────────────────────────────────────────────────────┤
 │                   NORMALIZED SCHEMAS & PRIMITIVES                      │
 │  - BaseFinding, NetworkHost, NetworkService, WebEndpoint, VulnFound    │
@@ -63,14 +67,18 @@ Ether treats cybersecurity operations through the lens of supervisory runtime de
 
 | Supervisory Concept | Ether Implementation | Architectural Function |
 | :--- | :--- | :--- |
-| **Process Scheduler & Lifecycle** | `ExecutionSession` & `Executor` | Spawns binaries via pure argument vectors (`asyncio.create_subprocess_exec`), enforces process tree lifecycle, and manages automated `SIGTERM` $\to$ `SIGKILL` escalations. Zero `shell=True`. |
-| **Memory Management & Limits** | `LogSpooler` & Bounded Ring Buffer | Enforces hard memory ceilings (<10MB RAM per job) using `deque(maxlen=5000)` while streaming raw GBs of output to disk in 64KB chunks. Sanitizes memory with `wipe_credentials()`. |
+| **Process Scheduler & Lifecycle** | `ExecutionSession` & `Executor` | Spawns binaries via pure argument vectors (`asyncio.create_subprocess_exec`), falls back to `ContainerizedToolRunner` when host binaries are absent, enforces process tree lifecycle, and manages automated `SIGTERM` $\to$ `SIGKILL` escalations. Zero `shell=True`. |
+| **Memory Management & Limits** | `LogSpooler` & `ByteBoundedRingBuffer` | Enforces hard memory ceilings (<10MB RAM per job) using `ByteBoundedRingBuffer` (2 MB byte cap and 5,000 chunk cap per active job) and bounded `subscribe()` queues while streaming raw GBs of output to disk in 64KB chunks. Sanitizes memory with `wipe_credentials()`. |
+| **Network & Stream Resilience** | `RawNetworkGovernor` & `StreamRecoveryEngine` | Accelerates TCP SYN discovery via ambient `CAP_NET_RAW` (with `asyncio.open_connection` fallback) and salvages valid JSON/XML findings from truncated or timed-out scanner streams. |
+| **Storage Lifecycle** | `StorageLifecycleManager` | Enforces configurable disk quotas and Zstandard (`zstd`) compression on historical console logs while preserving `ForensicLogManager` SHA-256 audit chain integrity. |
 | **Device Drivers** | Pluggable Smart Adapters (`tools/*`) | Translates disparate CLI outputs (Nmap XML, FFUF JSON, Nikto text) into uniform, typed Pydantic findings via `ToolAdapter` (Tier A coroutines & Tier B subprocesses). |
 | **Filesystem & Inodes** | Deterministic `GraphStore` (SQLite WAL) | Mathematical Primary Identity Keys (PIK) hash into deterministic SHA-256 Node IDs ($H(\text{schema} + \text{sorted\_pik})$), guaranteeing idempotent upserts and relational integrity. |
 | **Access Control & Security Rings** | `ActionGateway` & `GatePolicy` | Policy enforcement: `GatePolicy.SAFE` (SSRF defense, link-local & cloud IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for authorized red-teams). |
 | **Hardware Migration & Anchoring** | Invariant Cryptographic Anchoring | Decouples volatile IPs from logical services via TLS (`tls:<sha256>`), SSH (`ssh:<fingerprint>`), and Favicon (`favicon:<hash>`) fingerprints, auto-wiring cross-IP migration edges. |
+| **Concurrency & Contention Control** | Async Write Queue & Read Pool | Single-writer serialization queue daemon buffering 50+ concurrent agents with adaptive batching (50 ops or 25ms), plus read connection pool (`PRAGMA query_only = ON`). |
 | **Temporal Confidence Engine** | State Decay TTL Windows | Automatically transitions finding confidence from `confirmed` $\to$ `flapping` $\to$ `stale` based on observation timestamps. |
-| **Embedded Acceleration** | Zero-Egress Vector Memory (`sqlite-vec`) | 384-dimensional unit vector engine inside SQLite for sub-millisecond semantic search and finding RAG without external model downloads or network egress. |
+| **Embedded Acceleration** | Zero-Egress Vector Memory (`sqlite-vec`) | Two-tier 384-dimensional unit vector engine (Tier 1 deterministic feature hashing, Tier 2 ONNX promotion) for sub-millisecond semantic search without remote egress. |
+| **Architectural Drift & Compliance** | Deterministic Drift Engine (`ether.drift`) | Computes normalized scalar drift scores ($D \in [0.0, 1.0]$) via Jaccard topological distance ($D_{topo} = 1 - \frac{|E \cap O|}{|E \cup O|}$) and strict version auditing. |
 | **System Calls & IPC** | Model Context Protocol & SDK | Headless interfaces for userland consumers (AI agents, operators, CLI, custom applications). |
 | **Audit Subsystem & dmesg** | Append-Only Event Log & Zero-Token Diffs | Cryptographic audit trail and set-theoretic delta computation ($\Delta = S_{t+1} \setminus S_t$) eliminating 98% of LLM context window bloat. |
 
@@ -83,11 +91,11 @@ Dependencies flow strictly downwards in one direction:
 ```mermaid
 graph TD
     Headless["Headless Interfaces<br>(CLI Router, MCP Server, Python SDK)"]
-    Gateway["Gateways & Policy<br>(ActionGateway, Scope Guardrails, Preflight)"]
-    Core["Process Supervision & Execution<br>(ExecutionSession, Executor, LogSpooler)"]
-    State["State & Graph Storage<br>(GraphStore, TelemetryCompiler, Vector RAG)"]
-    Registry["Pluggable Adapters & Registry<br>(ToolRegistry, ToolAdapter, tools/*)"]
-    Schemas["Normalized Schemas & Primitives<br>(BaseFinding, Canonicalize, Crypto)"]
+    Gateway["Gateways & Policy<br>(ActionGateway, ScopeValidator, PreflightVerifier)"]
+    Core["Process Supervision & Execution<br>(ExecutionSession, Executor, LogSpooler, ForensicLogManager)"]
+    State["State & Graph Storage<br>(GraphStore Facade, WriteQueue, VectorIndex, TelemetryCompiler)"]
+    Registry["Pluggable Adapters & Registry<br>(ToolRegistry, ToolAdapter, AssetResolver, tools/*)"]
+    Schemas["Normalized Schemas & Primitives<br>(BaseFinding, AuditRecord, Canonicalize, Crypto)"]
 
     Headless --> Gateway
     Gateway --> Core
@@ -118,15 +126,17 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
 
 ```text
 [ 1. Consumer / Agent Layer ]
-  Submits ActionRequest(tool="nmap", params={"raw_flags": "-sV"}, target="192.168.1.50")
+  Submits ActionRequest(tool="nmap", params={"flags": "-sV"}, target="192.168.1.50")
   
 [ 2. ActionGateway & Policy Enforcement ]
   - Evaluates GatePolicy (SAFE vs UNRESTRICTED)
+  - Dynamically inspects manifest.toml target_types contracts ("url", "ip", "cidr", "domain")
   - Validates target against engagement CIDR scope
   - Blocks cloud metadata (169.254.169.254, AWS IMDSv2, GCP, Azure)
   
 [ 3. ToolRegistry & Adapter Resolution ]
   - Locates adapter in tools/nmap/
+  - Out-of-band fuzzer 404 response geometry baseline calibration probe (/.ether_probe_<nonce>)
   - Validates binary installation on PATH
   - Constructs safe argument vector (List[str], zero shell=True)
   
@@ -139,8 +149,8 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
 [ 5. Stream Parsing & Graph Ingestion ]
   - Adapter streamingly yields normalized BaseFinding subclasses
   - Computes deterministic SHA-256 PIK Node IDs
-  - Ingests into GraphStore (idempotent upsert, auto-wires parent/assoc edges)
-  - Synchronizes 384-d vector embeddings in vec_findings
+  - Ingests into GraphStore via Single-Writer Async Queue (batching 50 ops or 25ms window)
+  - Synchronizes 384-d vector embeddings in vec_findings (Tier 1 hashing or Tier 2 ONNX)
   - Emits real-time reactive events to attached callbacks / MCP clients
 ```
 
@@ -151,8 +161,23 @@ To enable autonomous AI agents without compromising safety, Ether implements a s
 1. **Process Isolation & Pure Argument Vectors**:
    - Commands are constructed strictly as argument vectors (`List[str]`). Under no circumstances is `shell=True` or raw shell string interpolation permitted.
 2. **Environment Secret Scrubbing**:
-   - `sanitize_subprocess_env()` scrubs all cloud, provider, and VCS secrets (`ETHER_*`, `AWS_*`, `GITHUB_*`, `OPENAI_*`, `ANTHROPIC_*`, `SSH_AUTH_SOCK`, `VAULT_TOKEN`) from child process environments.
+   - `sanitize_subprocess_env()` scrubs all cloud, provider, and VCS secrets (`ETHER_*`, `AWS_*`, `GITHUB_*`, `OPENAI_*`, `ANTHROPIC_*`, `SSH_*`, `AZURE_*`, `DOCKER_*`, `NPM_*`, `GOOGLE_APPLICATION_CREDENTIALS`, `DATABASE_URL`, `VAULT_TOKEN`, and `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_API_KEY`) from child process environments.
 3. **Atomic File Permissions (TOCTOU Defense)**:
-   - Sensitive session state and encrypted archives are created atomically with `0o600` permissions (`-rw-------`). Application directories enforce `0o700`.
+   - Sensitive session state, database files, and encrypted archives are created atomically with `0o600` permissions (`-rw-------`) via temp-file + `os.replace`. Application and database directories enforce `0o700`.
 4. **AI Prompt Injection Boundary**:
-   - Untrusted scan outputs passed to AI models are encapsulated inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with breakout neutralization (`</untrusted_scan_output>` replaced with `<\/untrusted_scan_output>`).
+   - Untrusted scan outputs passed to AI models are encapsulated inside `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags with case-insensitive breakout neutralization (`<(?:/\s*)?untrusted_scan_output\b[^>]*>`).
+
+---
+
+## 6. Architectural Drift & Continuous Compliance (`ether.drift`)
+
+Ether includes an architectural drift auditing subsystem designed to verify whether observed live attack surfaces conform to expected ground-truth baseline specifications.
+
+1. **Jaccard Topological Distance**:
+   In `topology` mode, Ether compares expected entities $E$ and observed entities $O$ using set-theoretic Jaccard topological distance:
+   $$D_{topo} = 1.0 - \frac{|E \cap O|}{|E \cup O|}$$
+   Where $D_{topo} = 0.0$ represents exact topological alignment, and $D_{topo} = 1.0$ represents total divergence.
+2. **Strict Mode Attribute & Version Auditing**:
+   In `strict` mode, Ether additionally evaluates matching nodes for attribute divergence—flagging downgraded or modified service versions, software banners, and missing mandatory headers.
+3. **Normalized Discrepancy Findings (`audit.drift`)**:
+   Divergences are recorded directly into the session graph as typed `audit.drift` findings (`missing_host`, `missing_service`, `rogue_service`, `version_divergence`) linked to target entities, allowing operators and autonomous agents to review structural discrepancies via CLI or MCP.

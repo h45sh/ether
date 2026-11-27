@@ -6,6 +6,7 @@ import pytest
 
 from ether.graph.store import GraphStore
 from ether.mcp.server import create_mcp_server
+from ether.registry.registry import ToolRegistry
 from ether.schemas.network import NetworkHost, NetworkService
 
 
@@ -22,26 +23,38 @@ async def test_mcp_server_creation_and_tool_listing():
     expected_tools = {
         # Execution & Cancellation & Diagnostics
         "execute_tool",
+        "execute_pipeline",
         "abort_action",
         "read_action_log",
         # State & Telemetry
         "query_graph",
         "inspect_entity",
         "get_diff",
+        "get_telemetry_snapshot",
         "search_findings_semantic",
         # Arsenal Introspection
-        "list_tools",
+        "search_tools",
         "get_tool_info",
         # Graph Intelligence
         "get_attack_path",
         "get_blast_radius",
         "get_crown_jewels",
-        # Session Management
+        # Session & Forensic Audit
         "manage_session",
+        "verify_session_audit",
+        # Deception & Active Defense
+        "get_deception_report",
+        # Architectural Drift
+        "audit_drift",
     }
 
     assert tool_names == expected_tools
-    assert len(tool_names) == 13
+    assert len(tool_names) == 18
+    assert (
+        server.instructions
+        and "GatePolicy" in server.instructions
+        or "active policy" in server.instructions
+    )
 
     await store.close()
 
@@ -315,7 +328,7 @@ async def test_mcp_query_graph_include_stale():
     h2_id = await store.upsert_finding(sess_id, h2)
 
     # Manually decay h1 to stale
-    async with store.connection() as db:
+    async with store._get_conn() as db:
         await db.execute("UPDATE nodes SET status = 'stale' WHERE id = ?", (h1_id,))
         await db.commit()
 
@@ -345,8 +358,8 @@ async def test_mcp_list_tools_and_get_tool_info():
     await store.initialize()
     server = create_mcp_server(store)
 
-    # 1. list_tools
-    res_list = await server.call_tool("list_tools", {})
+    # 1. search_tools
+    res_list = await server.call_tool("search_tools", {})
     assert res_list.is_error is False
     data_list = json.loads(res_list.content[0].text)
     assert data_list["total"] >= 10
@@ -493,3 +506,269 @@ async def test_mcp_manage_session_and_read_action_log():
     assert "No log output recorded" in data_log["message"]
 
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_enriched_tool_info_resources_prompts_and_new_tools():
+    """Verify enriched get_tool_info, new MCP tools, resources, and workflow prompts."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id = await store.create_workspace("McpEnhancedWS")
+    sess_id = await store.create_session(ws_id, "McpEnhancedSess")
+
+    host = NetworkHost.create(ip="10.20.30.40", hostname="api.internal")
+    await store.upsert_finding(sess_id, host, action_id="act-1")
+
+    server = create_mcp_server(store, default_session_id=sess_id)
+
+    # 1. Enriched get_tool_info returns non-empty input_accepts, output_emits, target_guidance, recommended_flags
+    res_info = await server.call_tool("get_tool_info", {"tool_name": "nmap"})
+    assert res_info.is_error is False
+    info = json.loads(res_info.content[0].text)
+    assert "network.host" in info["input_accepts"]
+    assert "network.service" in info["output_emits"]
+    assert "Target Scope & Safety Guidance" in info["target_guidance"]
+    assert isinstance(info["recommended_flags"], list)
+
+    # 2. get_telemetry_snapshot returns knapsack-budgeted state
+    res_snap = await server.call_tool(
+        "get_telemetry_snapshot", {"session_id": sess_id, "token_budget": 2000}
+    )
+    assert res_snap.is_error is False
+    snap = json.loads(res_snap.content[0].text)
+    assert "budgeted_findings" in snap
+
+    # 3. verify_session_audit runs cleanly on empty/valid session
+    res_audit = await server.call_tool("verify_session_audit", {"session_id": sess_id})
+    assert res_audit.is_error is False
+    audit_data = json.loads(res_audit.content[0].text)
+    assert audit_data["session_id"] == sess_id
+    assert audit_data["valid"] is True
+
+    # 4. execute_pipeline enforces GatePolicy.SAFE preflight on metadata IP
+    res_pipe = await server.call_tool(
+        "execute_pipeline",
+        {
+            "expression": "http_probe(target=http://169.254.169.254/latest/meta-data/)",
+            "session_id": sess_id,
+        },
+    )
+    assert res_pipe.is_error is False
+    pipe_data = json.loads(res_pipe.content[0].text)
+    assert pipe_data["is_error"] is True
+    assert pipe_data["error"] == "PreflightGateRejected"
+
+    # 5. Resources & Prompts registration
+    resources = await server.list_resources()
+    resource_uris = {str(r.uri) for r in resources}
+    assert "ether://schemas" in resource_uris
+
+    prompts = await server.list_prompts()
+    prompt_names = {p.name for p in prompts}
+    assert {"perimeter_recon", "vulnerability_triage"}.issubset(prompt_names)
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_read_action_log_from_session_dir(tmp_path):
+    """Verify read_action_log locates session-scoped log spools and .gz archives via data_dir."""
+    from uuid import uuid4
+
+    from ether.common.forensic_log import ForensicLogManager
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    _, sess_id = await store.get_or_create_default_session()
+
+    action_id = uuid4()
+    short_id = str(action_id)[:8]
+    sess_dir = ForensicLogManager.get_session_dir(sess_id, str(tmp_path))
+    log_file = sess_dir / f"20261125_nmap_example_{short_id}.log"
+    log_file.write_text("line1\nline2\nline3\n", encoding="utf-8")
+
+    server = create_mcp_server(store, default_session_id=sess_id, data_dir=str(tmp_path))
+    res = await server.call_tool("read_action_log", {"action_id": str(action_id), "tail_lines": 2})
+    assert res.is_error is False
+    data = json.loads(res.content[0].text)
+    assert data["tail_lines"] == 2
+    assert "line2" in data["log"]
+    assert "line3" in data["log"]
+    assert "<untrusted_scan_output>" in data["log"]
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_perimeter_recon_prompt_pipeline_syntax():
+    """Verify perimeter_recon prompt uses valid PipelineParser syntax."""
+    store = GraphStore(":memory:")
+    await store.initialize()
+    server = create_mcp_server(store)
+
+    prompt = await server.get_prompt("perimeter_recon", {"target": "example.com"})
+    text = "".join(m.content.text for m in prompt.messages if hasattr(m.content, "text"))
+    assert "subfinder(target=" in text
+    assert "dnspython | http_probe" in text
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_execute_tool_passes_flags_and_handles_failed():
+    """Verify execute_tool forwards flags in ActionRequest.params and sets NON_ZERO_EXIT on ExecutionFailed."""
+    from ether.core.session import ExecutionFailed
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    _, sess_id = await store.get_or_create_default_session()
+
+    captured_params = {}
+
+    class FakeExecSession:
+        async def dispatch(self, action):
+            captured_params.update(action.params)
+            return action.action_id
+
+        async def subscribe(self, action_id):
+            yield ExecutionFailed(action_id=action_id, error="exit code 2", duration_seconds=0.1)
+
+        def get_output_history(self, action_id):
+            return ["nmap: invalid option"]
+
+    registry = ToolRegistry()
+    registry.load_tools()
+    nmap_tool = registry.get_tool("nmap")
+    if nmap_tool and nmap_tool.get("adapter"):
+        nmap_tool["adapter"].validate_install = lambda: True
+
+    server = create_mcp_server(
+        store,
+        default_session_id=sess_id,
+        registry=registry,
+        execution_session=FakeExecSession(),
+    )
+    res = await server.call_tool(
+        "execute_tool",
+        {
+            "tool_name": "nmap",
+            "target": "93.184.216.34",
+            "arguments": {"flags": ["-sV", "-p80"]},
+            "session_id": sess_id,
+        },
+    )
+    assert res.is_error is False
+    data = json.loads(res.content[0].text)
+    assert captured_params.get("flags") == ["-sV", "-p80"]
+    assert data["is_error"] is True
+    assert data["error_category"] == "NON_ZERO_EXIT"
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_auth_middleware():
+    """Verify that SecurityMiddleware rejects unauthenticated requests and permits valid Bearer tokens."""
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from ether.mcp.security import SecurityMiddleware
+
+    async def sample_endpoint(request):
+        return PlainTextResponse("authenticated")
+
+    base_app = Starlette(routes=[Route("/test", sample_endpoint)])
+    mw = SecurityMiddleware(signing_secret="vault-token-xyz", static_admin_token="vault-token-xyz")
+    auth_app = mw.wrap_asgi(base_app)
+
+    client = TestClient(auth_app)
+
+    # 1. No auth header -> 401 Unauthorized
+    resp_no_auth = client.get("/test")
+    assert resp_no_auth.status_code == 401
+    assert "WWW-Authenticate" in resp_no_auth.headers
+    assert "Unauthorized" in resp_no_auth.text
+
+    # 2. Invalid auth header -> 401 Unauthorized
+    resp_bad_auth = client.get("/test", headers={"Authorization": "Bearer wrong-token"})
+    assert resp_bad_auth.status_code == 401
+
+    # 3. Valid Bearer token -> 200 OK
+    resp_ok = client.get("/test", headers={"Authorization": "Bearer vault-token-xyz"})
+    assert resp_ok.status_code == 200
+    assert resp_ok.text == "authenticated"
+
+
+@pytest.mark.asyncio
+async def test_create_mcp_server_with_auth_token():
+    """Verify create_mcp_server wires BearerTokenAuthMiddleware when auth_token is supplied."""
+    from starlette.testclient import TestClient
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+
+    server = create_mcp_server(store, auth_token="super-secret-mcp-key")
+    app = server.sse_app(host="127.0.0.1")
+
+    client = TestClient(app, base_url="http://localhost")
+
+    # Unauthenticated request to SSE endpoint should be blocked with 401 by auth middleware
+    res_unauth = client.get("/sse", headers={"Host": "localhost"})
+    assert res_unauth.status_code == 401
+    assert "Unauthorized" in res_unauth.text
+
+    # Wrong token
+    res_wrong = client.get(
+        "/sse",
+        headers={"Host": "localhost", "Authorization": "Bearer wrong-key"},
+    )
+    assert res_wrong.status_code == 401
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_handle_mcp_host_binding_gate(tmp_path):
+    """Verify that handle_mcp enforces host binding gate on external interfaces under SAFE policy."""
+    from unittest.mock import AsyncMock, patch
+
+    from ether.cli.commands.mcp import handle_mcp
+    from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
+    from ether.gateway.gate import GatePolicy
+
+    class Args:
+        transport = "sse"
+        session_id = None
+        port = 8000
+        host = "0.0.0.0"
+        policy = "safe"
+        auth_token = None
+
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=str(tmp_path / "test.db"),
+        tools_dir=None,
+        is_json=False,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+
+    # 1. External binding 0.0.0.0 without auth token under SAFE policy -> REJECTED
+    res = await handle_mcp(Args(), ctx)
+    assert res == EXIT_RUNTIME_ERROR
+
+    # 2. External binding 0.0.0.0 with auth token under SAFE policy -> PERMITTED
+    args_with_token = Args()
+    args_with_token.auth_token = "token-12345"
+    with patch("ether.mcp.server.EtherMCPServer.run_sse_async", new_callable=AsyncMock):
+        res2 = await handle_mcp(args_with_token, ctx)
+        assert res2 == EXIT_SUCCESS
+
+    # 3. Localhost binding 127.0.0.1 without auth token under SAFE policy -> PERMITTED
+    args_localhost = Args()
+    args_localhost.host = "127.0.0.1"
+    with patch("ether.mcp.server.EtherMCPServer.run_sse_async", new_callable=AsyncMock):
+        res3 = await handle_mcp(args_localhost, ctx)
+        assert res3 == EXIT_SUCCESS

@@ -1,0 +1,33 @@
+[meta]
+name = "katana"
+description = "Next-generation headless web crawler and JavaScript analysis engine written in Go for Single Page Applications (SPAs)."
+one_line_summary = "next-gen headless web crawler and JS analysis engine"
+category = "Web Enumeration"
+binary = "katana"
+categories = ["web", "recon", "crawler"]
+theory = """
+### Protocol Theory & Client-Side Endpoint Crawling
+Katana executes headless browser rendering and AST parsing of JavaScript files to uncover
+dynamic API endpoints, hidden forms, and client-side routes.
+"""
+
+[input]
+accepts = ["web.endpoint", "network.service", "domain.info"]
+target_types = ["url"]
+
+[output]
+produces = ["web.endpoint"]
+
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-d", "-jsonl", "-silent", "-u"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["-d", "2", "-jsonl"]

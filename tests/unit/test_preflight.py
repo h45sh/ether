@@ -1,12 +1,12 @@
 """Unit tests for preflight dependency, capability, and parameter verification in Ether."""
 
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
 
 from ether.gateway.gate import GatePolicy
 from ether.gateway.preflight import (
-    DEFAULT_TOOL_TARGETS,
     PreflightVerifier,
     get_tool_target_guidance,
 )
@@ -16,10 +16,17 @@ pytestmark = pytest.mark.fast
 
 
 class FakeToolAdapter:
-    def __init__(self, name: str, is_installed: bool = True, binary: Optional[str] = None):
+    def __init__(
+        self,
+        name: str,
+        is_installed: bool = True,
+        binary: Optional[str] = None,
+        target_types: Optional[list[str]] = None,
+    ):
         self.name = name
         self._installed = is_installed
         self.binary = binary or name
+        self.target_types = target_types
 
     def validate_install(self) -> bool:
         return self._installed
@@ -31,7 +38,13 @@ class FakeRegistry:
 
     def get_tool(self, name: str):
         if name in self._tools:
-            return {"adapter": self._tools[name], "manifest": None}
+            adapter = self._tools[name]
+            manifest = (
+                SimpleNamespace(input={"target_types": adapter.target_types})
+                if getattr(adapter, "target_types", None)
+                else None
+            )
+            return {"adapter": adapter, "manifest": manifest}
         return None
 
 
@@ -81,8 +94,8 @@ def test_preflight_empty_target_and_remedy():
     new_target, new_flags, feedback = verifier.apply_remedy(
         target_errors[0], target="", flags="-sV"
     )
-    assert new_target == "127.0.0.1"
-    assert "127.0.0.1" in feedback
+    assert new_target == "scanme.nmap.org"
+    assert new_target in feedback
 
 
 def test_preflight_unexpanded_placeholder_variable():
@@ -93,7 +106,7 @@ def test_preflight_unexpanded_placeholder_variable():
 
 
 def test_preflight_web_tool_missing_http_scheme():
-    fake_adapter = FakeToolAdapter("gobuster", is_installed=True)
+    fake_adapter = FakeToolAdapter("gobuster", is_installed=True, target_types=["url"])
     registry = FakeRegistry({"gobuster": fake_adapter})
     verifier = PreflightVerifier(registry=registry)
 
@@ -113,7 +126,7 @@ def test_preflight_web_tool_missing_http_scheme():
 
 
 def test_preflight_network_tool_with_url_warning():
-    fake_adapter = FakeToolAdapter("nmap", is_installed=True)
+    fake_adapter = FakeToolAdapter("nmap", is_installed=True, target_types=["ip", "cidr", "domain"])
     registry = FakeRegistry({"nmap": fake_adapter})
     verifier = PreflightVerifier(registry=registry)
 
@@ -138,18 +151,20 @@ def test_preflight_sudo_policy_seam():
 
     # Under SAFE policy: sudo is blocked
     safe_verifier = PreflightVerifier(registry=registry, policy=GatePolicy.SAFE)
-    safe_report = safe_verifier.verify("nmap", target="127.0.0.1", flags="sudo -sS")
+    safe_report = safe_verifier.verify("nmap", target="scanme.nmap.org", flags="sudo -sS")
     assert not safe_report.is_valid
     assert any("sudo" in i.title.lower() for i in safe_report.errors)
 
     # Apply remedy
     issue = next(i for i in safe_report.errors if "sudo" in i.title.lower())
-    _, new_flags, msg = safe_verifier.apply_remedy(issue, target="127.0.0.1", flags="sudo -sS")
+    _, new_flags, msg = safe_verifier.apply_remedy(
+        issue, target="scanme.nmap.org", flags="sudo -sS"
+    )
     assert "sudo" not in new_flags
 
     # Under UNRESTRICTED policy: sudo is allowed
     unres_verifier = PreflightVerifier(registry=registry, policy=GatePolicy.UNRESTRICTED)
-    unres_report = unres_verifier.verify("nmap", target="127.0.0.1", flags="sudo -sS")
+    unres_report = unres_verifier.verify("nmap", target="scanme.nmap.org", flags="sudo -sS")
     assert unres_report.is_valid
     assert not any("sudo" in i.title.lower() for i in unres_report.errors)
 
@@ -171,42 +186,48 @@ def test_preflight_ssrf_metadata_policy_seam():
     assert not any("blocked by security policy" in i.title for i in unres_report.errors)
 
 
-def test_preflight_wordlist_macro_unseeded_remedy(tmp_path):
-    dest_dir = str(tmp_path / "wordlists")
-    verifier = PreflightVerifier(wordlists_dir=dest_dir)
+def test_preflight_wordlist_macro_fallback_warning(tmp_path, monkeypatch):
+    monkeypatch.delenv("ETHER_WORDLISTS_DIR", raising=False)
+    dest_dir = tmp_path / "wordlists"
+    dest_dir.mkdir()
+    verifier = PreflightVerifier(wordlists_dir=str(dest_dir))
 
-    report = verifier.verify("gobuster", target="http://127.0.0.1:8080", flags="-w @common.txt")
+    report = verifier.verify(
+        "gobuster", target="http://127.0.0.1:8080", flags="-w @nonexistent_list.txt"
+    )
     wordlist_warns = [i for i in report.warnings if i.category == "wordlist"]
     assert len(wordlist_warns) == 1
-    assert "is not yet seeded" in wordlist_warns[0].title
-    assert wordlist_warns[0].can_auto_remedy
+    assert "minimal.txt" in wordlist_warns[0].title
+    assert not wordlist_warns[0].can_auto_remedy
 
-    # Apply remedy
-    t, f, msg = verifier.apply_remedy(
-        wordlist_warns[0], target="http://127.0.0.1:8080", flags="-w @common.txt"
-    )
-    assert "Extracted" in msg
-    assert t == "http://127.0.0.1:8080"
+    # When wordlist exists in wordlists_dir, no warning is emitted
+    (dest_dir / "common.txt").write_text("admin\n", encoding="utf-8")
+    ok_report = verifier.verify("gobuster", target="http://127.0.0.1:8080", flags="-w @common.txt")
+    assert not [i for i in ok_report.warnings if i.category == "wordlist"]
 
 
 def test_default_tool_targets_coverage_and_preflight():
-    """Verify all tools in registry have valid default targets satisfying preflight."""
+    """Verify all tools in registry have dynamic target guidance and pass preflight on valid targets."""
     registry = ToolRegistry()
     registry.load_tools()
-    verifier = PreflightVerifier()
+    verifier = PreflightVerifier(registry=registry)
 
-    assert len(registry.tools) == len(DEFAULT_TOOL_TARGETS)
+    assert len(registry.tools) > 0
     for tool_name in registry.tools:
-        assert tool_name in DEFAULT_TOOL_TARGETS
-        target = DEFAULT_TOOL_TARGETS[tool_name]
-        assert bool(target)
+        target_types = verifier._get_tool_target_types(tool_name)
+        if "url" in target_types and not any(t in target_types for t in ("ip", "cidr")):
+            target = "http://scanme.nmap.org"
+        elif "domain" in target_types and "ip" not in target_types:
+            target = "example.com"
+        else:
+            target = "scanme.nmap.org"
 
         report = verifier.verify(tool_name, target=target, flags="")
         non_binary_errors = [
             i for i in report.issues if i.severity == "error" and i.category != "binary"
         ]
         assert not non_binary_errors, (
-            f"Tool {tool_name} failed preflight on default target: {non_binary_errors}"
+            f"Tool {tool_name} failed preflight on dynamic target {target}: {non_binary_errors}"
         )
 
         guidance = get_tool_target_guidance(tool_name)
@@ -214,3 +235,36 @@ def test_default_tool_targets_coverage_and_preflight():
         assert "Target Scope" in guidance
         assert "Permissible & Effective Targets" in guidance
         assert "Strictly Prohibited & Dangerous Targets" in guidance
+        assert guidance.count("## Operational Precautions & Ethics") == 1
+
+
+def test_preflight_loopback_adr0012_and_no_legacy_constants():
+    import ether.gateway.preflight as preflight_mod
+    from ether.gateway.scope import EngagementScope
+
+    for legacy_name in (
+        "WEB_TOOLS",
+        "NETWORK_TOOLS",
+        "DOMAIN_TOOLS",
+        "WORDLIST_TOOLS",
+        "TOOL_TARGET_GUIDANCE",
+    ):
+        assert not hasattr(preflight_mod, legacy_name)
+
+    fake_adapter = FakeToolAdapter("nmap", is_installed=True)
+    registry = FakeRegistry({"nmap": fake_adapter})
+
+    # Default SAFE blocks loopback
+    verifier_default = PreflightVerifier(registry=registry, policy=GatePolicy.SAFE)
+    rep_blocked = verifier_default.verify("nmap", target="127.0.0.1")
+    assert not rep_blocked.is_valid
+    assert any(i.category == "security" for i in rep_blocked.errors)
+
+    # Explicit allow_loopback=True permits loopback
+    verifier_loop = PreflightVerifier(
+        registry=registry,
+        policy=GatePolicy.SAFE,
+        scope=EngagementScope(allow_loopback=True),
+    )
+    rep_allowed = verifier_loop.verify("nmap", target="127.0.0.1")
+    assert not any(i.category == "security" for i in rep_allowed.errors)

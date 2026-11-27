@@ -22,7 +22,7 @@ async def test_action_timeline_repository(tmp_path):
     action = ActionRequest(
         session_id=sess_id,
         tool_name="nmap",
-        params={"raw_flags": "-sV 10.0.0.1"},
+        params={"flags": "-sV 10.0.0.1"},
         triggered_by=ActionSource.USER,
     )
     await timeline.append_event(sess_id, action, {"output": "Port 80 open"}, "Ran nmap scan")

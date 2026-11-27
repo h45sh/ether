@@ -1,0 +1,149 @@
+{
+  "adapters": {
+    "amass": {
+      "adapter_sha256": "c5cdd10c8664daf72b4c25a7a00dab6dedf2e080985b569a9b784234482e12f9",
+      "manifest_sha256": "217857cda21a234fc86cfe16adb36291a6e3562094d18478963e4915f2ea9310"
+    },
+    "arjun": {
+      "adapter_sha256": "921db2f9cb9d0b0b50f7df6c2e5ef5e88174c475764e91910493113f134c98ef",
+      "manifest_sha256": "8317885ebc599d0b76be421dafc9b7e72256792503050f137d9562f41c4833b5"
+    },
+    "cloud_enum": {
+      "adapter_sha256": "41821c160af314a39cb6b09c8cb7bb653623d6ee866ab98a0c562b6368071f42",
+      "manifest_sha256": "cb3d57a643344a422bdef4f523a1a33400a52f9638f99196d676bb18e304e311"
+    },
+    "crtsh": {
+      "adapter_sha256": "d659680edfbdd0393a24c37dae27b1e9d7b1a22baae20bf14a6fd7a0e18024b4",
+      "manifest_sha256": "dd66da6e26cdf9990b4ec73acf1fb3d12a580873c8554f9534832ed9501f6f64"
+    },
+    "cve_search": {
+      "adapter_sha256": "281956a146bc70d2cb1823f2081a3eb14f9ee2b0f1a737f6c159f48bcddc28c7",
+      "manifest_sha256": "77558a076258fbfd388f1c885c6f1b360fb8653edc8865e1f6a946dbb07d528a"
+    },
+    "dnspython": {
+      "adapter_sha256": "126fbf6da4a8dd894b90b47ffc863c7a2d80e033ac317b65db6f8e2489550e9f",
+      "manifest_sha256": "eecf84d75e1cf5c814471d46f0973b5cedbebd58d3916a7386e2059d9a64819f"
+    },
+    "dnsrecon": {
+      "adapter_sha256": "e1ac64586b6de80ee55d295dae66561ff261471d0084d163532a622939b0f57a",
+      "manifest_sha256": "f3fd99993031637c732ac9aa9f0344dd0a279a469f8f94fd7d254582f7e181a4"
+    },
+    "feroxbuster": {
+      "adapter_sha256": "75f6d5c29f14cba0ebc7d16ae646cc78caf7254d86a240a1540fa4f1e09b6dac",
+      "manifest_sha256": "cd291ce7efc9c9a8d2ce99d3973cc936e4acc2b78eb1e85c17e571f984d2ed61"
+    },
+    "ffuf": {
+      "adapter_sha256": "e12678c8ad9d87e43e490de343818bedee3380f9b8b35722ad844ff1254c245e",
+      "manifest_sha256": "026294046e888972eeeebfbe5d91848ea4dce98673d3f71baac3586cac183b40"
+    },
+    "ghauri": {
+      "adapter_sha256": "8e24f094b9bf59cfcccfc3563e586a4e36386ef15d4857655589267da749a6cd",
+      "manifest_sha256": "c050121c566f4123f3c2df2b19f5b13d62bd8c87881a4e026b58b596765b172f"
+    },
+    "gobuster": {
+      "adapter_sha256": "0d19c5283af959b38d464276921c369ff140a8d75be5918c000eb3c60ab5c6c6",
+      "manifest_sha256": "9ec4dd5ca7974c254af3ed910187b622d3507049df62e3dedc31ce96e9391951"
+    },
+    "http_probe": {
+      "adapter_sha256": "3628494b2c00978121b008a8d12a9549c5b2ab29524e587762a5eeda0e17a6aa",
+      "manifest_sha256": "cc49767d4c92831567f2f315f60e70c172e808abda4cdae28f1c60eb306b52ef"
+    },
+    "hydra": {
+      "adapter_sha256": "3ce30f24ed06f31cf7b1e391f6c4fd4763a432251959ba651c7f13f3f03fc99e",
+      "manifest_sha256": "ccf76056ccd49d788a6d67b95258d922c3c53dc822b41e2721484642d315e649"
+    },
+    "imds_probe": {
+      "adapter_sha256": "65d58fdf7228ca029a1ea8435af330a18a5da30f930a173907d1e68631e6d82e",
+      "manifest_sha256": "cbf6d0f4bf0f322dcf3c2fa13bed5cd16c8c58ef2c4c6d9dab5390592e3801d4"
+    },
+    "katana": {
+      "adapter_sha256": "d8bf219051d8d05c2798212b5f92adbe92b5510c8dfe759a08f7da4d2781aff1",
+      "manifest_sha256": "d4c1173eb5cf0df6ef8c7e00295a34b1519e4351684d0e64e8ab38f75ecb696b"
+    },
+    "kiterunner": {
+      "adapter_sha256": "c2ed12d8c8c88fff4b4d4144ff09881ac91a6d981e978a7d38f5a1f4fde866df",
+      "manifest_sha256": "6875c408c43fda7c842addc6d2c6f4039b44aa2f7a9eb991ce50217851651000"
+    },
+    "masscan": {
+      "adapter_sha256": "5631a6f2fd37bcc2072e6a4af6171f287997e00faec9223d7c789c897ce5e728",
+      "manifest_sha256": "d27a7d3b823eb81f2287aba9f48171db562b07f51355b0240b67305dce17afe0"
+    },
+    "mysql_probe": {
+      "adapter_sha256": "115b8770349c24155022b328160d4588229588bb22bc339b5ae92f461168c261",
+      "manifest_sha256": "94b933ffb5cd66a16cb8be606217964d6306602546ba7d741c239f514e4286f6"
+    },
+    "naabu": {
+      "adapter_sha256": "355d359326aadf4ec476bf53208e2a2e3fbbc611c300cbd9d65e79be5478e741",
+      "manifest_sha256": "082de6df3499e5d724241a40cd5d945eebda8f632b844ccf5be4ec77625df247"
+    },
+    "netexec": {
+      "adapter_sha256": "c5881f6c3c4d05e01ca28716669f47a7152f79b46961422860a2e0e7a293e332",
+      "manifest_sha256": "e62d0a25399a506d15debbadb679e5cc370f4a71f45979641fd5374470ef1638"
+    },
+    "nikto": {
+      "adapter_sha256": "6958eeaa0fd0829a2adcb5dcc37cedbbb14cd12d2c47badcfb87010f07567068",
+      "manifest_sha256": "110fd0c936b38c115526a15fa01daeccc07bc1b707975cfbb29b067587a74b06"
+    },
+    "nmap": {
+      "adapter_sha256": "7dee5ef89428dbf7909bf232e143b9d420d698bdf5f8ef586e63fbd4897d98ff",
+      "manifest_sha256": "a188e4f90a8625e2ca4824114e855f3fe7991f83fb279e22a535c8fb4b628a69"
+    },
+    "nuclei": {
+      "adapter_sha256": "be03a1fa8751a18dd298e95fc03696be189b449c31b4792c70d3a02f48434003",
+      "manifest_sha256": "194afefbcdce25c9fabf8f7da1e270f3dd14e31b21a37acd127820459e685c5a"
+    },
+    "postgres_probe": {
+      "adapter_sha256": "0d88e8594a4e328b2708810932d4af39c2339a32ac8ff2c4b1de6b5599bbc6e9",
+      "manifest_sha256": "161d8ef1ea0b965b2e28875e2c43c15bf90698bfa63282b96bfa5b5b2e6d8682"
+    },
+    "redis_probe": {
+      "adapter_sha256": "35c7189864be46fc340a9fd4269ae314f2a9b02fe89c0cb5dae0e74f7b78b536",
+      "manifest_sha256": "64b5d3366d029e4a80ddb36bad9fd3030a4109edec5583b60c784019bd8a421c"
+    },
+    "rustscan": {
+      "adapter_sha256": "1b0e9921bff703a403e248001b1a6071d1f21f668946f6bdc374596e7a44683b",
+      "manifest_sha256": "9af5ef074c3fdc5ce6ddcbfc713de0ea84c18d314c0c2c40bc5e335d52b3053c"
+    },
+    "searchsploit": {
+      "adapter_sha256": "b9bfebde77753aa15eba088f3ecd9a7da036c5879f51d8c32b4f46c292ffca5d",
+      "manifest_sha256": "1ac80cc40c0591d5626543151b4b1ab64cb915a5cf727a4b0e1e222220fafdcc"
+    },
+    "sqlmap": {
+      "adapter_sha256": "e5c02a155fff4530e18cc56cdee55740bcfd511381c5facd3feb35e56968b7fb",
+      "manifest_sha256": "10e35f44f9ee76fa3ffff95dd6bd3cdf0db9150558124f732a6a703595bb8b03"
+    },
+    "sslyze": {
+      "adapter_sha256": "9c6dad96c5d6856a1de316d6e5373b711947881588785405685ade29f7927238",
+      "manifest_sha256": "1967ebee09e5f558c09915eadbebd8a4a76c3ffd44f268af9832916f8fb7c5c2"
+    },
+    "stealth_scan": {
+      "adapter_sha256": "92b67ded3d7cd52425ad33b7c72ec350cfa12f8a844ffc5156c8332b54b1bf7f",
+      "manifest_sha256": "1f455223ddd258be420c37fd5c3be59be66a6941b15f20ec5f0fa2a8baade9d6"
+    },
+    "subfinder": {
+      "adapter_sha256": "0f31be6b52735f488f92038dacb0a1c5d964d5bbdd7b9538b774f2ad5899125d",
+      "manifest_sha256": "bd419de30a94390b87e5a6cd83c2cd8add62c691026f34457b2b14067d6c9917"
+    },
+    "tcp_probe": {
+      "adapter_sha256": "91715294455113127353c45d5d84f09d3501a07ceaffbad81768873d3b1da09f",
+      "manifest_sha256": "cbb2edb2aa34a345ac1c124a8d4dc8bcdd670bd3cb8de44d756e13a0842fc7e6"
+    },
+    "tls_probe": {
+      "adapter_sha256": "154adc9ac8009504908aead1763fce843d14770d05711d95f966730147ddce14",
+      "manifest_sha256": "ba7bebcfaeddeec6cc49a67579a545c014947a644cc14f1c6b8a9fd40804efb4"
+    },
+    "whois": {
+      "adapter_sha256": "8d628c40af365baed7e25dfcd3e6912ad97efe3eb1693a818464683254e1cc7f",
+      "manifest_sha256": "a6eb128b6d5c585f535f6b81f5498291f23da4c1b99f88ffa7cd30f05ce86a93"
+    },
+    "wpscan": {
+      "adapter_sha256": "0d07d64305ae0f1b8af18d67b48d30c2ef80caa3a4d664a7aebef7f081ce0574",
+      "manifest_sha256": "8e0f4c8d627979e859b93c583db1dd481bf28647eb25ab2ad6a454aa8524ad84"
+    },
+    "zmap": {
+      "adapter_sha256": "e0a3efc59fb13c6bb23da507d5e1587ab3bcb4d6f54abfd5f81ab801c28aa2c7",
+      "manifest_sha256": "50ea2ee4eae8707335f3a88e08e4fa49ac3420d6b1c1082b3ac48f43f51cd7bc"
+    }
+  },
+  "version": 1
+}

@@ -13,7 +13,7 @@ def adapter():
 def test_gobuster_build_command(adapter):
     # 1. Target is web.endpoint
     endpoint = WebEndpoint.create(url="http://10.10.10.5/app")
-    cmd = adapter.build_command(endpoint, {"raw_flags": "dir -u {url} -w {wordlist}"})
+    cmd = adapter.build_command(endpoint, {"flags": "dir -u {url} -w {wordlist}"})
     assert cmd[0] == "gobuster"
     assert "dir" in cmd
     assert "-u" in cmd
@@ -22,12 +22,12 @@ def test_gobuster_build_command(adapter):
 
     # 2. Target is network.service (HTTP)
     http_svc = NetworkService.create(host_ip="192.168.1.100", port=80, protocol="tcp")
-    cmd_http = adapter.build_command(http_svc, {"raw_flags": "dir -u {url}"})
+    cmd_http = adapter.build_command(http_svc, {"flags": "dir -u {url}"})
     assert "http://192.168.1.100:80" in cmd_http
 
     # 3. Target is network.service (HTTPS)
     https_svc = NetworkService.create(host_ip="192.168.1.100", port=443, protocol="tcp")
-    cmd_https = adapter.build_command(https_svc, {"raw_flags": "dir -u {url}"})
+    cmd_https = adapter.build_command(https_svc, {"flags": "dir -u {url}"})
     assert "https://192.168.1.100:443" in cmd_https
 
 
@@ -73,9 +73,9 @@ Finished
 
 @pytest.mark.asyncio
 async def test_gobuster_parse_fallback_context(adapter):
-    # Test when target is None, but context contains raw_flags with -u
+    # Test when target is None, but context contains flags with -u
     sample_output = "/dashboard (Status: 200) [Size: 500]"
-    context = {"params": {"raw_flags": "dir -u http://target.local:8000"}}
+    context = {"params": {"flags": "dir -u http://target.local:8000"}}
 
     findings = [f async for f in adapter.parse_output(sample_output, None, context)]
     assert len(findings) == 1

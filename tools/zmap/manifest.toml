@@ -1,0 +1,33 @@
+[meta]
+name = "zmap"
+description = "Fast single-packet network scanner designed for Internet-wide network surveys."
+one_line_summary = "single-packet network scanner for fast Internet-wide surveys"
+category = "Network Reconnaissance"
+binary = "zmap"
+categories = ["recon", "network", "portscan"]
+theory = """
+### Protocol Theory & Single-Packet Scanning
+ZMap transmits raw probes to target addresses and listens for replies asynchronously,
+capable of scanning the entire public IPv4 space on a single port in under 45 minutes.
+"""
+
+[input]
+accepts = ["network.netblock", "network.host"]
+target_types = ["ip", "cidr", "domain"]
+
+[output]
+produces = ["network.host", "network.service"]
+
+[execution]
+tier = "subprocess"
+output_format = "text"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-p", "-o", "-"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["-p", "80", "-o", "-"]

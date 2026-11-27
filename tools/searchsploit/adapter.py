@@ -2,7 +2,6 @@
 
 import json
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -32,16 +31,15 @@ class SearchSploitAdapter(ToolAdapter):
         """Construct the searchsploit command line arguments."""
         args = ["searchsploit", "--json"]
 
-        raw_flags = params.get("raw_flags", "").strip()
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.normalize_flags(params)
 
         # If user explicitly provided flags, incorporate them
         for f in flag_args:
             if f != "--json" and f not in args:
                 args.append(f)
 
-        # Derive target query if not explicitly passed in raw flags
-        if not raw_flags or not any(not flag.startswith("-") for flag in flag_args):
+        # Derive target query if not explicitly passed in flags
+        if not flag_args or not any(not flag.startswith("-") for flag in flag_args):
             query_parts = self._extract_query_parts(target)
             if not query_parts:
                 raise ValueError(

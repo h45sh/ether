@@ -18,10 +18,12 @@ ether [GLOBAL_OPTIONS] <SUBCOMMAND> [SUBCOMMAND_OPTIONS]
 | — | `--data-dir PATH` | `ETHER_DATA_DIR` | `~/.ether` | Base application directory for logs, scratchpad, and state. |
 | — | `--db PATH` | — | `~/.ether/ether.db` | Target SQLite database file. Supports `:memory:` for ephemeral runs. |
 | — | `--tools DIR` | — | Bundled `tools/` | Directory path containing pluggable tool adapters. |
-| `-j` | `--json` | — | `false` | Output results in machine-readable JSON format. |
+| `-j` | `--json` | — | `false` | Output results in machine-readable JSON format across all CLI subcommands, with untruncated 64-character SHA-256 node IDs. |
 | `-v` | `--verbose` | — | `false` | Enable verbose debug logging to stderr. |
 | — | `--policy MODE` | — | `safe` | Gate policy mode: `safe` (SSRF/IMDS defense & scope) or `unrestricted`. |
 | `-V` | `--version` | — | — | Display Ether version and exit. |
+
+> **Plugin Trust Mode (`ETHER_PLUGIN_TRUST_MODE`):** `ToolRegistry` defaults to `PluginTrustMode.STRICT`. First-party bundled `tools/*` adapters are verified automatically against `tools/bundle_lock.json`, while external/third-party plugins require `.toml.sha256` and Ed25519 `.py.sig` sidecars. Set `ETHER_PLUGIN_TRUST_MODE=dev` (or `registry.trust_mode = "dev"` in `config.toml`) only when developing or testing unsigned local adapter edits.
 
 ---
 
@@ -72,10 +74,17 @@ Execute a security tool scan under Ether's reactive supervisor. Child stdout is 
 ether run nmap 192.168.1.50
 
 # Run with custom parameters and explicit session binding
-ether run nmap 10.0.0.1 --session-id <SESSION_ID> --params '{"raw_flags": "-sV -p 80,443"}'
+ether run nmap 10.0.0.1 --session-id <SESSION_ID> --params '{"flags": "-sV -p 80,443"}'
 
 # Execute under UNRESTRICTED policy (red-team workstation mode)
-ether run nmap 10.10.10.20 --policy unrestricted --params '{"raw_flags": "-p-"}'
+ether run nmap 10.10.10.20 --policy unrestricted --params '{"flags": "-p-"}'
+
+# Broad -sV scans automatically run adaptive Stage 1 port discovery -> Stage 2 -sV on open ports
+ether run nmap 10.48.157.67 --policy unrestricted --flags "-sV -T4 --top-ports 1000 -Pn --min-rate 500" -j
+
+# Self-signed TLS / non-443 endpoints (UNRESTRICTED honors -k; tls_probe honors -p)
+ether run http_probe https://10.48.157.67:8443/ --policy unrestricted --flags "-k" -j
+ether run tls_probe 10.48.157.67 --flags "-p 8443" -j
 
 # Output execution metrics and summary as JSON
 ether run nuclei https://example.com --json
@@ -102,6 +111,23 @@ ether session create "External Perimeter Assessment"
 
 # Create a session under a specific workspace
 ether session create "API Fuzzing" --workspace-id <WORKSPACE_ID>
+
+# Verify cryptographic chain of custody and file hashes for a session's audit manifest
+ether session verify-audit <SESSION_ID>
+
+# Verify audit trail and output machine-readable JSON verification status
+ether session verify-audit <SESSION_ID> --json
+
+# Forensically seal a session and compress raw log spools to .log.gz
+ether session close <SESSION_ID>
+```
+
+**Verification Output Example:**
+```text
+INDEX  ACTION ID  TOOL      LOG FILE                      CHAIN  FILE  STATUS
+0      3a8f1b2c   nmap      3a8f1b2c.log.gz              PASS   PASS  VALID
+1      b4c7d9e1   gobuster  b4c7d9e1.log.gz              PASS   PASS  VALID
+[+] Cryptographic audit chain verified: All 2 entries intact.
 ```
 
 ---
@@ -132,6 +158,9 @@ Perform natural language k-NN vector search against findings using embedded `sql
 ```bash
 # Search for web servers or path traversal flaws
 ether graph search <SESSION_ID> "Apache HTTP Server path traversal"
+
+# Display plaintext credentials (passwords, tokens) using --unmask
+ether graph search <SESSION_ID> "administrator login" --unmask
 
 # Limit returned findings and enforce minimum similarity score
 ether graph search <SESSION_ID> "OpenSSH remote code execution" --limit 5 --min-score 0.3
@@ -243,7 +272,7 @@ ether mcp --transport sse --port 8000
 ```
 
 **Exposed MCP Tools:**
-* `execute_tool`: Supervise and run tools with timeout and output capture.
+* `execute_tool`: Supervise and run tools with `profile` presets (`fast`, `standard`, `deep`), timeout, output capture, and structured error diagnostics.
 * `abort_action`: Safely terminate active running background scan tasks.
 * `read_action_log`: Read recent spooled execution log lines for an action.
 * `query_graph`: Query typed finding entities and attributes from the graph.
@@ -253,13 +282,78 @@ ether mcp --transport sse --port 8000
 * `get_attack_path`: Compute shortest directed multi-hop attack path between two entity nodes.
 * `get_blast_radius`: Calculate transitive compromise blast radius up to a maximum hop depth.
 * `get_crown_jewels`: Identify critical high-value assets and topological choke points.
-* `list_tools`: Discover all registered security tools, execution tiers, and installation status.
+* `search_tools`: Lazily search registered security tools by keyword, accepted schema, or produced schema (with `[profiles]`).
 * `get_tool_info`: Inspect input/output schema contracts and binary discovery status.
 * `manage_session`: Create, list, or inspect investigation sessions and workspaces.
+* `get_deception_report`: Analyze honeypots, delay-tarpits, and low-confidence finding beliefs.
+* `audit_drift`: Audit session graph against an architectural baseline specification.
 
 ---
 
-## 10. Real-World Goal-Oriented CLI Workflows
+## 10. Chained Tool Pipeline DAGs (`ether pipeline`)
+
+Execute multi-stage tool reconnaissance pipelines where normalized findings from one adapter automatically feed as typed targets into downstream adapters (enforcing `GatePolicy` preflight validation and persisting findings when `--session` is provided):
+
+```bash
+# Chain subdomain discovery -> DNS resolution -> HTTP surface probing
+ether pipeline "subfinder(target=example.com) | dnspython | http_probe" --session <SESSION_ID>
+
+# Run with JSON summary output
+ether pipeline "nmap(target=10.10.10.20) | http_probe" --session <SESSION_ID> --json
+```
+
+### Graph Intelligence Subcommands (`ether graph`)
+```bash
+# Compute shortest directed attack path between two entities
+ether graph attack-path <SESSION_ID> <SOURCE_ID> <TARGET_ID>
+
+# Calculate compromise blast radius from a node
+ether graph blast-radius <SESSION_ID> <NODE_ID> --max-depth 10
+
+# Identify critical crown-jewel assets
+ether graph crown-jewels <SESSION_ID>
+```
+
+---
+
+## 11. Architectural Drift & Baseline Auditing (`ether drift`)
+
+The `ether drift` subsystem enables continuous architectural compliance verification by measuring the structural divergence between an observed session graph and an expected ground-truth baseline specification:
+
+```bash
+# 1. Export current verified graph state as ground-truth baseline JSON
+ether drift export-baseline <SESSION_ID> --out baseline.json
+
+# 2. Audit an observed session graph against the baseline in topology mode
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json
+
+# 3. Audit in strict mode (checking service versions, banners, and headers)
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json --mode strict
+
+# 4. Automatically record discrepancy findings (audit.drift) into session graph
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json --record
+
+# 5. Output drift report as machine-readable JSON
+ether drift audit <OBSERVED_SESSION_ID> --baseline baseline.json --json
+```
+
+### Full Positional & Keyword Argument Symmetry
+Ether CLI features an internal argument pre-normalization router. Autonomous AI agents and scripts can supply parameters either positionally or via standard options interchangeably without syntax errors:
+```bash
+# Equivalent positional and flag invocations:
+ether drift export-baseline <SESSION_ID> --out baseline.json
+ether drift export-baseline --session <SESSION_ID> --out baseline.json
+
+ether drift audit <SESSION_ID> --baseline baseline.json
+ether drift audit --session <SESSION_ID> --baseline baseline.json
+
+ether run nmap 192.168.1.1
+ether run --tool nmap --target 192.168.1.1
+```
+
+---
+
+## 12. Real-World Goal-Oriented CLI Workflows
 
 ### Workflow A: End-to-End External Surface Discovery Pipeline
 Automate a multi-stage target reconnaissance pass across passive DNS, port discovery, and web probing:
@@ -275,7 +369,7 @@ ether run subfinder example.com --session-id "$SESS"
 ether run http_probe https://example.com --session-id "$SESS"
 
 # 4. Run targeted port scan against discovered host IP
-ether run nmap 93.184.216.34 --session-id "$SESS" --params '{"raw_flags": "-sV -p 80,443"}'
+ether run nmap 93.184.216.34 --session-id "$SESS" --params '{"flags": "-sV -p 80,443"}'
 
 # 5. Review all discovered findings
 ether graph list-nodes "$SESS"
@@ -304,4 +398,33 @@ ether graph export <SESSION_ID> -o engagement_deliverable.enc --encrypt --passph
 
 # Verify on another workstation
 ether graph import engagement_deliverable.enc --passphrase "ClientSecret2026" --json
+```
+
+---
+
+## 11. Ergonomic Operational Commands (`status`, `ps`, `kill`, `report`, `graph tree`, `session use`, `config`)
+
+Eliminate UUID copy-pasting and inspect full topologies or live jobs in one call:
+
+```bash
+# Pin an active default session (used automatically when session_id is omitted)
+ether session use <SESSION_ID>
+
+# One-glance summary of the active session, node counts, severities, and running jobs
+ether status
+
+# View the full graph (nodes + edges) as an ASCII hierarchy or JSON
+ether graph tree
+ether graph tree --json
+
+# Supervise running/recent actions
+ether ps
+ether kill <ACTION_ID>
+
+# Compile a Markdown or JSON engagement report (credentials masked by default)
+ether report --format md -o engagement_report.md
+
+# Initialize or inspect EtherSettings (config.toml)
+ether config init
+ether config show --json
 ```

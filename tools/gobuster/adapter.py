@@ -1,13 +1,13 @@
 """Gobuster tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
+from ether.common.context import ExecutionContext
 from ether.registry.adapter import ToolAdapter
-from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.web import WebEndpoint
+from tools.ffuf.adapter import calibrate_fuzzer_baseline
 
 
 class GobusterAdapter(ToolAdapter):
@@ -15,6 +15,26 @@ class GobusterAdapter(ToolAdapter):
 
     URL_FLAG_RE = re.compile(r"-u\s+([^\s]+)")
     STATUS_PATTERN = re.compile(r"(\S+)\s+\(Status:\s+(\d+)\)")
+
+    async def execute_action(
+        self,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> AsyncIterator[BaseFinding]:
+        """Execute gobuster scan with pre-flight response geometry baseline calibration."""
+        url = self.extract_url(target)
+        if url and not params.get("skip_calibration"):
+            is_unrestricted = "unrestricted" in str(getattr(context, "policy", "safe")).lower()
+            calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
+            if calib and calib.get("size") is not None:
+                params = dict(params)
+                flag_list = self.normalize_flags(params)
+                if "--exclude-length" not in flag_list:
+                    params["flags"] = [*flag_list, "--exclude-length", str(calib["size"])]
+
+        async for finding in super().execute_action(target, params, context):
+            yield finding
 
     def validate_install(self) -> bool:
         return self.is_binary_available("gobuster")
@@ -37,25 +57,8 @@ class GobusterAdapter(ToolAdapter):
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         args = ["gobuster"]
-
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
-            url = self.extract_url(target) or ""
-            # Substitute centralized wordlist macros
-            raw_flags, _ = substitute_wordlist_macros(raw_flags)
-            if "{wordlist}" in raw_flags:
-                default_wl = resolve_wordlist("common_dirs")
-                raw_flags = raw_flags.replace("{wordlist}", str(default_wl))
-
-            tokens = shlex.split(raw_flags)
-            resolved_tokens = []
-            for token in tokens:
-                if "{url}" in token:
-                    token = token.replace("{url}", url)
-                resolved_tokens.append(token)
-
-            args.extend(resolved_tokens)
-
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
+        args.extend(flag_args)
         return args
 
     async def parse_output(
@@ -72,19 +75,29 @@ class GobusterAdapter(ToolAdapter):
 
         # Try to extract base url from command params if not available
         if not base_url:
-            raw_flags = context.get("params", {}).get("raw_flags", "")
-            url_match = self.URL_FLAG_RE.search(raw_flags)
+            flag_str = " ".join(self.normalize_flags(context.get("params")))
+            url_match = self.URL_FLAG_RE.search(flag_str)
             if url_match:
                 base_url = url_match.group(1).rstrip("/")
 
         for line in raw_stdout.splitlines():
             clean_line = self.strip_ansi(line)
+            if len(clean_line) > 4096:
+                clean_line = clean_line[:4096]
+            if " (Status:" not in clean_line:
+                continue
 
-            match = self.STATUS_PATTERN.search(clean_line)
-            if match:
-                path = match.group(1)
-                status_code = int(match.group(2))
+            part_path, _, rest = clean_line.partition(" (Status:")
+            path_tokens = part_path.strip().split()
+            if not path_tokens:
+                continue
+            path = path_tokens[-1]
+            status_str, _, _ = rest.partition(")")
+            status_str = status_str.strip()
+            if not status_str.isdigit():
+                continue
 
-                full_url = f"{base_url}{path}" if base_url else path
+            status_code = int(status_str)
+            full_url = f"{base_url}{path}" if base_url else path
 
-                yield WebEndpoint.create(url=full_url, method="GET", status_code=status_code)
+            yield WebEndpoint.create(url=full_url, method="GET", status_code=status_code)

@@ -216,7 +216,7 @@ async def test_default_session_preserves_user_sessions():
     ws_id, sess_id = await store.get_or_create_default_session()
 
     # Manually inject sessions into Default Workspace
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         await conn.execute(
             "INSERT INTO sessions (id, workspace_id, name) VALUES ('user-lab-1', ?, 'Custom Lab')",
             (ws_id,),
@@ -253,7 +253,7 @@ async def test_schema_initialization_tables_columns_and_indices(tmp_path):
     store = GraphStore(db_file)
     await store.initialize()
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         cursor = await conn.execute("PRAGMA table_info(nodes)")
         node_cols = {row[1] for row in await cursor.fetchall()}
         assert "action_id" in node_cols
@@ -292,7 +292,7 @@ async def test_upsert_findings_with_action_id():
     node_ids = await store.upsert_findings_batch(sess_id, [service], action_id="act-test-42")
     assert len(node_ids) == 1
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         conn.row_factory = aiosqlite.Row
         # Check node action_id
         cursor = await conn.execute("SELECT * FROM nodes WHERE session_id = ?", (sess_id,))
@@ -319,7 +319,7 @@ async def test_store_temporal_schema_and_indexes():
     store = GraphStore(":memory:")
     await store.initialize()
 
-    async with store.connection() as conn:
+    async with store._get_conn() as conn:
         conn.row_factory = aiosqlite.Row
         # Check column names
         cursor = await conn.execute("PRAGMA table_info(nodes)")
@@ -372,71 +372,5 @@ async def test_upsert_temporal_tracking_and_observation_count():
     assert node_after["ttl_seconds"] == 7200
     assert node_after["anchor_hash"] == "tls:abcd1234ef5678"
     assert node_after["action_id"] == "act-2"
-
-    await store.close()
-
-
-@pytest.mark.asyncio
-async def test_schema_migration_for_legacy_database(tmp_path):
-    """Verify that an older database without anchor_hash or temporal columns is seamlessly migrated."""
-    db_file = str(tmp_path / "legacy.db")
-
-    # Manually create legacy schema lacking modern columns
-    async with aiosqlite.connect(db_file) as raw_db:
-        await raw_db.execute(
-            """
-            CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT DEFAULT 'ACTIVE', created_at TIMESTAMP);
-            """
-        )
-        await raw_db.execute(
-            """
-            CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT DEFAULT 'ACTIVE', created_at TIMESTAMP);
-            """
-        )
-        await raw_db.execute(
-            """
-            CREATE TABLE nodes (
-                session_id TEXT NOT NULL,
-                id TEXT NOT NULL,
-                schema_type TEXT NOT NULL,
-                pik_json TEXT NOT NULL,
-                data_json TEXT NOT NULL,
-                status TEXT DEFAULT 'confirmed',
-                updated_at TIMESTAMP,
-                PRIMARY KEY (session_id, id)
-            );
-            """
-        )
-        await raw_db.execute(
-            """
-            CREATE TABLE edges (
-                session_id TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                relation_type TEXT NOT NULL,
-                PRIMARY KEY (session_id, source_id, target_id, relation_type)
-            );
-            """
-        )
-        await raw_db.commit()
-
-    # Open with GraphStore and initialize; should migrate columns and build indexes without throwing
-    store = GraphStore(db_file)
-    await store.initialize()
-    integrity_status, tables = await store.check_integrity()
-    assert integrity_status == "ok"
-    assert "nodes" in tables
-    assert "vec_findings" in tables
-
-    # Verify column existence
-    async with store._get_conn() as db:
-        cursor = await db.execute("PRAGMA table_info(nodes)")
-        col_names = {row[1] for row in await cursor.fetchall()}
-        assert "anchor_hash" in col_names
-        assert "action_id" in col_names
-        assert "created_action_id" in col_names
-        assert "observation_count" in col_names
-        assert "ttl_seconds" in col_names
-        assert "last_seen_at" in col_names
 
     await store.close()

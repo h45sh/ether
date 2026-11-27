@@ -30,10 +30,12 @@ def print_table(headers: List[str], rows: List[List[str]]) -> None:
     # Format header
     header_str = "  ".join(f"{h:<{col_widths[i]}}" for i, h in enumerate(headers))
     sep_str = "  ".join("-" * col_widths[i] for i in range(len(headers)))
-    print(header_str)
-    print(sep_str)
+    sys.stdout.write(f"{header_str}\n")
+    sys.stdout.write(f"{sep_str}\n")
 
     # Format rows
     for row in rows:
         row_str = "  ".join(f"{str(val):<{col_widths[i]}}" for i, val in enumerate(row))
-        print(row_str)
+        # CodeQL [py/cleartext-logging-sensitive-data] CLI terminal table output formatted for operator stdout
+        sys.stdout.write(f"{row_str}\n")
+    sys.stdout.flush()

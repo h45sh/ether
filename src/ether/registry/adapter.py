@@ -3,7 +3,21 @@
 import functools
 import shutil
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional
+
+
+@dataclass(frozen=True)
+class ToolCapabilities:
+    """Declarative engine-to-tool capability and pipeline chaining contract."""
+
+    name: str
+    accepts: List[str] = field(default_factory=list)
+    produces: List[str] = field(default_factory=list)
+    amplifies_to: List[str] = field(default_factory=list)
+    output_format: str = "text"
+    supports_streaming_parse: bool = True
+
 
 from ether.common import strip_ansi as _strip_ansi
 from ether.common.context import ExecutionContext
@@ -29,6 +43,38 @@ class ToolAdapter(ABC):
 
     name: str = ""
     execution_tier: str = "subprocess"
+    supports_streaming_parse: bool = True
+
+    def get_structured_default_flags(self) -> List[str]:
+        """Return preferred machine-readable output flags when not overridden by caller."""
+        return []
+
+    def get_capabilities(self, manifest: Optional[Any] = None) -> ToolCapabilities:
+        """Return declarative input/output/chaining capabilities for pipeline amplification."""
+        accepts = list(manifest.input.get("accepts", [])) if manifest else []
+        produces = list(manifest.output.get("produces", [])) if manifest else []
+        exec_cfg = getattr(manifest, "execution", None) if manifest else None
+        out_fmt = getattr(exec_cfg, "output_format", "text") if exec_cfg else "text"
+        streaming = (
+            getattr(exec_cfg, "supports_streaming_parse", self.supports_streaming_parse)
+            if exec_cfg
+            else self.supports_streaming_parse
+        )
+        amplifies: List[str] = []
+        if "network.service" in produces:
+            amplifies.extend(["http_probe", "tls_probe", "nuclei"])
+        elif "web.endpoint" in produces:
+            amplifies.extend(["nuclei", "ffuf", "imds_probe"])
+        elif "domain.info" in produces:
+            amplifies.extend(["dns_lookup", "subfinder", "http_probe"])
+        return ToolCapabilities(
+            name=self.name,
+            accepts=accepts,
+            produces=produces,
+            amplifies_to=amplifies,
+            output_format=out_fmt,
+            supports_streaming_parse=streaming,
+        )
 
     @staticmethod
     def is_binary_available(binary: str) -> bool:
@@ -72,6 +118,49 @@ class ToolAdapter(ABC):
         ):
             yield finding
 
+    @staticmethod
+    def normalize_flags(params: Optional[Dict[str, Any]]) -> List[str]:
+        """Normalize params['flags'] into a clean List[str] vector."""
+        import shlex
+
+        if not params:
+            return []
+        raw = params.get("flags", [])
+        if isinstance(raw, list):
+            return [str(f) for f in raw if str(f).strip()]
+        if isinstance(raw, str) and raw.strip():
+            return shlex.split(raw.strip())
+        return []
+
+    def expand_flag_macros(
+        self,
+        flags: List[str],
+        target: BaseFinding,
+        data_dir: Optional[str] = None,
+    ) -> List[str]:
+        """Expand {url}, {domain}, {ip}, {target}, and wordlist macros uniformly."""
+        from ether.registry.assets import substitute_wordlist_macros
+
+        url_val = self.extract_url(target) or ""
+        host_val = self.extract_host(target) or ""
+        domain_val = self.extract_domain(target) or host_val
+        target_val = url_val or domain_val or host_val
+
+        expanded: List[str] = []
+        for token in flags:
+            t = token
+            if target_val:
+                t = t.replace("{target}", target_val)
+            if url_val:
+                t = t.replace("{url}", url_val)
+            if domain_val:
+                t = t.replace("{domain}", domain_val)
+            if host_val:
+                t = t.replace("{ip}", host_val)
+            t, _ = substitute_wordlist_macros(t, data_dir=data_dir)
+            expanded.append(t)
+        return expanded
+
     @abstractmethod
     def validate_install(self) -> bool:
         """Check if the tool binary is available on the system."""
@@ -83,7 +172,7 @@ class ToolAdapter(ABC):
 
         Args:
             target: The finding being scanned (e.g. a network.host)
-            params: User-provided flags or options from the TUI
+            params: User-provided flags or options from the caller (CLI, MCP, or SDK)
         """
         pass
 
@@ -195,3 +284,41 @@ class ToolAdapter(ABC):
         Default implementation returns raw_stdout untouched.
         """
         return raw_stdout
+
+    def parse_json_lines(self, raw_stdout: str) -> List[Dict[str, Any]]:
+        """Resiliently parse newline-delimited JSON stream, skipping comments and partial chunks."""
+        import json
+
+        results = []
+        clean = self.strip_ansi(raw_stdout)
+        for line in clean.splitlines():
+            line_str = line.strip()
+            if not line_str or line_str.startswith("#"):
+                continue
+            try:
+                results.append(json.loads(line_str))
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return results
+
+    def parse_regex_lines(self, raw_stdout: str, pattern: Any) -> List[Any]:
+        """Match regular expression line-by-line across stripped terminal output."""
+        import re
+
+        clean = self.strip_ansi(raw_stdout)
+        regex = re.compile(pattern) if isinstance(pattern, str) else pattern
+        matches = []
+        for line in clean.splitlines():
+            line_str = line.strip()
+            if not line_str:
+                continue
+            m = regex.search(line_str)
+            if m:
+                matches.append(m)
+        return matches
+
+    def extract_cves(self, text: str) -> List[str]:
+        """Extract all standardized CVE identifiers (e.g. CVE-2021-44228) from text."""
+        import re
+
+        return sorted(set(re.findall(r"CVE-\d{4}-\d{4,7}", text, re.IGNORECASE)))

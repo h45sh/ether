@@ -1,6 +1,6 @@
 """Web-related finding schemas."""
 
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Dict, Optional
 
 from ether.schemas.base import BaseFinding, Relation
 
@@ -170,3 +170,55 @@ class WebTechnology(BaseFinding):
         if cpe:
             parts.append(f"CPE: {cpe}")
         return ". ".join(parts) + "."
+
+
+class WebParameter(BaseFinding):
+    """Represents an HTTP parameter discovered via URL crawling, fuzzing, or parameter mining (e.g. Arjun)."""
+
+    schema_type: str = "web.parameter"
+    pik_fields: ClassVar[list[str]] = ["endpoint_url", "param_name", "method"]
+
+    @classmethod
+    def create(
+        cls,
+        endpoint_url: str,
+        param_name: str,
+        method: str = "GET",
+        param_type: Optional[str] = None,
+        reflection: bool = False,
+        sample_value: Optional[str] = None,
+        **kwargs: Any,
+    ) -> "WebParameter":
+        pik = {
+            "endpoint_url": endpoint_url,
+            "param_name": param_name,
+            "method": method.upper().strip(),
+        }
+        data: Dict[str, Any] = {
+            **pik,
+            "param_type": param_type or "query",
+            "reflection": reflection,
+            "sample_value": sample_value,
+            **kwargs,
+        }
+        return cls(
+            pik=pik,
+            parent=Relation(
+                target_type="web.endpoint", target_pik={"url": endpoint_url}, via="has_parameter"
+            ),
+            data=data,
+        )
+
+    def to_semantic_text(self) -> str:
+        url = self.pik.get("endpoint_url") or self.data.get("endpoint_url", "")
+        param = self.pik.get("param_name") or self.data.get("param_name", "")
+        method = self.pik.get("method") or self.data.get("method", "GET")
+        reflected = "reflected" if self.data.get("reflection") else "not reflected"
+        parts = [f"Parameter '{param}' on {method} {url} ({reflected})"]
+        ptype = self.data.get("param_type")
+        if ptype:
+            parts.append(f"Type: {ptype}")
+        sample = self.data.get("sample_value")
+        if sample:
+            parts.append(f"Sample: {sample}")
+        return ". ".join(parts)

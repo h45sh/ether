@@ -2,8 +2,8 @@
 
 import os
 
+from ether import paths
 from ether.paths import (
-    get_action_log_path,
     get_default_data_dir,
     get_default_db_path,
     get_default_exports_dir,
@@ -37,6 +37,4 @@ def test_subpath_helpers_respect_custom_data_dir(tmp_path):
     assert get_default_exports_dir(custom_dir) == os.path.join(custom_dir, "exports")
     assert get_default_reports_dir(custom_dir) == os.path.join(custom_dir, "reports")
     assert get_default_logs_dir(custom_dir) == os.path.join(custom_dir, "logs")
-    assert get_action_log_path("action-123", custom_dir) == os.path.join(
-        custom_dir, "logs", "action-123.log"
-    )
+    assert not hasattr(paths, "get_action_log_path")

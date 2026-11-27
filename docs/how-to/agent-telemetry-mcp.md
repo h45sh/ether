@@ -46,6 +46,18 @@ ether mcp --policy unrestricted
 }
 ```
 
+*Tip: If installed via `pipx` or if `ether` is not on your global system `$PATH`, configure Claude Desktop with `pipx run`:*
+```json
+{
+  "mcpServers": {
+    "ether": {
+      "command": "pipx",
+      "args": ["run", "ether-core", "mcp"]
+    }
+  }
+}
+```
+
 #### Cursor Configuration (`.cursor/mcp.json`):
 ```json
 {
@@ -60,14 +72,29 @@ ether mcp --policy unrestricted
 
 ### B. Remote / Docker SSE Transport
 ```bash
+# Launch SSE server on loopback (auth token optional for local dev)
 ether mcp --transport sse --port 8000
+
+# Bind to all interfaces with Bearer token authentication (required under SAFE policy)
+ether mcp --transport sse --host 0.0.0.0 --port 8000 --auth-token "your-secret-token"
+
+# Or configure via environment variable
+export ETHER_MCP_AUTH_TOKEN="your-secret-token"
+ether mcp --transport sse --host 0.0.0.0 --port 8000
+```
+
+When connecting to an authenticated SSE endpoint, clients must pass the Bearer token in the `Authorization` header:
+```http
+GET /sse HTTP/1.1
+Host: 10.0.0.5:8000
+Authorization: Bearer your-secret-token
 ```
 
 ---
 
 ## 3. Authoritative MCP Tool Catalog
 
-The Ether MCP server exposes **13 high-leverage tools** organized across 5 core operational domains:
+The Ether MCP server exposes **18 high-leverage tools** organized across 6 core operational domains (alongside server-level `instructions`, `ether://schemas` & `ether://tools/{tool_name}/guidance` resources, and `perimeter_recon` / `vulnerability_triage` prompts):
 
 ### Execution & Process Supervision
 
@@ -76,10 +103,12 @@ Supervise and execute a security tool scan. If execution exceeds `timeout_second
 * **Arguments:**
   * `tool_name` (str): Registered tool name (e.g. `"nmap"`, `"nuclei"`, `"ffuf"`, `"http_probe"`).
   * `target` (str): Target domain, IP address, or URL.
-  * `arguments` (dict, optional): Custom parameters (e.g. `{"raw_flags": "-sV -p 80,443"}`).
+  * `profile` (str, optional): Preset flag profile from `manifest.toml` (`"fast"`, `"standard"`, `"deep"`).
+  * `arguments` (dict, optional): Custom parameters (e.g. `{"flags": ["-sV", "-p", "80,443"]}`).
   * `session_id` (str, optional): Target session ID (defaults to active session).
-  * `timeout_seconds` (int, default: 60): Execution timeout before background fallback.
+  * `timeout_seconds` (int | float, default: 120): Execution timeout before background fallback.
 * **Returns:** Structured JSON execution status, discovered findings count, and sanitized terminal preview.
+* **Security Policy & Scope:** Enforces the server's active `GatePolicy` (`safe` by default, or `unrestricted`). Under `safe`, cloud metadata endpoints and loopback addresses (`127.0.0.1`, `::1`) are blocked unless `EngagementScope(allow_loopback=True)` or `GatePolicy.UNRESTRICTED` is configured on the server/gateway. Server `server_info.version` is populated dynamically from package metadata.
 
 #### 2. `abort_action`
 Safely cancel a running or stalled background scan task (`SIGTERM` $\to$ `SIGKILL`).
@@ -106,7 +135,8 @@ Query discovered entities and services from the persistent SQLite graph.
   * `schema_type` (str, optional): Filter by schema (e.g. `"network.host"`, `"network.service"`, `"vulnerability.found"`).
   * `limit` (int, default: 100): Maximum entities to return.
   * `include_stale` (bool, default: false): Include decayed stale nodes.
-* **Returns:** JSON list of matching node entities with PIK and attribute data.
+  * `include_edges` (bool, default: false): Also return all graph edges (`edges`, `total_edges`) for the session.
+* **Returns:** Compact JSON object of matching node entities (and edges when `include_edges=True`).
 
 #### 5. `inspect_entity`
 Inspect deep relational connections and incident edges for a specific finding node.
@@ -163,10 +193,14 @@ Identify critical high-value assets (Domain Controllers, databases, Kerberos, RC
 
 ### Arsenal Self-Discovery
 
-#### 11. `list_tools`
-List all security tools registered in the Ether arsenal with execution tiers (`coroutine` vs `subprocess`), installation status, categories, and descriptions.
-* **Arguments:** None.
-* **Returns:** JSON list of registered tools with `name`, `binary`, `tier`, `installed`, `category`, and `description`.
+#### 11. `search_tools`
+Lazily search registered security tools by keyword, accepted schema, or produced schema without dumping the entire arsenal into context.
+* **Arguments:**
+  * `query` (str, optional): Keyword filter across tool name, summary, description, and category.
+  * `accepts` (str, optional): Filter by input finding schema (e.g., `"network.host"`).
+  * `produces` (str, optional): Filter by output finding schema (e.g., `"network.service"`).
+  * `include_profiles` (bool, default: True): Include executable `[profiles]` presets.
+* **Returns:** Compact JSON object `{"total": ..., "tools": [...]}` with `name`, `tier`, `installed`, `accepts`, `produces`, and `profiles`.
 
 #### 12. `get_tool_info`
 Get detailed manifest specifications, accepted input formats, emitted finding schemas, and binary discovery paths for a registered tool.
@@ -188,7 +222,71 @@ Unified interface to create, list, or inspect investigation workspaces and sessi
 
 ---
 
-## 4. Programmatic Agent Loop Example (Python)
+### Active Defense & Deception Intelligence
+
+#### 14. `get_deception_report`
+Evaluate and retrieve the deception, honeypot, and tarpit report for a session. Identifies active honeypots, delay-tarpits, and low-confidence findings using a 3-factor Bayesian belief engine over port entropy sprawl and banner signatures.
+* **Arguments:**
+  * `session_id` (str, optional): Target session ID (defaults to active session).
+* **Returns:** JSON payload listing `flagged_honeypots`, `active_tarpits`, and `low_confidence_findings`.
+
+---
+
+### Architectural Compliance & Drift Auditing
+
+#### 15. `audit_drift`
+Audit an observed session entity graph against an architectural baseline specification (file path or inline JSON string). Calculates normalized Jaccard topological distance $D_{topo} \in [0.0, 1.0]$ and identifies unexpected rogue services or missing required nodes.
+* **Arguments:**
+  * `baseline` (str): Baseline specification file path or JSON string.
+  * `session_id` (str, optional): Target session ID (defaults to active session).
+  * `mode` (str, default: `"topology"`): Audit mode (`"topology"` or `"strict"`).
+  * `record_findings` (bool, default: `false`): Whether to record `audit.drift` findings into the session graph.
+* **Returns:** Structured JSON `DriftReport` with `drift_score`, `mode`, `summary`, and detailed `discrepancies`.
+
+---
+
+## 4. High-Fidelity Execution Error Diagnostics & Autonomous Self-Healing
+
+When tools fail during execution (e.g., host unreachable, binary missing, or command timeout), traditional MCP implementations crash the JSON-RPC channel or return opaque empty findings.
+
+Ether surfaces granular execution telemetry payloads with a standardized `ExecutionErrorCategory` taxonomy without disconnecting the client session:
+
+```json
+{
+  "is_error": true,
+  "error_category": "TARGET_UNREACHABLE",
+  "exit_code": 1,
+  "stderr_snippet": "Connection refused by remote host 10.254.254.1:80",
+  "error": "ConnectionRefusedError",
+  "message": "Connection refused by remote host 10.254.254.1:80",
+  "remediation": "Verify target host routing and port accessibility."
+}
+```
+
+### Standardized Error Taxonomy (`ExecutionErrorCategory`):
+| Category | Exit Code | Diagnostic Trigger | Agent Self-Healing Action |
+| :--- | :--- | :--- | :--- |
+| `TARGET_UNREACHABLE` | `1` | Connection refused, host unreachable, no route to host, DNS lookup failure. | Verify target routing, switch to ping/ARP probe, or update target address. |
+| `COMMAND_TIMEOUT` | `124` | Execution deadline exceeded configured `timeout_seconds`. | Increase `timeout_seconds` or narrow scan scope (e.g., specific ports instead of `-p-`). |
+| `BINARY_MISSING` | `127` | Tool is unregistered or binary executable not found on host `$PATH`. | Fall back to an in-process Tier A coroutine tool (e.g. `http_probe`, `dnspython`). |
+| `SCOPE_BLOCKED` | `1` | Preflight gate rejected execution under active `GatePolicy` (SSRF/IMDS). | Refine target scope or switch to `GatePolicy.UNRESTRICTED` if authorized. |
+| `NON_ZERO_EXIT` | `1+` | General tool execution failure or abnormal process exit. | Inspect `stderr_snippet` and adjust custom `arguments` flags. |
+
+---
+
+## 4b. Additional MCP Tools, Resources & Workflow Prompts
+
+* **`get_telemetry_snapshot(session_id, token_budget, task_objective, selected_entity_id)`**: Compiles a 0/1 knapsack token-budgeted state snapshot with optional vector RAG objective boosting.
+* **`execute_pipeline(expression, session_id)`**: Executes a chained tool pipeline DAG (e.g., `"subfinder(target=example.com) | dnspython | http_probe"`) gated by `ActionGateway` preflight checks.
+* **`verify_session_audit(session_id)`**: Verifies the cryptographic SHA-256 chain of custody and log file hashes for a session.
+* **MCP Resources**: `ether://schemas` (lists all 25 normalized finding schemas and PIK fields) and `ether://tools/{tool_name}/guidance` (dynamic target scope and safety guidance).
+* **MCP Prompts**: `perimeter_recon(target)` and `vulnerability_triage(session_id)` workflow templates.
+* **Server Instructions**: Sent automatically during MCP handshake summarizing active `GatePolicy`, token-efficiency rules, and `<untrusted_scan_output>` boundaries.
+* **Flag Flexibility**: `execute_tool` accepts both `arguments["flags"]` and `arguments["flags"]`, and `read_action_log` transparently decompresses `.log.gz` archives for closed sessions.
+
+---
+
+## 5. Programmatic Agent Loop Example (Python)
 
 Agents can query snapshots and stream deltas directly using the Python SDK:
 
@@ -223,7 +321,7 @@ if __name__ == "__main__":
 
 ---
 
-## 5. Security Invariant: Prompt Injection Defense
+## 6. Security Invariant: Prompt Injection Defense
 
 All untrusted scan output processed by Ether's MCP server and telemetry engine is sanitized via `sanitize_untrusted_output()`:
 1. Wrapped in structural `<untrusted_scan_output>...</untrusted_scan_output>` boundary tags.
@@ -232,7 +330,7 @@ All untrusted scan output processed by Ether's MCP server and telemetry engine i
 
 ---
 
-## 6. Multi-Client Setup Reference
+## 7. Multi-Client Setup Reference
 
 ### A. Claude Desktop
 Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
@@ -277,7 +375,7 @@ Configure your agent client with the SSE URL: `http://localhost:8000/sse`.
 
 ---
 
-## 7. Practical Agent Prompts & Workflows
+## 8. Practical Agent Prompts & Workflows
 
 Once connected to Ether via MCP, give your agent natural language objectives:
 
@@ -292,12 +390,12 @@ Once connected to Ether via MCP, give your agent natural language objectives:
 > *"Inspect the current engagement session for any hosts running Apache or OpenSSH. If discovered, run nuclei with web-cve tags and report newly confirmed vulnerability nodes."*
 - **Agent Action Flow:**
   1. `query_graph(schema_type="network.service")` -> Discovers port 80/443.
-  2. `execute_tool(tool_name="nuclei", target="https://10.0.0.1", arguments={"raw_flags": "-t cves/"})`
+  2. `execute_tool(tool_name="nuclei", target="https://10.0.0.1", arguments={"flags": "-t cves/"})`
   3. `inspect_entity(entity_id=...)` -> Deep inspection of vulnerability nodes and incident relations.
 
 ---
 
-## 8. Troubleshooting & Verification
+## 9. Troubleshooting & Verification
 
 ### Test Using the Official MCP Inspector
 You can verify your Ether MCP server locally using the Anthropic MCP Inspector:

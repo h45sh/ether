@@ -1,15 +1,68 @@
 """FFUF tool adapter."""
 
 import json
+import logging
 import re
-import shlex
+import ssl
+import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+import httpx
+
+from ether.common.context import ExecutionContext
+from ether.common.exceptions import PolicyViolationError
+from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
-from ether.registry.wordlists import resolve_wordlist, substitute_wordlist_macros
+from ether.registry.assets import resolve_wordlist
 from ether.schemas.base import BaseFinding
 from ether.schemas.vulnerability import AuditMisconfig
 from ether.schemas.web import WebEndpoint
+
+logger = logging.getLogger(__name__)
+
+
+async def calibrate_fuzzer_baseline(
+    url: str,
+    timeout_sec: float = 3.0,
+    policy_is_unrestricted: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """Probe random non-existent path to detect custom 404 / wildcard response geometry.
+
+    Enforces ScopeValidator pre-connect before issuing any HTTP request.
+    Returns dict with 'size', 'words', 'lines', 'status_code' if server responds uniformly,
+    or None if fail-open on network timeout / error.
+    """
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        return None
+
+    verdict = await ScopeValidator.check_destination(
+        url, policy_is_unrestricted=policy_is_unrestricted
+    )
+    if not verdict.allowed:
+        raise PolicyViolationError(
+            f"Target '{url}' blocked by ScopeValidator pre-connect ({verdict.reason})."
+        )
+
+    nonce = uuid.uuid4().hex[:8]
+    probe_url = f"{url.rstrip('/')}/.ether_probe_{nonce}"
+    try:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        async with httpx.AsyncClient(
+            verify=ssl_ctx, timeout=timeout_sec, follow_redirects=True
+        ) as client:
+            resp = await client.get(probe_url)
+            text = resp.text
+            return {
+                "status_code": resp.status_code,
+                "size": len(resp.content),
+                "words": len(text.split()),
+                "lines": len(text.splitlines()),
+            }
+    except Exception as e:
+        logger.warning(f"Fuzzer baseline calibration failed-open on {probe_url}: {e}")
+        return None
 
 
 class FfufAdapter(ToolAdapter):
@@ -24,19 +77,30 @@ class FfufAdapter(ToolAdapter):
         re.MULTILINE,
     )
 
+    async def execute_action(
+        self,
+        target: BaseFinding,
+        params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> AsyncIterator[BaseFinding]:
+        """Execute ffuf scan with pre-flight response geometry baseline calibration."""
+        url = self.extract_url(target)
+        if url and not params.get("skip_calibration"):
+            is_unrestricted = "unrestricted" in str(getattr(context, "policy", "safe")).lower()
+            calib = await calibrate_fuzzer_baseline(url, policy_is_unrestricted=is_unrestricted)
+            if calib and calib.get("size") is not None:
+                params = dict(params)
+                flag_list = self.normalize_flags(params)
+                if "-fs" not in flag_list:
+                    flag_list = [*flag_list, "-fs", str(calib["size"])]
+                params["flags"] = flag_list
+
+        async for finding in super().execute_action(target, params, context):
+            yield finding
+
     def validate_install(self) -> bool:
         """Check if ffuf binary is available in PATH."""
         return self.is_binary_available("ffuf")
-
-    def sanitize_output(self, raw_stdout: str) -> str:
-        """Strip ffuf ASCII art, progress lines, and metadata blocks."""
-        lines = []
-        for line in raw_stdout.splitlines():
-            s = line.strip()
-            if s.startswith("::") or "Progress: [" in s or s.startswith("____"):
-                continue
-            lines.append(line)
-        return "\n".join(lines)
 
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct the ffuf command line execution."""
@@ -44,9 +108,7 @@ class FfufAdapter(ToolAdapter):
         url = self.extract_url(target)
 
         # 2. Process flags and substitute macros
-        raw_flags = params.get("raw_flags", "").strip()
-        raw_flags, _ = substitute_wordlist_macros(raw_flags)
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
 
         args = ["ffuf"]
 
@@ -92,6 +154,21 @@ class FfufAdapter(ToolAdapter):
 
         # 1. Try parsing JSON payload
         json_obj = self._parse_json(cleaned)
+        if not json_obj:
+            from ether.common.recovery import salvage_json_objects
+
+            salvaged = salvage_json_objects(cleaned)
+            for s in salvaged:
+                if "results" in s and isinstance(s["results"], list):
+                    json_obj = s
+                    break
+            if not json_obj and salvaged:
+                endpoint_items = [
+                    s for s in salvaged if "url" in s or ("input" in s and "status" in s)
+                ]
+                if endpoint_items:
+                    json_obj = {"results": endpoint_items}
+
         if json_obj and "results" in json_obj:
             results = json_obj.get("results", [])
             for item in results:
@@ -132,7 +209,19 @@ class FfufAdapter(ToolAdapter):
 
         # 2. Fallback: Parse line-by-line CLI output
         base_url = self.extract_url(target) or ""
+        if not base_url and context:
+            flags_val = context.get("params", {}).get("flags") or context.get("params", {}).get(
+                "raw_flags", ""
+            )
+            if isinstance(flags_val, list):
+                flags_val = " ".join(str(f) for f in flags_val)
+            u_match = re.search(r"-u\s+([^\s]+)", str(flags_val))
+            if u_match:
+                base_url = u_match.group(1).replace("FUZZ", "").rstrip("/")
+
+        matched_any = False
         for match in self.LINE_PATTERN.finditer(cleaned):
+            matched_any = True
             word, status_str, size_str, words_str, lines_str = match.groups()
             endpoint_url = f"{base_url.rstrip('/')}/{word.lstrip('/')}"
             status_code = int(status_str)
@@ -154,6 +243,33 @@ class FfufAdapter(ToolAdapter):
                     severity="high" if status_code == 200 else "medium",
                     host_ip=host_ip,
                 )
+
+        # 3. Fallback: Silent mode (-s) or single-path per line output
+        if not matched_any:
+            ansi_escape = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+            for line in cleaned.splitlines():
+                s = ansi_escape.sub("", line).strip()
+                if not s or s.startswith("::") or "Progress: [" in s or s.startswith("[*]"):
+                    continue
+                if "\t" in s or " " in s:
+                    continue
+                if s.startswith("http://") or s.startswith("https://"):
+                    endpoint_url = s
+                else:
+                    endpoint_url = f"{base_url.rstrip('/')}/{s.lstrip('/')}"
+                yield WebEndpoint.create(
+                    url=endpoint_url,
+                    host_ip=host_ip,
+                    status_code=200,
+                )
+                if self.SENSITIVE_PATTERN.search(s):
+                    yield AuditMisconfig.create(
+                        target=endpoint_url,
+                        check_id="exposed-sensitive-file",
+                        title=f"Exposed Sensitive Resource ({s})",
+                        severity="high",
+                        host_ip=host_ip,
+                    )
 
     def _parse_json(self, text: str) -> Optional[Dict[str, Any]]:
         try:

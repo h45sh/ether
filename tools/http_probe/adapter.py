@@ -1,13 +1,15 @@
 """Pure-Python HTTP Probe tool adapter with SSRF defense."""
 
+import asyncio
 import re
 import ssl
 import urllib.parse
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from ether.common import sanitize_untrusted_output
 from ether.common.context import ExecutionContext
 from ether.common.exceptions import PolicyViolationError
-from ether.common.ssrf import check_ssrf_safety
+from ether.common.scope import ScopeValidator
 from ether.registry.adapter import ToolAdapter
 from ether.schemas.base import BaseFinding
 from ether.schemas.network import NetworkHost, NetworkService, TLSCertificate
@@ -91,23 +93,57 @@ class HTTPProbeAdapter(ToolAdapter):
         if not url.startswith(("http://", "https://")):
             url = f"http://{url}"
 
-        # 2. SSRF Pre-Connect Defense
-        policy = params.get("policy", "safe")
-        if policy == "safe":
-            try:
-                check_ssrf_safety(url)
-            except PolicyViolationError as e:
-                await context.spool_line(f"[!] SSRF Defense Triggered: {e}", is_error=True)
-                raise
+        # 2. SSRF & Scope Pre-Connect Defense (governed strictly by context.policy)
+        policy_str = str(getattr(context, "policy", "safe")).lower()
+        is_unrestricted = "unrestricted" in policy_str
+        verdict = await ScopeValidator.check_destination(
+            url, policy_is_unrestricted=is_unrestricted
+        )
+        if not verdict.allowed:
+            msg = f"Target '{url}' blocked by SSRF policy ({verdict.reason})."
+            await context.spool_line(f"[!] SSRF Defense Triggered: {msg}", is_error=True)
+            raise PolicyViolationError(msg)
 
-        # 3. Request execution with httpx
+        # 3. Request execution with DNS-pinned PinnedTransport
+        from ether.common.transport import PinnedTransport, SSRFPinnedError
+
         timeout_sec = float(params.get("timeout", 10.0))
-        limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
+        flags_list = self.normalize_flags(params)
+        has_insecure_flag = any(tok in ("-k", "--insecure") for tok in flags_list)
+        explicit_insecure = has_insecure_flag or (params.get("verify_tls") is False)
+        if explicit_insecure and not is_unrestricted:
+            msg = "TLS verification bypass (-k/--insecure/verify_tls=False) is forbidden under GatePolicy.SAFE."
+            await context.spool_line(f"[!] Policy Violation: {msg}", is_error=True)
+            raise PolicyViolationError(msg)
+
+        verify_tls = (
+            False
+            if (explicit_insecure and is_unrestricted)
+            else bool(params.get("verify_tls", True))
+        )
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        transport = httpx.AsyncHTTPTransport(retries=1, verify=ssl_ctx)
+        if not verify_tls:
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+
+        # Define a response hook to re-validate any redirect location against the SSRF policy
+        async def _redirect_hook(response: httpx.Response) -> None:
+            if response.is_redirect:
+                location = response.headers.get("Location")
+                if location:
+                    redirect_url = urllib.parse.urljoin(str(response.request.url), location)
+                    redirect_verdict = await ScopeValidator.check_destination(
+                        redirect_url,
+                        scope=getattr(context, "scope", None),
+                        policy_is_unrestricted=is_unrestricted,
+                    )
+                    if not redirect_verdict.allowed:
+                        msg = f"Redirect target '{redirect_url}' blocked by SSRF policy ({redirect_verdict.reason})."
+                        await context.spool_line(
+                            f"[!] SSRF Redirect Defense Triggered: {msg}", is_error=True
+                        )
+                        raise PolicyViolationError(msg)
 
         await context.spool_line(f"[*] Probing {url} (timeout={timeout_sec}s)...")
 
@@ -151,15 +187,30 @@ class HTTPProbeAdapter(ToolAdapter):
                     f"[-] Could not retrieve TLS certificate directly: {ssl_err}"
                 )
 
-        async with httpx.AsyncClient(
-            transport=transport,
-            verify=ssl_ctx,
-            timeout=httpx.Timeout(timeout_sec, connect=5.0),
-            follow_redirects=True,
-            limits=limits,
-        ) as client:
+        client_cm = (
+            PinnedTransport.create_client(
+                scope=getattr(context, "scope", None),
+                timeout=timeout_sec,
+                policy_is_unrestricted=is_unrestricted,
+            )
+            if verify_tls
+            else PinnedTransport.create_unverified_client(
+                scope=getattr(context, "scope", None),
+                timeout=timeout_sec,
+                policy_is_unrestricted=is_unrestricted,
+            )
+        )
+        async with client_cm as client:
             try:
-                response = await client.get(url)
+                response = await asyncio.wait_for(client.get(url), timeout=timeout_sec)
+            except SSRFPinnedError as exc:
+                msg = f"Target blocked by SSRF policy: {exc}"
+                await context.spool_line(
+                    f"[!] SSRF Redirect Defense Triggered: {msg}", is_error=True
+                )
+                raise PolicyViolationError(msg) from exc
+            except PolicyViolationError:
+                raise
             except Exception as exc:
                 await context.spool_line(
                     f"[-] HTTP request to {url} failed: {type(exc).__name__} ({exc})",
@@ -171,6 +222,15 @@ class HTTPProbeAdapter(ToolAdapter):
             headers = dict(response.headers)
             server = headers.get("server", "").strip()
             x_powered = headers.get("x-powered-by", "").strip()
+            body_preview = (
+                sanitize_untrusted_output(response.text[:2048]) if response.text else None
+            )
+            if response.history:
+                redirect_location = response.history[0].headers.get("location") or str(response.url)
+            elif 300 <= status < 400:
+                redirect_location = headers.get("location")
+            else:
+                redirect_location = None
 
             await context.spool_line(f"[+] HTTP {status} {response.reason_phrase} - {url}")
             for h_name, h_val in headers.items():
@@ -235,6 +295,9 @@ class HTTPProbeAdapter(ToolAdapter):
                 server=server,
                 favicon_hash=favicon_hash,
                 anchor_hash=endpoint_anchor,
+                body_preview=body_preview,
+                redirect_location=redirect_location,
+                tls_verified=verify_tls,
             )
             yield endpoint
 

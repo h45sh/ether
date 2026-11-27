@@ -5,6 +5,7 @@ spooler storage permissions, and security tool binary discovery across Debian, A
 Fedora, and macOS.
 """
 
+import asyncio
 import os
 import platform
 import resource
@@ -289,15 +290,47 @@ class DiagnosticEngine:
             await store.close()
 
     def _check_tools(self, report: DiagnosticReport) -> None:
-        """Check discovery and binary availability for all registered security tool adapters."""
+        """Check discovery and binary/coroutine availability for all registered security tool adapters."""
         available_count = 0
         missing_count = 0
 
         for tool_name in self.registry.list_tools():
             tool_data = self.registry.get_tool(tool_name)
-            binary_name = tool_name
-            if tool_data and "manifest" in tool_data:
-                binary_name = getattr(tool_data["manifest"], "binary", tool_name)
+            manifest = tool_data.get("manifest") if isinstance(tool_data, dict) else None
+            adapter = tool_data.get("adapter") if isinstance(tool_data, dict) else None
+            meta = getattr(manifest, "meta", None) if manifest else None
+            binary_name = (getattr(meta, "binary", "") or tool_name) if meta else tool_name
+            execution_tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
+
+            if execution_tier == "coroutine":
+                is_ready = bool(adapter.validate_install()) if adapter else True
+                if is_ready:
+                    available_count += 1
+                    report.checks.append(
+                        DiagnosticCheck(
+                            name=f"Tool: {tool_name}",
+                            category="Tools",
+                            status="ok",
+                            message=f"Native coroutine adapter '{tool_name}' ready",
+                            details={"tool": tool_name, "execution_tier": "coroutine"},
+                        )
+                    )
+                else:
+                    missing_count += 1
+                    remedy = INSTALLATION_HINTS.get(
+                        tool_name, f"Install Python dependencies for '{tool_name}'"
+                    )
+                    report.checks.append(
+                        DiagnosticCheck(
+                            name=f"Tool: {tool_name}",
+                            category="Tools",
+                            status="info",
+                            message=f"Native coroutine adapter '{tool_name}' missing Python dependency",
+                            remedy=remedy,
+                            details={"tool": tool_name, "execution_tier": "coroutine"},
+                        )
+                    )
+                continue
 
             bin_path = shutil.which(binary_name)
             if bin_path:
@@ -366,3 +399,116 @@ class DiagnosticEngine:
         lines.append(status_line)
         lines.append("=" * 60)
         return "\n".join(lines)
+
+    async def collect_runtime_metrics(self) -> Dict[str, Any]:
+        """Collect real-time substrate telemetry metrics with zero external dependencies."""
+        soft_fd, hard_fd = 1024, 4096
+        try:
+            soft_fd, hard_fd = resource.getrlimit(resource.RLIMIT_NOFILE)
+        except Exception:
+            pass
+
+        open_fds = -1
+        try:
+            if os.path.exists("/proc/self/fd"):
+                open_fds = len(os.listdir("/proc/self/fd"))
+        except Exception:
+            open_fds = -1
+
+        rss_bytes = -1
+        try:
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            if platform.system() == "Darwin":
+                rss_bytes = int(usage.ru_maxrss)
+            else:
+                rss_bytes = int(usage.ru_maxrss * 1024)
+        except Exception:
+            rss_bytes = -1
+
+        loop_lag = 0.0
+        try:
+            loop = asyncio.get_running_loop()
+            t0 = loop.time()
+            await asyncio.sleep(0)
+            loop_lag = max(0.0, loop.time() - t0)
+        except Exception:
+            loop_lag = 0.0
+
+        return {
+            "open_fds": open_fds,
+            "max_fds": {"soft": soft_fd, "hard": hard_fd},
+            "resident_memory_bytes": rss_bytes,
+            "event_loop_lag_seconds": loop_lag,
+            "active_workers": 0,
+            "queue_depth": 0,
+            "subprocess_latencies": {"p50": 0.0, "p90": 0.0, "p99": 0.0},
+        }
+
+    def to_prometheus_text(self, metrics: Optional[Dict[str, Any]] = None) -> str:
+        """Format metrics into standard Prometheus text format (text/plain; version=0.0.4)."""
+        if metrics is None:
+            soft_fd, hard_fd = 1024, 4096
+            try:
+                soft_fd, hard_fd = resource.getrlimit(resource.RLIMIT_NOFILE)
+            except Exception:
+                pass
+            open_fds = -1
+            try:
+                if os.path.exists("/proc/self/fd"):
+                    open_fds = len(os.listdir("/proc/self/fd"))
+            except Exception:
+                pass
+            rss_bytes = -1
+            try:
+                usage = resource.getrusage(resource.RUSAGE_SELF)
+                rss_bytes = (
+                    int(usage.ru_maxrss)
+                    if platform.system() == "Darwin"
+                    else int(usage.ru_maxrss * 1024)
+                )
+            except Exception:
+                pass
+
+            metrics = {
+                "open_fds": open_fds,
+                "max_fds": {"soft": soft_fd, "hard": hard_fd},
+                "resident_memory_bytes": rss_bytes,
+                "event_loop_lag_seconds": 0.0,
+                "active_workers": 0,
+                "queue_depth": 0,
+                "subprocess_latencies": {"p50": 0.0, "p90": 0.0, "p99": 0.0},
+            }
+
+        lines = [
+            "# HELP ether_process_open_fds Number of open file descriptors in current process",
+            "# TYPE ether_process_open_fds gauge",
+            f"ether_process_open_fds {metrics.get('open_fds', 0)}",
+            "# HELP ether_process_max_fds Soft limit of max open file descriptors",
+            "# TYPE ether_process_max_fds gauge",
+            f"ether_process_max_fds {metrics.get('max_fds', {}).get('soft', 1024)}",
+            "# HELP ether_process_resident_memory_bytes Resident set size in bytes",
+            "# TYPE ether_process_resident_memory_bytes gauge",
+            f"ether_process_resident_memory_bytes {metrics.get('resident_memory_bytes', 0)}",
+            "# HELP ether_event_loop_lag_seconds Asyncio event loop latency in seconds",
+            "# TYPE ether_event_loop_lag_seconds gauge",
+            f"ether_event_loop_lag_seconds {metrics.get('event_loop_lag_seconds', 0.0):.6f}",
+            "# HELP ether_active_workers Number of active worker coroutines",
+            "# TYPE ether_active_workers gauge",
+            f"ether_active_workers {metrics.get('active_workers', 0)}",
+            "# HELP ether_queue_depth Pending queue depth across execution pipelines",
+            "# TYPE ether_queue_depth gauge",
+            f"ether_queue_depth {metrics.get('queue_depth', 0)}",
+            "# HELP ether_subprocess_duration_seconds Subprocess execution latency percentiles",
+            "# TYPE ether_subprocess_duration_seconds summary",
+        ]
+        latencies = metrics.get("subprocess_latencies", {})
+        lines.append(
+            f'ether_subprocess_duration_seconds{{quantile="0.5"}} {latencies.get("p50", 0.0)}'
+        )
+        lines.append(
+            f'ether_subprocess_duration_seconds{{quantile="0.9"}} {latencies.get("p90", 0.0)}'
+        )
+        lines.append(
+            f'ether_subprocess_duration_seconds{{quantile="0.99"}} {latencies.get("p99", 0.0)}'
+        )
+        return "\n".join(lines) + "\n"

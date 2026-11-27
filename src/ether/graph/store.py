@@ -11,8 +11,8 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import aiosqlite
 
@@ -21,8 +21,12 @@ try:
 except ImportError:
     sqlite_vec = None
 
-from ether.common.embeddings import get_embedding_engine
+from ether.graph.decay import TemporalDecayEngine
+from ether.graph.identity import IdentityAnchoringEngine
+from ether.graph.merger import _hydrate_node_row
 from ether.graph.timeline import ActionTimelineRepository
+from ether.graph.vector_index import VectorIndex
+from ether.graph.write_queue import UpsertResult, WriteQueue
 from ether.schemas.base import BaseFinding
 from ether.schemas.power import ActionRequest
 
@@ -94,6 +98,19 @@ CREATE TABLE IF NOT EXISTS notes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (scope_type, scope_id)
 );
+CREATE TABLE IF NOT EXISTS node_beliefs (
+    session_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    is_honeypot INTEGER NOT NULL DEFAULT 0,
+    is_tarpit INTEGER NOT NULL DEFAULT 0,
+    indicators TEXT NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (session_id, node_id),
+    FOREIGN KEY (session_id, node_id) REFERENCES nodes(session_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_node_beliefs_session ON node_beliefs(session_id);
+CREATE INDEX IF NOT EXISTS idx_node_beliefs_confidence ON node_beliefs(session_id, confidence);
 CREATE INDEX IF NOT EXISTS idx_nodes_session_schema ON nodes(session_id, schema_type);
 CREATE INDEX IF NOT EXISTS idx_nodes_anchor ON nodes(session_id, anchor_hash);
 CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(session_id, status);
@@ -109,7 +126,9 @@ CREATE INDEX IF NOT EXISTS idx_nodes_session_updated ON nodes(session_id, update
 CREATE INDEX IF NOT EXISTS idx_nodes_session_action ON nodes(session_id, action_id);
 CREATE INDEX IF NOT EXISTS idx_edges_session_action ON edges(session_id, action_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_findings USING vec0(
-    node_id text primary key,
+    id text primary key,
+    session_id text partition key,
+    node_id text,
     embedding float[384] distance_metric=cosine
 );
 """
@@ -125,16 +144,50 @@ def _cached_node_id(schema_type: str, pik_items: tuple) -> str:
 class GraphStore:
     """Manages workspaces, sessions, and stateful entity graphs."""
 
-    def __init__(self, db_path: str):
+    def __init__(
+        self,
+        db_path: str,
+        crypto_engine: Optional[Any] = None,
+        sqlcipher_enabled: bool = False,
+        settings: Optional[Any] = None,
+    ):
         self.db_path = db_path
+        self._settings = settings
+        if crypto_engine is None and settings is not None and db_path != ":memory:":
+            if getattr(getattr(settings, "graph", None), "encrypt_at_rest", False):
+                from ether.graph.crypto import CryptoEngine
+
+                data_dir = getattr(getattr(settings, "paths", None), "data_dir", None)
+                crypto_engine = CryptoEngine(CryptoEngine.resolve_master_key(data_dir=data_dir))
+        self._crypto_engine = crypto_engine
         self._on_upsert_callbacks: List[Callable[[str, BaseFinding], Any]] = []
         self._on_batch_callbacks: List[Callable[[str, List[BaseFinding]], Any]] = []
         self._conn: Optional[aiosqlite.Connection] = None
         self._lock: Optional[asyncio.Lock] = None
         self._closed: bool = False
+        self._closing: bool = False
         self._session_bloom: Dict[str, Any] = {}
+        self._session_status_cache: Dict[str, str] = {}
         self._warmed_sessions: Set[str] = set()
         self.timeline = ActionTimelineRepository(self)
+        batch_win = getattr(getattr(settings, "graph", None), "write_batch_window_sec", 0.001)
+        max_batch = getattr(getattr(settings, "graph", None), "write_max_batch_size", 500)
+        self.write_worker = WriteQueue(
+            self._get_conn,
+            batch_window_seconds=batch_win,
+            max_batch_size=max_batch,
+        )
+        self.vector_index = VectorIndex()
+        self._read_pool: List[aiosqlite.Connection] = []
+        self._read_pool_lock: Optional[asyncio.Lock] = None
+
+    @property
+    def _write_queue(self) -> Optional[asyncio.Queue]:
+        return self.write_worker.queue
+
+    @property
+    def _writer_task(self) -> Optional[asyncio.Task]:
+        return self.write_worker.task
 
     def _get_lock(self) -> asyncio.Lock:
         if self._lock is None:
@@ -158,12 +211,6 @@ class GraphStore:
         self._on_batch_callbacks.append(callback)
 
     @asynccontextmanager
-    async def connection(self):
-        """Public context manager for acquiring a database connection."""
-        async with self._get_conn() as conn:
-            yield conn
-
-    @asynccontextmanager
     async def _get_conn(self):
         """Helper to get a connection, supporting persistent connection for all paths."""
         if self._closed:
@@ -173,15 +220,19 @@ class GraphStore:
                 if self.db_path != ":memory:":
                     db_dir = os.path.dirname(os.path.abspath(self.db_path))
                     if db_dir:
-                        os.makedirs(db_dir, exist_ok=True)
+                        os.makedirs(db_dir, mode=0o700, exist_ok=True)
+                        try:
+                            os.chmod(db_dir, 0o700)
+                        except OSError:
+                            pass
+                    if not os.path.exists(self.db_path):
+                        try:
+                            fd = os.open(self.db_path, os.O_CREAT | os.O_WRONLY, 0o600)
+                            os.close(fd)
+                        except OSError:
+                            pass
                 self._conn = await aiosqlite.connect(self.db_path)
-                if sqlite_vec is not None:
-                    try:
-                        await self._conn.enable_load_extension(True)
-                        await self._conn.load_extension(sqlite_vec.loadable_path())
-                        await self._conn.enable_load_extension(False)
-                    except Exception as e:
-                        logger.warning(f"Could not load sqlite-vec extension: {e}")
+                await self.vector_index.load_extension(self._conn)
                 await self._conn.execute("PRAGMA foreign_keys = ON")
                 await self._conn.execute("PRAGMA trusted_schema = OFF")
                 await self._conn.execute("PRAGMA busy_timeout = 5000")
@@ -195,56 +246,43 @@ class GraphStore:
                         pass
             yield self._conn
 
-    async def _migrate_schema(self, db: aiosqlite.Connection) -> None:
-        """Apply non-destructive schema migrations for existing databases."""
-        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        existing_tables = {row[0] for row in await cursor.fetchall()}
+    def get_read_conn(self):
+        """Acquire a read-only database connection context manager from the reader pool."""
+        return self._get_read_conn()
 
-        table_columns = {
-            "nodes": [
-                ("action_id", "TEXT"),
-                ("created_action_id", "TEXT"),
-                ("observation_count", "INTEGER DEFAULT 1"),
-                ("ttl_seconds", "INTEGER DEFAULT 3600"),
-                ("anchor_hash", "TEXT"),
-                ("last_seen_at", "TIMESTAMP"),
-                ("created_at", "TIMESTAMP"),
-                ("updated_at", "TIMESTAMP"),
-            ],
-            "edges": [
-                ("action_id", "TEXT"),
-                ("created_at", "TIMESTAMP"),
-                ("updated_at", "TIMESTAMP"),
-            ],
-            "event_log": [
-                ("closed", "INTEGER DEFAULT 0"),
-            ],
-            "sessions": [
-                ("closed_at", "TIMESTAMP"),
-            ],
-            "workspaces": [
-                ("closed_at", "TIMESTAMP"),
-            ],
-        }
-
-        for table, cols in table_columns.items():
-            if table in existing_tables:
-                col_cursor = await db.execute(f"PRAGMA table_info({table})")
-                existing_cols = {col_row[1] for col_row in await col_cursor.fetchall()}
-                for col_name, col_def in cols:
-                    if col_name not in existing_cols:
-                        await db.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+    async def run_write_operation(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        session_id: Optional[str] = None,
+        enforce_open: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Serialize a mutation through WriteQueueWorker with centralized CLOSED-session sealing."""
+        return await self._run_write(
+            func, *args, session_id=session_id, enforce_open=enforce_open, **kwargs
+        )
 
     async def initialize(self):
-        """Create tables and indices if they don't exist, applying migrations if needed."""
+        """Create tables and indices if they don't exist."""
+        self._ensure_writer_started()
         async with self._get_conn() as db:
-            await self._migrate_schema(db)
+            cursor = await db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_findings'"
+            )
+            row = await cursor.fetchone()
+            if (
+                row
+                and row[0]
+                and ("session_id" not in row[0] or "id text primary key" not in row[0].lower())
+            ):
+                await db.execute("DROP TABLE IF EXISTS vec_findings")
             await db.executescript(SCHEMA_DDL)
             await db.commit()
 
     async def check_integrity(self) -> tuple[str, list[str]]:
         """Run an SQLite integrity check and return status and table list."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             cursor = await db.execute("PRAGMA integrity_check")
             row = await cursor.fetchone()
             integrity_status = row[0] if row else "unknown"
@@ -253,9 +291,102 @@ class GraphStore:
             tables = [r[0] for r in await cursor.fetchall()]
             return integrity_status, tables
 
+    def _get_read_pool_lock(self) -> asyncio.Lock:
+        if self._read_pool_lock is None:
+            self._read_pool_lock = asyncio.Lock()
+        return self._read_pool_lock
+
+    @asynccontextmanager
+    async def _get_read_conn(self):
+        """Acquire a read-only database connection from pool or fallback to primary in memory."""
+        if self._closed:
+            raise ValueError("Cannot operate on a closed database.")
+        if self.db_path == ":memory:":
+            async with self._get_conn() as conn:
+                yield conn
+            return
+
+        if self._conn is None:
+            async with self._get_conn():
+                pass
+
+        conn = None
+        async with self._get_read_pool_lock():
+            if self._read_pool:
+                conn = self._read_pool.pop()
+
+        if conn is None:
+            conn = await aiosqlite.connect(self.db_path)
+            await conn.execute("PRAGMA query_only = ON")
+            await conn.execute("PRAGMA busy_timeout = 5000")
+            await self.vector_index.load_extension(conn)
+
+        try:
+            yield conn
+        finally:
+            if not self._closed and not self._closing:
+                async with self._get_read_pool_lock():
+                    if len(self._read_pool) < 10:
+                        self._read_pool.append(conn)
+                    else:
+                        await conn.close()
+            else:
+                await conn.close()
+
+    def _ensure_writer_started(self) -> None:
+        self.write_worker.ensure_started()
+
+    async def _enqueue_write(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return await self.write_worker.enqueue(func, *args, **kwargs)
+
+    async def _run_write(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        session_id: Optional[str] = None,
+        enforce_open: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Serialize a mutation through WriteQueueWorker with centralized CLOSED-session sealing."""
+
+        async def _guarded(db: aiosqlite.Connection) -> Any:
+            if session_id is not None and enforce_open:
+                st = self._session_status_cache.get(session_id)
+                if st is None:
+                    cursor = await db.execute(
+                        "SELECT status FROM sessions WHERE id = ? LIMIT 1",
+                        (session_id,),
+                    )
+                    row = await cursor.fetchone()
+                    st = row[0] if row else "ACTIVE"
+                    self._session_status_cache[session_id] = st
+                if st == "CLOSED":
+                    raise PermissionError(
+                        f"Session '{session_id}' is forensically sealed and closed."
+                    )
+            return await func(db, *args, **kwargs)
+
+        return await self._enqueue_write(_guarded)
+
     async def close(self):
-        """Close the persistent connection if it exists."""
+        """Close the database cleanly, draining all pending operations."""
+        self._closing = True
+
+        # 1. Drain pending write queue operations
+        await self.write_worker.close()
+
         self._closed = True
+
+        # 2. Close reader pool
+        if self._read_pool:
+            for r_conn in self._read_pool:
+                try:
+                    await r_conn.close()
+                except Exception:
+                    pass
+            self._read_pool.clear()
+
+        # 3. Close primary persistent connection
         if self._conn:
             try:
                 await self._conn.close()
@@ -267,7 +398,8 @@ class GraphStore:
         self, workspace_name: str = "Default Workspace", session_name: str = "Default Session"
     ) -> tuple[str, str]:
         """Ensure a named workspace and session exist and return their IDs (ws_id, sess_id)."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> tuple[str, str]:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT id FROM workspaces WHERE name = ? LIMIT 1",
@@ -297,8 +429,9 @@ class GraphStore:
                     (sess_id, ws_id, session_name, "SYSTEM"),
                 )
 
-            await db.commit()
             return ws_id, sess_id
+
+        return await self._run_write(_op)
 
     async def get_or_create_default_session(self) -> tuple[str, str]:
         """Ensure the default workspace and session exist and return their IDs (ws_id, sess_id)."""
@@ -312,22 +445,25 @@ class GraphStore:
 
     async def create_workspace(self, name: str) -> str:
         workspace_id = str(uuid.uuid4())
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "INSERT INTO workspaces (id, name) VALUES (?, ?)", (workspace_id, name)
             )
-            await db.commit()
+
+        await self._run_write(_op)
         return workspace_id
 
     async def rename_workspace(self, workspace_id: str, new_name: str) -> None:
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE workspaces SET name = ? WHERE id = ?", (new_name, workspace_id)
             )
-            await db.commit()
+
+        await self._run_write(_op)
 
     async def list_workspaces(self, status_filter: Optional[str] = None) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             if status_filter:
                 cursor = await db.execute(
@@ -341,7 +477,7 @@ class GraphStore:
 
     async def get_workspace(self, workspace_id: str) -> Optional[Dict]:
         """Get workspace metadata."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM workspaces WHERE id = ?", (workspace_id,))
             row = await cursor.fetchone()
@@ -349,21 +485,25 @@ class GraphStore:
 
     async def close_workspace(self, workspace_id: str) -> None:
         """Mark workspace as closed/archived."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE workspaces SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (workspace_id,),
             )
-            await db.commit()
+
+        await self._run_write(_op)
 
     async def reopen_workspace(self, workspace_id: str) -> None:
         """Reopen a closed workspace."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE workspaces SET status = 'ACTIVE', closed_at = NULL WHERE id = ?",
                 (workspace_id,),
             )
-            await db.commit()
+
+        await self._run_write(_op)
 
     # --- Session Management ---
 
@@ -371,22 +511,25 @@ class GraphStore:
         self, workspace_id: str, name: str, session_id: Optional[str] = None
     ) -> str:
         actual_session_id = session_id or str(uuid.uuid4())
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "INSERT INTO sessions (id, workspace_id, name) VALUES (?, ?, ?)",
                 (actual_session_id, workspace_id, name),
             )
-            await db.commit()
+
+        await self._run_write(_op)
         return actual_session_id
 
     async def rename_session(self, session_id: str, new_name: str) -> None:
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("UPDATE sessions SET name = ? WHERE id = ?", (new_name, session_id))
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_session(self, session_id: str) -> Optional[Dict]:
         """Get session metadata."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
             row = await cursor.fetchone()
@@ -395,7 +538,7 @@ class GraphStore:
     async def list_sessions(
         self, workspace_id: str, status_filter: Optional[str] = None
     ) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             if status_filter:
                 cursor = await db.execute(
@@ -410,14 +553,70 @@ class GraphStore:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
-    async def close_session(self, session_id: str) -> None:
-        """Mark session as closed/archived."""
-        async with self._get_conn() as db:
+    async def list_all_sessions(self, status_filter: Optional[str] = None) -> List[Dict]:
+        """List all sessions across all workspaces ordered by creation time descending."""
+        async with self._get_read_conn() as db:
+            db.row_factory = aiosqlite.Row
+            if status_filter:
+                cursor = await db.execute(
+                    "SELECT * FROM sessions WHERE status = ? ORDER BY created_at DESC",
+                    (status_filter,),
+                )
+            else:
+                cursor = await db.execute("SELECT * FROM sessions ORDER BY created_at DESC")
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    def _hydrate_row(self, row: aiosqlite.Row) -> Dict[str, Any]:
+        """Hydrate a node row and transparently decrypt fields when CryptoEngine is active."""
+        hydrated = _hydrate_node_row(row)
+        if self._crypto_engine is not None and isinstance(hydrated.get("data"), dict):
+            hydrated["data"] = self._crypto_engine.decrypt_finding_data(
+                hydrated.get("schema_type", ""), hydrated["data"]
+            )
+        return hydrated
+
+    async def _mark_session_closed_sql(self, session_id: str) -> None:
+        """Persist CLOSED session state via WriteQueue."""
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE sessions SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (session_id,),
             )
-            await db.commit()
+
+        self._session_status_cache[session_id] = "CLOSED"
+        await self._run_write(_op, session_id=session_id, enforce_open=False)
+
+    async def close_session(self, session_id: str, private_key: Optional[bytes] = None) -> None:
+        """Atomically seal session via two-phase SessionSealer and mark CLOSED."""
+        from ether.common.session_sealer import SessionSealer
+
+        data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
+        sealer = SessionSealer(store=self, data_dir=data_dir)
+        await sealer.seal_session(session_id, private_key=private_key)
+
+    async def verify_session_seal(
+        self,
+        session_id: str,
+        public_key: Optional[bytes] = None,
+        require_trusted_key: bool = False,
+    ) -> Tuple[bool, str]:
+        """Verify that a closed persistent session is bound to a valid Ed25519 seal receipt."""
+        session = await self.get_session(session_id)
+        if not session or session.get("status") != "CLOSED":
+            return False, f"Session '{session_id}' is not CLOSED."
+        data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
+        if self.db_path == ":memory:" and data_dir is None:
+            return True, "In-memory closed session verified."
+        from ether.common.session_sealer import SessionSealer
+
+        return SessionSealer.verify_seal(
+            session_id,
+            data_dir=data_dir,
+            public_key=public_key,
+            require_trusted_key=require_trusted_key,
+        )
 
     async def is_session_closed(self, session_id: str) -> bool:
         """Check if a session is forensically closed."""
@@ -425,30 +624,41 @@ class GraphStore:
         return bool(session and session.get("status") == "CLOSED")
 
     async def reopen_session(self, session_id: str) -> None:
-        """Reopen an archived session back to ACTIVE."""
-        async with self._get_conn() as db:
+        """Reopen an archived session back to ACTIVE and invalidate any prior seal receipt."""
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE sessions SET status = 'ACTIVE', closed_at = NULL WHERE id = ?",
                 (session_id,),
             )
-            await db.commit()
+
+        self._session_status_cache[session_id] = "ACTIVE"
+        await self._run_write(_op, session_id=session_id, enforce_open=False)
+
+        if self.db_path != ":memory:":
+            from ether.common.session_sealer import SessionSealer
+
+            data_dir = getattr(getattr(self._settings, "paths", None), "data_dir", None)
+            sealer = SessionSealer(store=self, data_dir=data_dir)
+            receipt_path = sealer._receipt_path(session_id)
+            if receipt_path.exists():
+                try:
+                    receipt_path.unlink()
+                except OSError:
+                    pass
+            journal_path = sealer._journal_path(session_id)
+            if journal_path.exists():
+                try:
+                    journal_path.unlink()
+                except OSError:
+                    pass
 
     async def delete_workspace(self, workspace_id: str):
         """Delete a workspace and all its sessions/graphs (cascade)."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("PRAGMA foreign_keys = ON")
-            if sqlite_vec is not None:
-                try:
-                    await db.execute(
-                        """DELETE FROM vec_findings WHERE node_id IN (
-                               SELECT n.id FROM nodes n
-                               JOIN sessions s ON n.session_id = s.id
-                               WHERE s.workspace_id = ?
-                           )""",
-                        (workspace_id,),
-                    )
-                except Exception as e:
-                    logger.warning(f"Error deleting workspace vectors: {e}")
+            await self.vector_index.delete_workspace_vectors(db, workspace_id)
             await db.execute(
                 """
                 DELETE FROM notes
@@ -462,32 +672,28 @@ class GraphStore:
                 (workspace_id,),
             )
             await db.execute("DELETE FROM workspaces WHERE id = ?", (workspace_id,))
-            await db.commit()
+
+        await self._run_write(_op)
 
     async def delete_session(self, session_id: str):
         """Delete a single session, its graph data, and its notes."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("PRAGMA foreign_keys = ON")
-            if sqlite_vec is not None:
-                try:
-                    await db.execute(
-                        "DELETE FROM vec_findings WHERE node_id IN (SELECT id FROM nodes WHERE session_id = ?)",
-                        (session_id,),
-                    )
-                except Exception as e:
-                    logger.warning(f"Error deleting session vectors: {e}")
+            await self.vector_index.delete_session_vectors(db, session_id)
             await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             await db.execute(
                 "DELETE FROM notes WHERE (scope_type = 'session' AND scope_id = ?) OR (scope_type = 'learning' AND scope_id = ?)",
                 (session_id, session_id),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id, enforce_open=False)
 
     # --- Notes Management ---
 
     async def get_notes(self, scope_type: str, scope_id: str) -> str:
         """Fetch persistent notes for a specific scope (e.g. 'session' or 'learning')."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             cursor = await db.execute(
                 "SELECT content FROM notes WHERE scope_type = ? AND scope_id = ?",
                 (scope_type, str(scope_id)),
@@ -497,7 +703,8 @@ class GraphStore:
 
     async def save_notes(self, scope_type: str, scope_id: str, content: str) -> None:
         """Atomically persist notes for a specific scope in SQLite."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 """
                 INSERT INTO notes (scope_type, scope_id, content, updated_at)
@@ -508,20 +715,24 @@ class GraphStore:
                 """,
                 (scope_type, str(scope_id), content),
             )
-            await db.commit()
+
+        target_session_id = str(scope_id) if scope_type in ("session", "learning") else None
+        await self._run_write(_op, session_id=target_session_id)
 
     async def move_session(self, session_id: str, target_workspace_id: str):
         """Move a session to a different workspace."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute(
                 "UPDATE sessions SET workspace_id = ? WHERE id = ?",
                 (target_workspace_id, session_id),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_recent_activity(self, workspace_id: str, limit: int = 5) -> List[Dict]:
         """Fetch latest events across all sessions in a workspace."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             query = """
                 SELECT e.*, s.name as session_name
@@ -552,302 +763,21 @@ class GraphStore:
         if not findings:
             return []
 
-        if await self.is_session_closed(session_id):
+        if self._session_status_cache.get(session_id) == "CLOSED":
             raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
 
-        node_ids: List[str] = []
-        event_log_params = []
-        unique_node_ids: List[str] = []
-        seen = set()
-        node_metadata: Dict[str, Dict[str, Any]] = {}
-
-        parent_nodes: Dict[str, tuple] = {}
-        parent_edges: set = set()
-        assoc_nodes: Dict[str, tuple] = {}
-        assoc_edges: set = set()
-
-        for finding in findings:
-            node_id = self.generate_node_id(finding.schema_type, finding.pik)
-            node_ids.append(node_id)
-
-            event_log_params.append(
-                (
-                    session_id,
-                    finding.schema_type,
-                    finding.model_dump_json(),
-                    f"Discovered {finding.schema_type}",
-                    "{}",
-                    "{}",
-                )
-            )
-
-            anchor_hash = getattr(finding, "anchor_hash", None)
-            if not anchor_hash and isinstance(finding.data, dict):
-                for key in (
-                    "anchor_hash",
-                    "tls_cert_sha256",
-                    "ssh_hostkey_fingerprint",
-                    "favicon_hash",
-                    "soa_serial",
-                ):
-                    val = finding.data.get(key)
-                    if val:
-                        prefix = (
-                            "tls"
-                            if "tls" in key
-                            else (
-                                "ssh"
-                                if "ssh" in key
-                                else (
-                                    "favicon"
-                                    if "favicon" in key
-                                    else ("soa" if "soa" in key else "")
-                                )
-                            )
-                        )
-                        anchor_hash = (
-                            f"{prefix}:{val}"
-                            if prefix and not str(val).startswith(f"{prefix}:")
-                            else str(val)
-                        )
-                        break
-
-            ttl_seconds = getattr(finding, "ttl_seconds", 3600) or 3600
-
-            if node_id not in seen:
-                seen.add(node_id)
-                unique_node_ids.append(node_id)
-                node_metadata[node_id] = {
-                    "schema_type": finding.schema_type,
-                    "pik": finding.pik,
-                    "data": dict(finding.data),
-                    "status": finding.status,
-                    "ttl_seconds": ttl_seconds,
-                    "anchor_hash": anchor_hash,
-                }
-            else:
-                node_metadata[node_id]["data"].update(finding.data)
-                node_metadata[node_id]["status"] = finding.status
-                node_metadata[node_id]["ttl_seconds"] = ttl_seconds
-                if anchor_hash:
-                    node_metadata[node_id]["anchor_hash"] = anchor_hash
-
-            if finding.parent:
-                p = finding.parent
-                parent_id = self.generate_node_id(p.target_type, p.target_pik)
-                parent_nodes[parent_id] = (
-                    session_id,
-                    parent_id,
-                    p.target_type,
-                    json.dumps(p.target_pik),
-                    "{}",
-                )
-                parent_edges.add((session_id, parent_id, node_id, p.via))
-
-            for assoc in finding.associations:
-                assoc_id = self.generate_node_id(assoc.target_type, assoc.target_pik)
-                assoc_nodes[assoc_id] = (
-                    session_id,
-                    assoc_id,
-                    assoc.target_type,
-                    json.dumps(assoc.target_pik),
-                    "{}",
-                )
-                assoc_edges.add((session_id, node_id, assoc_id, assoc.via))
+        result: UpsertResult = await self.write_worker.enqueue_upsert(
+            session_id,
+            findings,
+            action_id=action_id,
+            upsert_fn=self._raw_upsert_findings_batch,
+        )
+        node_ids = result.node_ids
+        unique_node_ids = result.unique_node_ids
+        parent_nodes = result.parent_nodes
+        assoc_nodes = result.assoc_nodes
 
         bloom = self._get_bloom(session_id)
-
-        async with self._get_conn() as db:
-            # Warm up bloom filter for this session if newly accessed
-            if session_id not in self._warmed_sessions:
-                cursor = await db.execute(
-                    "SELECT id FROM nodes WHERE session_id = ?", (session_id,)
-                )
-                rows = await cursor.fetchall()
-                for (nid,) in rows:
-                    bloom.add(nid)
-                self._warmed_sessions.add(session_id)
-
-            # 1. Log the events in a single batch
-            await db.executemany(
-                """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                event_log_params,
-            )
-
-            # 2. Fetch existing data only for candidate node IDs that might exist in this session (via Bloom filter)
-            candidate_ids = [nid for nid in unique_node_ids if nid in bloom]
-            if candidate_ids:
-                for i in range(0, len(candidate_ids), 500):
-                    chunk = candidate_ids[i : i + 500]
-                    placeholders = ",".join("?" for _ in chunk)
-                    query_parts = (
-                        "SELECT id, data_json FROM nodes WHERE session_id = ? AND id IN (",
-                        placeholders,
-                        ")",
-                    )
-                    select_sql = "".join(query_parts)
-                    cursor = await db.execute(select_sql, [session_id, *chunk])
-                    rows = await cursor.fetchall()
-                    for r_id, r_data in rows:
-                        if r_data:
-                            merged = json.loads(r_data)
-                            merged.update(node_metadata[r_id]["data"])
-                            node_metadata[r_id]["data"] = merged
-
-            # 3. Batch upsert the nodes
-            nodes_params = [
-                (
-                    session_id,
-                    nid,
-                    meta["schema_type"],
-                    json.dumps(meta["pik"]),
-                    json.dumps(meta["data"]),
-                    meta["status"],
-                    action_id,
-                    action_id,
-                    meta["ttl_seconds"],
-                    meta["anchor_hash"],
-                )
-                for nid, meta in node_metadata.items()
-            ]
-            await db.executemany(
-                """INSERT INTO nodes (
-                       session_id, id, schema_type, pik_json, data_json, status,
-                       action_id, created_action_id, ttl_seconds, anchor_hash,
-                       observation_count, last_seen_at
-                   )
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-                   ON CONFLICT(session_id, id) DO UPDATE SET
-                       data_json = excluded.data_json,
-                       status = excluded.status,
-                       action_id = COALESCE(excluded.action_id, nodes.action_id),
-                       observation_count = nodes.observation_count + 1,
-                       ttl_seconds = excluded.ttl_seconds,
-                       anchor_hash = COALESCE(excluded.anchor_hash, nodes.anchor_hash),
-                       last_seen_at = CURRENT_TIMESTAMP,
-                       updated_at = CURRENT_TIMESTAMP""",
-                nodes_params,
-            )
-
-            # 4. Handle Parent and Association Relations (Auto-wiring in consolidated batches)
-            rel_nodes = list(parent_nodes.values())
-            if assoc_nodes:
-                rel_nodes.extend(assoc_nodes.values())
-            if rel_nodes:
-                await db.executemany(
-                    """INSERT OR IGNORE INTO nodes (
-                           session_id, id, schema_type, pik_json, data_json,
-                           action_id, created_action_id, observation_count, ttl_seconds, last_seen_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3600, CURRENT_TIMESTAMP)""",
-                    [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
-                )
-
-            # 4.5 Invariant Identity Anchoring & Cross-IP Migration
-            migration_edges: set = set()
-            stale_migrated_node_ids: set = set()
-            migration_event_params = []
-
-            for nid, meta in node_metadata.items():
-                anchor = meta.get("anchor_hash")
-                if not anchor:
-                    continue
-                cursor = await db.execute(
-                    """
-                    SELECT n.id, n.status,
-                           (SELECT 1 FROM edges e
-                            WHERE e.session_id = n.session_id
-                              AND e.source_id = n.id
-                              AND e.target_id = ?
-                              AND e.relation_type = 'anchored_identity') as has_edge
-                    FROM nodes n
-                    WHERE n.session_id = ? AND n.anchor_hash = ? AND n.id != ?
-                    ORDER BY n.updated_at DESC
-                    """,
-                    (nid, session_id, anchor, nid),
-                )
-                matching_nodes = await cursor.fetchall()
-                for old_id, old_status, has_edge in matching_nodes:
-                    migration_edges.add((session_id, old_id, nid, "anchored_identity"))
-                    if old_status != "stale":
-                        stale_migrated_node_ids.add(old_id)
-                    if not has_edge:
-                        migration_event_params.append(
-                            (
-                                session_id,
-                                "identity.migration",
-                                json.dumps(
-                                    {
-                                        "anchor_hash": anchor,
-                                        "from_node_id": old_id,
-                                        "to_node_id": nid,
-                                    }
-                                ),
-                                f"Anchored identity migration: {old_id} -> {nid} ({anchor})",
-                                json.dumps({"action_id": action_id} if action_id else {}),
-                                "{}",
-                            )
-                        )
-
-            if stale_migrated_node_ids:
-                placeholders = ",".join("?" for _ in stale_migrated_node_ids)
-                await db.execute(
-                    f"UPDATE nodes SET status = 'stale', updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id IN ({placeholders})",
-                    [session_id, *stale_migrated_node_ids],
-                )
-
-            if migration_event_params:
-                await db.executemany(
-                    """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    migration_event_params,
-                )
-
-            rel_edges = list(parent_edges | assoc_edges | migration_edges)
-            if rel_edges:
-                await db.executemany(
-                    """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
-                           action_id = COALESCE(excluded.action_id, edges.action_id),
-                           updated_at = CURRENT_TIMESTAMP""",
-                    [(r[0], r[1], r[2], r[3], action_id) for r in rel_edges],
-                )
-
-            # 5. Vector Indexing in vec_findings (sqlite-vec)
-            if sqlite_vec is not None:
-                engine = get_embedding_engine()
-                vector_delete_ids = []
-                vector_params = []
-                seen_vec = set()
-                for finding in findings:
-                    nid = self.generate_node_id(finding.schema_type, finding.pik)
-                    if nid in seen_vec:
-                        continue
-                    seen_vec.add(nid)
-                    try:
-                        semantic_text = finding.to_semantic_text()
-                        vec = engine.embed_text(semantic_text)
-                        serialized = sqlite_vec.serialize_float32(vec)
-                        vector_delete_ids.append((nid,))
-                        vector_params.append((nid, serialized))
-                    except Exception as e:
-                        logger.warning(f"Could not compute semantic embedding for node {nid}: {e}")
-
-                if vector_params:
-                    try:
-                        await db.executemany(
-                            "DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids
-                        )
-                        await db.executemany(
-                            "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)",
-                            vector_params,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Error syncing vectors to vec_findings: {e}")
-
-            await db.commit()
-
         # Update Bloom filter with all newly upserted node IDs and relationship nodes
         for nid in unique_node_ids:
             bloom.add(nid)
@@ -878,6 +808,312 @@ class GraphStore:
 
         return node_ids
 
+    async def _raw_upsert_findings_batch(
+        self,
+        db: aiosqlite.Connection,
+        session_id: str,
+        findings: List[BaseFinding],
+        action_id: Optional[str] = None,
+    ) -> tuple[List[str], List[str], Dict[str, tuple], Dict[str, tuple]]:
+        st = self._session_status_cache.get(session_id)
+        if st is None:
+            cursor = await db.execute(
+                "SELECT status FROM sessions WHERE id = ? LIMIT 1", (session_id,)
+            )
+            row = await cursor.fetchone()
+            st = row[0] if row else "ACTIVE"
+            self._session_status_cache[session_id] = st
+        if st == "CLOSED":
+            raise PermissionError(f"Session '{session_id}' is forensically sealed and closed.")
+        node_ids: List[str] = []
+        event_log_params = []
+        unique_node_ids: List[str] = []
+        seen = set()
+        node_metadata: Dict[str, Dict[str, Any]] = {}
+
+        parent_nodes: Dict[str, tuple] = {}
+        parent_edges: set = set()
+        assoc_nodes: Dict[str, tuple] = {}
+        assoc_edges: set = set()
+
+        for finding in findings:
+            node_id = self.generate_node_id(finding.schema_type, finding.pik)
+            node_ids.append(node_id)
+
+            event_log_params.append(
+                (
+                    session_id,
+                    finding.schema_type,
+                    finding.model_dump_json(),
+                    f"Discovered {finding.schema_type}",
+                    "{}",
+                    "{}",
+                )
+            )
+
+            anchor_hash = IdentityAnchoringEngine.extract_anchor_hash(finding)
+            ttl_seconds = getattr(finding, "ttl_seconds", 3600) or 3600
+
+            if node_id not in seen:
+                seen.add(node_id)
+                unique_node_ids.append(node_id)
+                node_metadata[node_id] = {
+                    "schema_type": finding.schema_type,
+                    "pik": finding.pik,
+                    "data": dict(finding.data),
+                    "status": finding.status,
+                    "ttl_seconds": ttl_seconds,
+                    "anchor_hash": anchor_hash,
+                }
+            else:
+                from ether.graph.merger import NodeAttributeMerger
+
+                node_metadata[node_id]["data"] = NodeAttributeMerger.merge_node_data(
+                    node_metadata[node_id]["data"], finding.data
+                )
+                node_metadata[node_id]["status"] = finding.status
+                node_metadata[node_id]["ttl_seconds"] = ttl_seconds
+                if anchor_hash:
+                    node_metadata[node_id]["anchor_hash"] = anchor_hash
+
+            if finding.parent:
+                p = finding.parent
+                parent_id = self.generate_node_id(p.target_type, p.target_pik)
+                parent_nodes[parent_id] = (
+                    session_id,
+                    parent_id,
+                    p.target_type,
+                    json.dumps(p.target_pik),
+                    "{}",
+                )
+                parent_edges.add((session_id, parent_id, node_id, p.via))
+            else:
+                # Deterministic automatic edge wiring (Ticket 08)
+                if finding.schema_type == "network.service":
+                    hip = (
+                        finding.pik.get("host_ip")
+                        or finding.data.get("host_ip")
+                        or finding.pik.get("ip")
+                    )
+                    if hip:
+                        p_id = self.generate_node_id("network.host", {"ip": hip})
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.host",
+                            json.dumps({"ip": hip}),
+                            "{}",
+                        )
+                        parent_edges.add((session_id, p_id, node_id, "hosts_service"))
+                elif finding.schema_type == "web.endpoint":
+                    hip = finding.data.get("host_ip") or finding.pik.get("host_ip")
+                    port = finding.data.get("port") or finding.pik.get("port")
+                    if hip and port:
+                        svc_pik = {"host_ip": hip, "port": int(port), "protocol": "tcp"}
+                        p_id = self.generate_node_id("network.service", svc_pik)
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.service",
+                            json.dumps(svc_pik),
+                            "{}",
+                        )
+                        parent_edges.add((session_id, p_id, node_id, "hosts_endpoint"))
+                elif finding.schema_type in ("vulnerability", "cve"):
+                    hip = (
+                        finding.data.get("host_ip")
+                        or finding.pik.get("host_ip")
+                        or finding.data.get("ip")
+                    )
+                    port = finding.data.get("port") or finding.pik.get("port")
+                    url = finding.data.get("url") or finding.pik.get("url")
+                    if url:
+                        ep_id = self.generate_node_id("web.endpoint", {"url": url})
+                        parent_nodes[ep_id] = (
+                            session_id,
+                            ep_id,
+                            "web.endpoint",
+                            json.dumps({"url": url}),
+                            "{}",
+                        )
+                        parent_edges.add((session_id, ep_id, node_id, "has_vulnerability"))
+                    elif hip and port:
+                        svc_pik = {"host_ip": hip, "port": int(port), "protocol": "tcp"}
+                        p_id = self.generate_node_id("network.service", svc_pik)
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.service",
+                            json.dumps(svc_pik),
+                            "{}",
+                        )
+                        parent_edges.add((session_id, p_id, node_id, "has_vulnerability"))
+                    elif hip:
+                        p_id = self.generate_node_id("network.host", {"ip": hip})
+                        parent_nodes[p_id] = (
+                            session_id,
+                            p_id,
+                            "network.host",
+                            json.dumps({"ip": hip}),
+                            "{}",
+                        )
+                        parent_edges.add((session_id, p_id, node_id, "has_vulnerability"))
+
+            for assoc in finding.associations:
+                assoc_id = self.generate_node_id(assoc.target_type, assoc.target_pik)
+                assoc_nodes[assoc_id] = (
+                    session_id,
+                    assoc_id,
+                    assoc.target_type,
+                    json.dumps(assoc.target_pik),
+                    "{}",
+                )
+                assoc_edges.add((session_id, node_id, assoc_id, assoc.via))
+
+        bloom = self._get_bloom(session_id)
+
+        # Warm up bloom filter for this session if newly accessed
+        if session_id not in self._warmed_sessions:
+            cursor = await db.execute("SELECT id FROM nodes WHERE session_id = ?", (session_id,))
+            rows = await cursor.fetchall()
+            for (nid,) in rows:
+                bloom.add(nid)
+            self._warmed_sessions.add(session_id)
+
+        # 1. Log the events in a single batch
+        await db.executemany(
+            """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            event_log_params,
+        )
+
+        # 2. Fetch existing data only for candidate node IDs that might exist in this session (via Bloom filter)
+        candidate_ids = [nid for nid in unique_node_ids if nid in bloom]
+        if candidate_ids:
+            for i in range(0, len(candidate_ids), 500):
+                chunk = candidate_ids[i : i + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                query_parts = (
+                    "SELECT id, data_json FROM nodes WHERE session_id = ? AND id IN (",
+                    placeholders,
+                    ")",
+                )
+                select_sql = "".join(query_parts)
+                cursor = await db.execute(select_sql, [session_id, *chunk])
+                rows = await cursor.fetchall()
+                for r_id, r_data in rows:
+                    if r_data:
+                        from ether.graph.merger import NodeAttributeMerger
+
+                        merged = json.loads(r_data)
+                        if self._crypto_engine is not None:
+                            merged = self._crypto_engine.decrypt_finding_data(
+                                node_metadata[r_id]["schema_type"], merged
+                            )
+                        node_metadata[r_id]["data"] = NodeAttributeMerger.merge_node_data(
+                            merged, node_metadata[r_id]["data"]
+                        )
+
+        # 3. Batch upsert the nodes
+        nodes_params = [
+            (
+                session_id,
+                nid,
+                meta["schema_type"],
+                json.dumps(meta["pik"]),
+                json.dumps(
+                    self._crypto_engine.encrypt_finding_data(meta["schema_type"], meta["data"])
+                    if self._crypto_engine is not None
+                    else meta["data"]
+                ),
+                meta["status"],
+                action_id,
+                action_id,
+                meta["ttl_seconds"],
+                meta["anchor_hash"],
+            )
+            for nid, meta in node_metadata.items()
+        ]
+        await db.executemany(
+            """INSERT INTO nodes (
+                   session_id, id, schema_type, pik_json, data_json, status,
+                   action_id, created_action_id, ttl_seconds, anchor_hash,
+                   observation_count, last_seen_at
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+               ON CONFLICT(session_id, id) DO UPDATE SET
+                   data_json = excluded.data_json,
+                   status = excluded.status,
+                   action_id = COALESCE(excluded.action_id, nodes.action_id),
+                   observation_count = nodes.observation_count + 1,
+                   ttl_seconds = excluded.ttl_seconds,
+                   anchor_hash = COALESCE(excluded.anchor_hash, nodes.anchor_hash),
+                   last_seen_at = CURRENT_TIMESTAMP,
+                   updated_at = CURRENT_TIMESTAMP""",
+            nodes_params,
+        )
+
+        # 4. Handle Parent and Association Relations (Auto-wiring in consolidated batches)
+        rel_nodes = list(parent_nodes.values())
+        if assoc_nodes:
+            rel_nodes.extend(assoc_nodes.values())
+        if rel_nodes:
+            await db.executemany(
+                """INSERT OR IGNORE INTO nodes (
+                       session_id, id, schema_type, pik_json, data_json,
+                       action_id, created_action_id, observation_count, ttl_seconds, last_seen_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 3600, CURRENT_TIMESTAMP)""",
+                [(r[0], r[1], r[2], r[3], r[4], action_id, action_id) for r in rel_nodes],
+            )
+
+        # 4.5 Invariant Identity Anchoring & Cross-IP Migration
+        (
+            migration_edges,
+            stale_migrated_node_ids,
+            migration_event_params,
+        ) = await IdentityAnchoringEngine.resolve_migrations(
+            db, session_id, node_metadata, action_id
+        )
+
+        if stale_migrated_node_ids:
+            placeholders = ",".join("?" for _ in stale_migrated_node_ids)
+            await db.execute(
+                f"UPDATE nodes SET status = 'stale', updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id IN ({placeholders})",
+                [session_id, *stale_migrated_node_ids],
+            )
+
+        if migration_event_params:
+            await db.executemany(
+                """INSERT INTO event_log (session_id, schema_type, finding_json, human_readable, action_payload, result_payload)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                migration_event_params,
+            )
+
+        rel_edges = list(parent_edges | assoc_edges | migration_edges)
+        if rel_edges:
+            await db.executemany(
+                """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
+                       action_id = COALESCE(excluded.action_id, edges.action_id),
+                       updated_at = CURRENT_TIMESTAMP""",
+                [(r[0], r[1], r[2], r[3], action_id) for r in rel_edges],
+            )
+
+        # 5. Vector Indexing in vec_findings (sqlite-vec)
+        node_texts = []
+        for finding in findings:
+            nid = self.generate_node_id(finding.schema_type, finding.pik)
+            try:
+                node_texts.append((nid, finding.to_semantic_text()))
+            except Exception:
+                pass
+        await self.vector_index.sync_node_embeddings(
+            db, node_texts, session_id=session_id, existing_node_ids=set(candidate_ids)
+        )
+
+        return node_ids, unique_node_ids, parent_nodes, assoc_nodes
+
     async def upsert_finding(
         self, session_id: str, finding: BaseFinding, action_id: Optional[str] = None
     ) -> str:
@@ -892,7 +1128,7 @@ class GraphStore:
         include_stale: bool = False,
     ) -> List[Dict]:
         """Fetch all nodes of a specific schema type."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             conditions = ["schema_type = ?"]
             params: list[Any] = [schema_type]
@@ -901,10 +1137,11 @@ class GraphStore:
                 params.append(session_id)
             if not include_stale:
                 conditions.append("status != 'stale'")
-            where_clause = " WHERE " + " AND ".join(conditions)
-            cursor = await db.execute(f"SELECT * FROM nodes{where_clause}", params)
+            where_sql = " AND ".join(conditions)
+            stmt = " ".join(["SELECT * FROM nodes WHERE", where_sql])
+            cursor = await db.execute(stmt, params)
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [self._hydrate_row(r) for r in rows]
 
     async def get_event_log(self, session_id: str) -> List[Dict]:
         """Fetch all events for a session."""
@@ -921,7 +1158,7 @@ class GraphStore:
     async def get_all_nodes(
         self, session_id: str, schema_type: Optional[str] = None, include_stale: bool = False
     ) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM nodes WHERE session_id = ?"
             params: List[Any] = [session_id]
@@ -933,40 +1170,17 @@ class GraphStore:
             query += " ORDER BY updated_at DESC"
             cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [self._hydrate_row(r) for r in rows]
 
-    async def sync_vectors_batch(self, findings: List[BaseFinding]) -> int:
+    async def sync_vectors_batch(self, findings: List[BaseFinding], session_id: str = "") -> int:
         """Compute and store offline vector embeddings for a batch of findings in vec_findings."""
-        if not findings or sqlite_vec is None:
-            return 0
-        engine = get_embedding_engine()
-        vector_delete_ids = []
-        vector_params = []
-        seen = set()
-        for finding in findings:
-            nid = self.generate_node_id(finding.schema_type, finding.pik)
-            if nid in seen:
-                continue
-            seen.add(nid)
-            try:
-                semantic_text = finding.to_semantic_text()
-                vec = engine.embed_text(semantic_text)
-                serialized = sqlite_vec.serialize_float32(vec)
-                vector_delete_ids.append((nid,))
-                vector_params.append((nid, serialized))
-            except Exception as e:
-                logger.warning(f"Could not compute semantic embedding for finding {nid}: {e}")
 
-        if not vector_params:
-            return 0
-
-        async with self._get_conn() as db:
-            await db.executemany("DELETE FROM vec_findings WHERE node_id = ?", vector_delete_ids)
-            await db.executemany(
-                "INSERT INTO vec_findings(node_id, embedding) VALUES (?, ?)", vector_params
+        async def _op(db: aiosqlite.Connection) -> int:
+            return await self.vector_index.sync_findings_batch(
+                db, findings, self.generate_node_id, session_id=session_id
             )
-            await db.commit()
-        return len(vector_params)
+
+        return await self._run_write(_op, session_id=session_id or None)
 
     async def semantic_search(
         self,
@@ -991,206 +1205,38 @@ class GraphStore:
             List of matching finding node dictionaries ordered by descending similarity,
             with added 'similarity' and 'distance' fields.
         """
-        if not query or not query.strip() or sqlite_vec is None:
-            return []
-
-        engine = get_embedding_engine()
-        query_vec = engine.embed_text(query)
-        serialized_query = sqlite_vec.serialize_float32(query_vec)
-
-        # Retrieve a generous candidate pool from vec0 (e.g. up to 10x limit or 100)
-        # to guarantee accurate ranking after session and schema filtering
-        k_candidates = max(limit * 10, 100)
-
-        async with self._get_conn() as db:
-            db.row_factory = aiosqlite.Row
-
-            sql = """
-                SELECT n.*, sub.distance
-                FROM (
-                    SELECT node_id, distance
-                    FROM vec_findings
-                    WHERE embedding MATCH ? AND k = ?
-                ) sub
-                JOIN nodes n ON sub.node_id = n.id
-                WHERE n.session_id = ?
-            """
-            params: List[Any] = [serialized_query, k_candidates, session_id]
-
-            if not include_stale:
-                sql += " AND n.status != 'stale'"
-
-            if schema_type:
-                sql += " AND n.schema_type = ?"
-                params.append(schema_type)
-
-            sql += " ORDER BY sub.distance ASC LIMIT ?"
-            params.append(limit)
-
-            cursor = await db.execute(sql, params)
-            rows = await cursor.fetchall()
-
-            results: List[Dict[str, Any]] = []
-            for r in rows:
-                item = dict(r)
-                distance = item.get("distance", 1.0)
-                similarity = max(0.0, min(1.0, 1.0 - distance))
-                if similarity < min_score:
-                    continue
-                item["similarity"] = round(similarity, 4)
-                if isinstance(item.get("pik_json"), str):
-                    try:
-                        item["pik"] = json.loads(item["pik_json"])
-                    except Exception:
-                        pass
-                if isinstance(item.get("data_json"), str):
-                    try:
-                        item["data"] = json.loads(item["data_json"])
-                    except Exception:
-                        pass
-                results.append(item)
-
-            return results
+        async with self._get_read_conn() as db:
+            return await self.vector_index.semantic_search(
+                db,
+                session_id=session_id,
+                query=query,
+                limit=limit,
+                min_score=min_score,
+                schema_type=schema_type,
+                include_stale=include_stale,
+            )
 
     async def reconcile_state_decay(
         self, session_id: str, now: Optional[datetime] = None
     ) -> Dict[str, Any]:
-        """Deterministically evaluate and reconcile temporal state decay for a session.
+        """Deterministically evaluate and reconcile temporal state decay for a session."""
 
-        Transitions:
-        - confirmed -> stale (if elapsed > ttl and not flapping)
-        - confirmed -> flapping (if elapsed > ttl and oscillations >= 2)
-        - flapping -> stale (if elapsed > 2 * ttl)
-        - proposed -> stale (if elapsed > ttl)
-        - stale -> confirmed (if re-observed within ttl)
-        """
-        if now is None:
-            now = datetime.now(UTC)
-        elif now.tzinfo is None:
-            now = now.replace(tzinfo=UTC)
+        async def _op(db: aiosqlite.Connection) -> Dict[str, Any]:
+            return await TemporalDecayEngine.reconcile_state_decay(db, session_id, now=now)
 
-        transitions = []
-        updates = []
-
-        async with self._get_conn() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT id, status, observation_count, ttl_seconds, last_seen_at, data_json FROM nodes WHERE session_id = ?",
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
-
-            status_counts = {"confirmed": 0, "flapping": 0, "stale": 0, "proposed": 0}
-
-            for row in rows:
-                nid = row["id"]
-                current_status = row["status"] or "confirmed"
-                ttl = int(row["ttl_seconds"] or 3600)
-                last_seen_val = row["last_seen_at"]
-
-                last_seen_dt = now
-                if last_seen_val:
-                    if isinstance(last_seen_val, str):
-                        dt_str = last_seen_val.replace("Z", "+00:00")
-                        if "T" not in dt_str and " " in dt_str:
-                            dt_str = dt_str.replace(" ", "T")
-                        try:
-                            parsed_dt = datetime.fromisoformat(dt_str)
-                            last_seen_dt = (
-                                parsed_dt.replace(tzinfo=UTC)
-                                if parsed_dt.tzinfo is None
-                                else parsed_dt
-                            )
-                        except Exception:
-                            last_seen_dt = now
-                    elif isinstance(last_seen_val, datetime):
-                        last_seen_dt = (
-                            last_seen_val.replace(tzinfo=UTC)
-                            if last_seen_val.tzinfo is None
-                            else last_seen_val
-                        )
-
-                elapsed = (now - last_seen_dt).total_seconds()
-
-                data = {}
-                if row["data_json"]:
-                    try:
-                        data = json.loads(row["data_json"])
-                    except Exception:
-                        pass
-
-                oscillations = int(data.get("oscillations", 0)) if isinstance(data, dict) else 0
-                is_flapping_indicator = (
-                    bool(data.get("flapping", False)) if isinstance(data, dict) else False
-                )
-                has_flapped = oscillations >= 2 or is_flapping_indicator
-
-                new_status = current_status
-
-                if elapsed > ttl:
-                    if current_status == "confirmed":
-                        new_status = "flapping" if has_flapped else "stale"
-                    elif current_status == "flapping":
-                        if elapsed > 2 * ttl:
-                            new_status = "stale"
-                    elif current_status == "proposed":
-                        new_status = "stale"
-
-                if new_status != current_status:
-                    transitions.append({"id": nid, "from": current_status, "to": new_status})
-                    updates.append((new_status, session_id, nid))
-                    status_counts[new_status] = status_counts.get(new_status, 0) + 1
-                else:
-                    status_counts[current_status] = status_counts.get(current_status, 0) + 1
-
-            if updates:
-                await db.executemany(
-                    "UPDATE nodes SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND id = ?",
-                    updates,
-                )
-                await db.commit()
-
-        return {
-            "transitions": transitions,
-            "status_breakdown": status_counts,
-            "reconciled_count": len(transitions),
-        }
+        return await self._run_write(_op, session_id=session_id)
 
     async def prune_stale_nodes(
         self, session_id: str, max_age_seconds: int = 604800, now: Optional[datetime] = None
     ) -> int:
         """Permanently delete stale nodes and their cascading edges older than max_age_seconds."""
-        if now is None:
-            now = datetime.now(UTC)
-        elif now.tzinfo is None:
-            now = now.replace(tzinfo=UTC)
 
-        cutoff = (now - timedelta(seconds=max_age_seconds)).strftime("%Y-%m-%d %H:%M:%S")
-
-        async with self._get_conn() as db:
-            if sqlite_vec is not None:
-                try:
-                    await db.execute(
-                        """DELETE FROM vec_findings
-                           WHERE node_id IN (
-                               SELECT id FROM nodes
-                               WHERE session_id = ?
-                                 AND status = 'stale'
-                                 AND datetime(last_seen_at) < datetime(?)
-                           )""",
-                        (session_id, cutoff),
-                    )
-                except Exception as e:
-                    logger.warning(f"Error purging stale vectors from vec_findings: {e}")
-            cursor = await db.execute(
-                """DELETE FROM nodes
-                   WHERE session_id = ?
-                     AND status = 'stale'
-                     AND datetime(last_seen_at) < datetime(?)""",
-                (session_id, cutoff),
+        async def _op(db: aiosqlite.Connection) -> int:
+            return await TemporalDecayEngine.prune_stale_nodes(
+                db, session_id, self.vector_index, max_age_seconds=max_age_seconds, now=now
             )
-            await db.commit()
-            return cursor.rowcount
+
+        return await self._run_write(_op, session_id=session_id)
 
     async def get_anchored_migrations(
         self,
@@ -1198,37 +1244,42 @@ class GraphStore:
         action_id: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """Fetch anchored identity migrations recorded for a session."""
-        async with self._get_conn() as db:
-            db.row_factory = aiosqlite.Row
-            query = """
-                SELECT finding_json, timestamp, action_payload
-                FROM event_log
-                WHERE session_id = ? AND schema_type = 'identity.migration'
-                ORDER BY timestamp ASC
-            """
-            cursor = await db.execute(query, (session_id,))
-            rows = await cursor.fetchall()
-            migrations = []
-            for r in rows:
-                try:
-                    payload = json.loads(r["finding_json"])
-                    act_meta = json.loads(r["action_payload"]) if r["action_payload"] else {}
-                    if action_id and act_meta.get("action_id") != action_id:
-                        continue
-                    migrations.append(payload)
-                except Exception:
-                    continue
-            return migrations
+        async with self._get_read_conn() as db:
+            return await IdentityAnchoringEngine.get_anchored_migrations(
+                db, session_id, action_id=action_id
+            )
+
+    async def add_edges(
+        self,
+        session_id: str,
+        edges: List[Tuple[str, str, str]],
+        action_id: Optional[str] = None,
+    ) -> None:
+        """Insert relational edges (source_id, target_id, relation_type) into the graph for a session."""
+        if not edges:
+            return
+
+        async def _insert_edges_op(db: aiosqlite.Connection) -> None:
+            await db.executemany(
+                """INSERT INTO edges (session_id, source_id, target_id, relation_type, action_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(session_id, source_id, target_id, relation_type) DO UPDATE SET
+                       action_id = COALESCE(excluded.action_id, edges.action_id),
+                       updated_at = CURRENT_TIMESTAMP""",
+                [(session_id, r[0], r[1], r[2], action_id) for r in edges],
+            )
+
+        await self._run_write(_insert_edges_op, session_id=session_id)
 
     async def get_all_edges(self, session_id: str) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM edges WHERE session_id = ?", (session_id,))
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
     async def get_workspace_nodes(self, workspace_id: str) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """SELECT n.* FROM nodes n
@@ -1237,10 +1288,10 @@ class GraphStore:
                 (workspace_id,),
             )
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [self._hydrate_row(r) for r in rows]
 
     async def get_workspace_edges(self, workspace_id: str) -> List[Dict]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """SELECT e.* FROM edges e
@@ -1253,19 +1304,20 @@ class GraphStore:
 
     async def get_node(self, session_id: str, node_id: str) -> Optional[Dict]:
         """Fetch a specific node by ID."""
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM nodes WHERE session_id = ? AND id = ?", (session_id, node_id)
             )
             row = await cursor.fetchone()
-            return dict(row) if row else None
+            return self._hydrate_row(row) if row else None
 
     async def update_node_data(
         self, session_id: str, node_id: str, updates: Dict[str, Any]
     ) -> None:
         """Update fields inside a node's data_json (such as custom alias, name, or notes)."""
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> None:
             cursor = await db.execute(
                 "SELECT data_json FROM nodes WHERE session_id = ? AND id = ?", (session_id, node_id)
             )
@@ -1278,12 +1330,13 @@ class GraphStore:
                 "UPDATE nodes SET data_json = ? WHERE session_id = ? AND id = ?",
                 (json.dumps(current_data), session_id, node_id),
             )
-            await db.commit()
+
+        await self._run_write(_op, session_id=session_id)
 
     async def get_stats(
         self, session_id: Optional[str] = None, workspace_id: Optional[str] = None
     ) -> Dict[str, int]:
-        async with self._get_conn() as db:
+        async with self._get_read_conn() as db:
             if session_id:
                 cursor = await db.execute(
                     "SELECT schema_type, COUNT(*) FROM nodes WHERE session_id = ? GROUP BY schema_type",
@@ -1322,15 +1375,21 @@ class GraphStore:
         """Append an audit lifecycle event (e.g. session closed/reopened) to event_log."""
         await self.timeline.log_audit_event(session_id, action_name, message, status)
 
-    async def export_session(self, session_id: str, dest_db_path: str) -> None:
+    async def export_session(
+        self,
+        session_id: str,
+        dest_db_path: str,
+        redact_credentials: bool = True,
+    ) -> None:
         """Export session metadata, nodes, edges, and event_log rows to a new SQLite database."""
         dest_store = GraphStore(dest_db_path)
         await dest_store.initialize()
         await dest_store.close()
 
-        async with self._get_conn() as db:
+        async def _op(db: aiosqlite.Connection) -> None:
             await db.execute("ATTACH DATABASE ? AS dest", (dest_db_path,))
             try:
+                await db.execute("BEGIN IMMEDIATE")
                 # 1. Copy workspace row
                 await db.execute(
                     """
@@ -1399,6 +1458,26 @@ class GraphStore:
                     (session_id, session_id),
                 )
 
+                if redact_credentials:
+                    from ether.graph.crypto import CryptoEngine
+
+                    cursor_export = await db.execute(
+                        "SELECT id, data_json FROM dest.nodes WHERE session_id = ?",
+                        (session_id,),
+                    )
+                    for row_id, raw_json in await cursor_export.fetchall():
+                        try:
+                            parsed = json.loads(raw_json)
+                        except Exception:
+                            continue
+                        if isinstance(parsed, dict):
+                            redacted = CryptoEngine.redact_finding_data(parsed)
+                            if redacted != parsed:
+                                await db.execute(
+                                    "UPDATE dest.nodes SET data_json = ? WHERE session_id = ? AND id = ?",
+                                    (json.dumps(redacted), session_id, row_id),
+                                )
+
                 await db.commit()
                 if os.path.exists(dest_db_path):
                     try:
@@ -1414,6 +1493,8 @@ class GraphStore:
                 except Exception:
                     pass
 
+        await self.write_worker.enqueue_mutation(_op, transactional=False)
+
     async def import_session(
         self, src_db_path: str, target_workspace_id: Optional[str] = None
     ) -> str:
@@ -1422,10 +1503,12 @@ class GraphStore:
         If the session already exists, it is overwritten (restored).
         Returns the imported session ID.
         """
-        async with self._get_conn() as db:
+
+        async def _op(db: aiosqlite.Connection) -> str:
             db.row_factory = aiosqlite.Row
             await db.execute("ATTACH DATABASE ? AS src", (src_db_path,))
             try:
+                await db.execute("BEGIN IMMEDIATE")
                 cursor = await db.execute("SELECT * FROM src.sessions LIMIT 1")
                 src_session = await cursor.fetchone()
                 if not src_session:
@@ -1630,3 +1713,115 @@ class GraphStore:
                     await db.execute("DETACH DATABASE src")
                 except Exception:
                     pass
+
+        return await self.write_worker.enqueue_mutation(_op, transactional=False)
+
+    async def upsert_node_belief(
+        self,
+        node_id: str,
+        session_id: str,
+        confidence: float = 1.0,
+        is_honeypot: int = 0,
+        is_tarpit: int = 0,
+        indicators: Optional[List[str]] = None,
+    ) -> None:
+        """Upsert probabilistic belief score and deception indicators for a graph node."""
+        await self.upsert_node_beliefs_batch(
+            session_id,
+            [
+                {
+                    "node_id": node_id,
+                    "confidence": confidence,
+                    "is_honeypot": is_honeypot,
+                    "is_tarpit": is_tarpit,
+                    "indicators": indicators or [],
+                }
+            ],
+        )
+
+    async def upsert_node_beliefs_batch(
+        self,
+        session_id: str,
+        beliefs: List[Dict[str, Any]],
+    ) -> None:
+        """Batch upsert probabilistic belief scores and deception indicators for a session."""
+        if not beliefs:
+            return
+        rows = [
+            (
+                session_id,
+                b["node_id"],
+                float(b.get("confidence", 1.0)),
+                int(bool(b.get("is_honeypot", 0))),
+                int(bool(b.get("is_tarpit", 0))),
+                json.dumps(b.get("indicators") or []),
+            )
+            for b in beliefs
+        ]
+
+        async def _op(db: aiosqlite.Connection) -> None:
+            await db.executemany(
+                """
+                INSERT INTO node_beliefs (session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(session_id, node_id) DO UPDATE SET
+                    confidence = excluded.confidence,
+                    is_honeypot = excluded.is_honeypot,
+                    is_tarpit = excluded.is_tarpit,
+                    indicators = excluded.indicators,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                rows,
+            )
+
+        await self._run_write(_op, session_id=session_id)
+
+    async def get_node_belief(self, session_id: str, node_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve belief details for a specific node."""
+        async with self._get_read_conn() as db:
+            cursor = await db.execute(
+                """
+                SELECT session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at
+                FROM node_beliefs
+                WHERE session_id = ? AND node_id = ?
+                """,
+                (session_id, node_id),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "session_id": row[0],
+                "node_id": row[1],
+                "confidence": float(row[2]),
+                "is_honeypot": bool(row[3]),
+                "is_tarpit": bool(row[4]),
+                "indicators": json.loads(row[5]) if row[5] else [],
+                "updated_at": str(row[6]),
+            }
+
+    async def list_node_beliefs(self, session_id: str) -> List[Dict[str, Any]]:
+        """Retrieve all node beliefs for a session."""
+        async with self._get_read_conn() as db:
+            cursor = await db.execute(
+                """
+                SELECT session_id, node_id, confidence, is_honeypot, is_tarpit, indicators, updated_at
+                FROM node_beliefs
+                WHERE session_id = ?
+                ORDER BY confidence ASC
+                """,
+                (session_id,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "session_id": r[0],
+                    "node_id": r[1],
+                    "confidence": float(r[2]),
+                    "is_honeypot": bool(r[3]),
+                    "is_tarpit": bool(r[4]),
+                    "indicators": json.loads(r[5]) if r[5] else [],
+                    "updated_at": str(r[6]),
+                }
+                for r in rows
+            ]

@@ -10,61 +10,85 @@ from ether.cli.formatters import print_error, print_json, print_table
 def handle_tool_list(args: Any, context: CliContext) -> int:
     """List all available tool adapters in ToolRegistry."""
     registry = context.get_registry()
-    tools = registry.list_tools()
-
-    if context.is_json:
-        result = []
-        for name in sorted(tools):
-            data = registry.get_tool(name)
-            manifest = data.get("manifest") if data else None
-            adapter = data.get("adapter") if data else None
+    if hasattr(registry, "list_tool_summaries"):
+        entries = registry.list_tool_summaries()
+    else:
+        entries = []
+        for name in sorted(registry.list_tools()):
+            data = registry.get_tool(name) or {}
+            manifest = data.get("manifest")
+            adapter = data.get("adapter")
             meta = getattr(manifest, "meta", None)
             tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
             binary = getattr(meta, "binary", name) if meta else name
-
-            if tier == "coroutine":
-                is_installed = adapter.validate_install() if adapter else True
-                display_bin = binary or "native"
-            else:
-                is_installed = shutil.which(binary) is not None if binary else False
-                display_bin = binary or name
-
-            result.append(
+            installed = bool(adapter.validate_install()) if adapter else False
+            entries.append(
                 {
                     "name": name,
-                    "binary": display_bin,
+                    "binary": binary,
                     "tier": tier,
-                    "execution_tier": tier,
-                    "installed": is_installed,
+                    "installed": installed,
                     "category": getattr(meta, "category", "general") if meta else "general",
                     "description": getattr(meta, "description", "") if meta else "",
                 }
             )
-        print_json(result)
+
+    if context.is_json:
+        print_json(entries)
         return EXIT_SUCCESS
 
     headers = ["TOOL", "TIER", "BINARY", "INSTALLED", "CATEGORY", "DESCRIPTION"]
     rows = []
-    for name in sorted(tools):
-        data = registry.get_tool(name)
-        manifest = data.get("manifest") if data else None
-        adapter = data.get("adapter") if data else None
-        meta = getattr(manifest, "meta", None)
-        tier = getattr(meta, "execution_tier", "subprocess") if meta else "subprocess"
-        binary = getattr(meta, "binary", name) if meta else name
-
-        if tier == "coroutine":
-            is_installed = "yes" if (adapter and adapter.validate_install()) else "yes"
-            display_bin = binary or "native"
-        else:
-            is_installed = "yes" if (binary and shutil.which(binary)) else "no"
-            display_bin = binary or name
-
-        cat = getattr(meta, "category", "general") if meta else "general"
-        desc = getattr(meta, "description", "") if meta else ""
+    for entry in entries:
+        desc = entry.get("description", "")
         if len(desc) > 50:
             desc = desc[:47] + "..."
-        rows.append([name, tier, display_bin, is_installed, cat, desc])
+        installed_str = "yes" if entry.get("installed") else "no"
+        rows.append(
+            [
+                entry["name"],
+                entry.get("tier", "subprocess"),
+                entry.get("binary", entry["name"]),
+                installed_str,
+                entry.get("category", "general"),
+                desc,
+            ]
+        )
+
+    print_table(headers, rows)
+    return EXIT_SUCCESS
+
+
+def handle_tool_search(args: Any, context: CliContext) -> int:
+    """Search registered tools by keyword, accepted schema, or produced schema."""
+    registry = context.get_registry()
+    matches = registry.search_tools(
+        query=getattr(args, "query", None),
+        accepts=getattr(args, "accepts", None),
+        produces=getattr(args, "produces", None),
+        include_profiles=True,
+    )
+
+    if context.is_json:
+        print_json(matches)
+        return EXIT_SUCCESS
+
+    headers = ["TOOL", "TIER", "INSTALLED", "PROFILES", "SUMMARY"]
+    rows = []
+    for entry in matches:
+        profs = ",".join(sorted((entry.get("profiles") or {}).keys())) or "-"
+        summary = entry.get("one_line_summary") or entry.get("description", "")
+        if len(summary) > 55:
+            summary = summary[:52] + "..."
+        rows.append(
+            [
+                entry["name"],
+                entry.get("tier", "subprocess"),
+                "yes" if entry.get("installed") else "no",
+                profs,
+                summary,
+            ]
+        )
 
     print_table(headers, rows)
     return EXIT_SUCCESS
@@ -93,6 +117,13 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         adapter.validate_install() if (tier == "coroutine" and adapter) else (bin_path is not None)
     )
 
+    from ether.gateway.preflight import get_tool_target_guidance
+
+    recommended_flags: list[dict[str, Any]] = []
+    profiles = getattr(manifest, "profiles", None) or {}
+    for profile_name, flag_vec in profiles.items():
+        recommended_flags.append({"profile": profile_name, "flags": list(flag_vec)})
+
     info = {
         "name": tool_name,
         "tier": tier,
@@ -101,13 +132,18 @@ def handle_tool_info(args: Any, context: CliContext) -> int:
         "binary_path": bin_path,
         "installed": is_installed,
         "category": getattr(meta, "category", "general") if meta else "general",
+        "one_line_summary": getattr(meta, "one_line_summary", "") if meta else "",
         "description": getattr(meta, "description", "") if meta else "",
-        "input_accepts": getattr(manifest.input, "accepts", [])
-        if hasattr(manifest, "input")
+        "input_accepts": manifest.input.get("accepts", [])
+        if isinstance(getattr(manifest, "input", None), dict)
         else [],
-        "output_emits": getattr(manifest.output, "emits", [])
-        if hasattr(manifest, "output")
-        else [],
+        "output_emits": (
+            manifest.output.get("produces") or manifest.output.get("emits", [])
+            if isinstance(getattr(manifest, "output", None), dict)
+            else []
+        ),
+        "recommended_flags": recommended_flags,
+        "target_guidance": get_tool_target_guidance(tool_name),
     }
 
     if context.is_json:

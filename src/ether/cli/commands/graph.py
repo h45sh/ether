@@ -10,18 +10,66 @@ from ether.cli.formatters import print_error, print_json, print_table
 from ether.common.crypto import decrypt_bytes, encrypt_bytes
 from ether.schemas.base import BaseFinding
 
+_CREDENTIAL_SECRET_KEYS = frozenset(
+    {
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "hash",
+        "ntlm_hash",
+        "private_key",
+        "passphrase",
+        "credential",
+    }
+)
+
+
+def _mask_secret_dict(mapping: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of mapping with sensitive credential keys masked."""
+    masked = dict(mapping)
+    for key in _CREDENTIAL_SECRET_KEYS:
+        if key in masked and masked[key] not in (None, ""):
+            masked[key] = "********"
+    return masked
+
+
+def _mask_credential_node(node: dict[str, Any], unmask: bool) -> dict[str, Any]:
+    """Hydrate pik/data on a node dict and mask credential secrets unless unmask is True."""
+    item = dict(node)
+    if "pik_json" in item and isinstance(item["pik_json"], str):
+        try:
+            item["pik"] = json.loads(item["pik_json"])
+        except Exception:
+            pass
+    if "data_json" in item and isinstance(item["data_json"], str):
+        try:
+            item["data"] = json.loads(item["data_json"])
+        except Exception:
+            pass
+
+    if not unmask and item.get("schema_type") == "credential.found":
+        if isinstance(item.get("pik"), dict):
+            item["pik"] = _mask_secret_dict(item["pik"])
+            if "pik_json" in item:
+                item["pik_json"] = json.dumps(item["pik"])
+        if isinstance(item.get("data"), dict):
+            item["data"] = _mask_secret_dict(item["data"])
+            if "data_json" in item:
+                item["data_json"] = json.dumps(item["data"])
+
+    return item
+
 
 async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
     """List finding nodes recorded in an investigation session."""
-    session_id = getattr(args, "session_id", None)
-    if not session_id:
-        print_error("session_id is required. Run 'ether session list' to find session IDs.")
-        return EXIT_RUNTIME_ERROR
-
+    session_id_arg = getattr(args, "session_id", None)
     schema_type = getattr(args, "type", None)
     include_stale = bool(getattr(args, "include_stale", False))
+    unmask = bool(getattr(args, "unmask", False))
 
     async with context.open_store() as store:
+        session_id = await context.resolve_session_id(store, session_id_arg)
         if schema_type:
             nodes = await store.query(
                 schema_type, session_id=session_id, include_stale=include_stale
@@ -29,41 +77,28 @@ async def handle_graph_list_nodes(args: Any, context: CliContext) -> int:
         else:
             nodes = await store.get_all_nodes(session_id, include_stale=include_stale)
 
+    parsed_nodes = [_mask_credential_node(n, unmask=unmask) for n in nodes]
+
     if context.is_json:
-        parsed_nodes = []
-        for n in nodes:
-            item = dict(n)
-            if "pik_json" in item and isinstance(item["pik_json"], str):
-                try:
-                    item["pik"] = json.loads(item["pik_json"])
-                except Exception:
-                    pass
-            if "data_json" in item and isinstance(item["data_json"], str):
-                try:
-                    item["data"] = json.loads(item["data_json"])
-                except Exception:
-                    pass
-            parsed_nodes.append(item)
         print_json(parsed_nodes)
         return EXIT_SUCCESS
 
     headers = ["NODE ID", "SCHEMA TYPE", "TARGET / PIK", "STATUS"]
     rows = []
-    for n in nodes:
-        pik_display = ""
-        try:
-            pik = json.loads(n.get("pik_json", "{}"))
+    for item in parsed_nodes:
+        pik = item.get("pik")
+        if isinstance(pik, dict):
             pik_display = ", ".join(f"{k}={v}" for k, v in pik.items())
-        except Exception:
-            pik_display = n.get("pik_json", "")
+        else:
+            pik_display = str(item.get("pik_json", ""))
         if len(pik_display) > 40:
             pik_display = pik_display[:37] + "..."
         rows.append(
             [
-                n.get("id", "")[:12],
-                n.get("schema_type", ""),
+                item.get("id", "")[:12],
+                item.get("schema_type", ""),
                 pik_display,
-                n.get("status", "confirmed"),
+                item.get("status", "confirmed"),
             ]
         )
 
@@ -128,13 +163,25 @@ async def handle_graph_export(args: Any, context: CliContext) -> int:
             fd = os.open(output_path, flags, 0o600)
             with open(fd, "wb") as f:
                 f.write(encrypted_payload)
-            print(
-                f"[+] Exported {len(nodes)} nodes and {len(edges)} edges to encrypted archive '{output_path}'"
-            )
         else:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(raw_json)
-            print(f"[+] Exported {len(nodes)} nodes and {len(edges)} edges to '{output_path}'")
+
+        if context.is_json:
+            print_json(
+                {
+                    "session_id": session_id,
+                    "output_path": output_path,
+                    "nodes_count": len(nodes),
+                    "edges_count": len(edges),
+                    "encrypted": encrypt,
+                }
+            )
+        else:
+            suffix = "encrypted archive " if encrypt else ""
+            print(
+                f"[+] Exported {len(nodes)} nodes and {len(edges)} edges to {suffix}'{output_path}'"
+            )
     else:
         if encrypt:
             print_error("Encrypted export requires an output file path (-o <path>).")
@@ -308,4 +355,252 @@ async def handle_graph_search(args: Any, context: CliContext) -> int:
         rows.append([score, nid, st, summary])
 
     print_table(headers, rows)
+    return EXIT_SUCCESS
+
+
+async def handle_graph_belief(args: Any, context: CliContext) -> int:
+    """Inspect and evaluate Bayesian beliefs and deception state for a session."""
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required.")
+        return EXIT_RUNTIME_ERROR
+
+    evaluate = bool(getattr(args, "evaluate", False))
+
+    async with context.open_store() as store:
+        if evaluate:
+            from ether.graph.analytics import GraphAnalyticsEngine
+
+            beliefs = await GraphAnalyticsEngine.evaluate_and_persist(store, session_id)
+        else:
+            beliefs = await store.list_node_beliefs(session_id)
+            if not beliefs:
+                from ether.graph.analytics import GraphAnalyticsEngine
+
+                beliefs = await GraphAnalyticsEngine.evaluate_and_persist(store, session_id)
+
+    if context.is_json:
+        print_json(beliefs)
+        return EXIT_SUCCESS
+
+    if not beliefs:
+        print("No findings or belief records found for session.")
+        return EXIT_SUCCESS
+
+    headers = ["NODE ID", "CONFIDENCE", "HONEYPOT", "TARPIT", "INDICATORS"]
+    rows = []
+    for b in beliefs:
+        rows.append(
+            [
+                b["node_id"][:12] + "...",
+                f"{b['confidence']:.2f}",
+                "YES" if b["is_honeypot"] else "no",
+                "YES" if b["is_tarpit"] else "no",
+                ", ".join(b["indicators"]) if b["indicators"] else "none",
+            ]
+        )
+    print_table(headers, rows)
+    return EXIT_SUCCESS
+
+
+async def handle_graph_attack_path(args: Any, context: CliContext) -> int:
+    """Compute shortest directed attack path between two entity IDs."""
+    from ether.graph.analytics import GraphAnalyticsEngine
+
+    session_id = getattr(args, "session_id", None)
+    source_id = getattr(args, "source_id", None)
+    target_id = getattr(args, "target_id", None)
+    if not session_id or not source_id or not target_id:
+        print_error("session_id, source_id, and target_id are required.")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+    analytics = GraphAnalyticsEngine(nodes, edges)
+    path = analytics.find_shortest_attack_path(source_id, target_id)
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "source_id": source_id,
+                "target_id": target_id,
+                "found": path is not None,
+                "path": path or [],
+            }
+        )
+        return EXIT_SUCCESS
+
+    if not path:
+        print(f"[-] No directed attack path found from '{source_id}' to '{target_id}'.")
+        return EXIT_SUCCESS
+
+    print(f"[+] Shortest Attack Path ({len(path)} hops):")
+    for idx, nid in enumerate(path):
+        print(f"  {idx + 1}. {nid}")
+    return EXIT_SUCCESS
+
+
+async def handle_graph_blast_radius(args: Any, context: CliContext) -> int:
+    """Calculate compromise blast radius for a compromised entity node."""
+    from ether.graph.analytics import GraphAnalyticsEngine
+
+    session_id = getattr(args, "session_id", None)
+    node_id = getattr(args, "node_id", None)
+    max_depth = int(getattr(args, "max_depth", 10))
+    if not session_id or not node_id:
+        print_error("session_id and node_id are required.")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+    analytics = GraphAnalyticsEngine(nodes, edges)
+    radius_set = analytics.calculate_blast_radius(node_id, max_depth=max_depth)
+    affected = sorted(list(radius_set))
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "compromised_node_id": node_id,
+                "max_depth": max_depth,
+                "total_affected": len(affected),
+                "affected_entity_ids": affected,
+            }
+        )
+        return EXIT_SUCCESS
+
+    print(
+        f"[+] Compromise Blast Radius for '{node_id}' (max_depth={max_depth}): {len(affected)} entity(ies)"
+    )
+    for nid in affected:
+        print(f"  - {nid}")
+    return EXIT_SUCCESS
+
+
+async def handle_graph_crown_jewels(args: Any, context: CliContext) -> int:
+    """Identify critical crown-jewel assets and topological choke points."""
+    from ether.graph.analytics import GraphAnalyticsEngine
+
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required.")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+    analytics = GraphAnalyticsEngine(nodes, edges)
+    jewels = analytics.identify_critical_assets()
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "total_critical": len(jewels),
+                "crown_jewels": jewels,
+            }
+        )
+        return EXIT_SUCCESS
+
+    if not jewels:
+        print("No critical crown-jewel assets identified in session.")
+        return EXIT_SUCCESS
+
+    headers = ["NODE ID", "SCHEMA TYPE", "STATUS"]
+    rows = [
+        [j.get("id", "")[:12] + "...", j.get("schema_type", ""), j.get("status", "")]
+        for j in jewels
+    ]
+    print_table(headers, rows)
+    return EXIT_SUCCESS
+
+
+async def handle_graph_tree(args: Any, context: CliContext) -> int:
+    """Render the entire session graph (nodes + edges) as an ASCII hierarchy or JSON."""
+    session_id_arg = getattr(args, "session_id", None)
+    include_stale = bool(getattr(args, "include_stale", False))
+    unmask = bool(getattr(args, "unmask", False))
+
+    async with context.open_store() as store:
+        session_id = await context.resolve_session_id(store, session_id_arg)
+        nodes = await store.get_all_nodes(session_id, include_stale=include_stale)
+        edges = await store.get_all_edges(session_id)
+
+    parsed_nodes = [_mask_credential_node(n, unmask=unmask) for n in nodes]
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "total_nodes": len(parsed_nodes),
+                "total_edges": len(edges),
+                "nodes": parsed_nodes,
+                "edges": edges,
+            }
+        )
+        return EXIT_SUCCESS
+
+    if not parsed_nodes:
+        print(f"Session '{session_id}' graph is empty.")
+        return EXIT_SUCCESS
+
+    node_map = {n["id"]: n for n in parsed_nodes}
+    children: dict[str, list[tuple[str, str]]] = {nid: [] for nid in node_map}
+    has_parent: set[str] = set()
+    for e in edges:
+        src = e.get("source_id")
+        dst = e.get("target_id")
+        rel = str(e.get("relation", "related"))
+        if isinstance(src, str) and isinstance(dst, str) and src in node_map and dst in node_map:
+            children[src].append((dst, rel))
+            has_parent.add(dst)
+
+    root_priority = {"network.host": 0, "domain.info": 1, "dns.record": 2}
+    roots = sorted(
+        [nid for nid in node_map if nid not in has_parent],
+        key=lambda nid: (root_priority.get(node_map[nid].get("schema_type", ""), 9), nid),
+    )
+
+    def _label(nid: str, rel: str = "") -> str:
+        n = node_map[nid]
+        pik = n.get("pik")
+        if not isinstance(pik, dict):
+            try:
+                pik = json.loads(n.get("pik_json") or "{}")
+            except Exception:
+                pik = {}
+        pik_str = ", ".join(f"{k}={v}" for k, v in pik.items()) if pik else nid[:12]
+        prefix = f"[{rel}] " if rel else ""
+        return f"{prefix}{n.get('schema_type', '')} ({pik_str}) [{nid[:8]}]"
+
+    visited: set[str] = set()
+    print(f"Session {session_id} ({len(parsed_nodes)} nodes, {len(edges)} edges)")
+
+    def _walk(nid: str, prefix: str, is_last: bool, rel: str = "") -> None:
+        branch = "└── " if is_last else "├── "
+        if nid in visited:
+            print(f"{prefix}{branch}{_label(nid, rel)} (cycle/ref)")
+            return
+        visited.add(nid)
+        print(f"{prefix}{branch}{_label(nid, rel)}")
+        kids = children.get(nid, [])
+        next_prefix = prefix + ("    " if is_last else "│   ")
+        for idx, (child_id, child_rel) in enumerate(kids):
+            _walk(child_id, next_prefix, idx == len(kids) - 1, rel=child_rel)
+
+    for idx, r_id in enumerate(roots):
+        _walk(r_id, "", idx == len(roots) - 1 and len(visited) == len(node_map))
+
+    remaining = [nid for nid in node_map if nid not in visited]
+    if remaining:
+        print("└── (standalone)")
+        for idx, nid in enumerate(remaining):
+            _walk(nid, "    ", idx == len(remaining) - 1)
+
     return EXIT_SUCCESS

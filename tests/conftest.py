@@ -1,5 +1,6 @@
 """Pytest configuration and global canonical fixtures for Ether."""
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List
@@ -43,6 +44,8 @@ def isolate_ether_data_dir(tmp_path, monkeypatch):
     """
     test_data_dir = str(tmp_path / ".ether_test")
     monkeypatch.setenv("ETHER_DATA_DIR", test_data_dir)
+    if "ETHER_PLUGIN_TRUST_MODE" not in os.environ:
+        monkeypatch.setenv("ETHER_PLUGIN_TRUST_MODE", "dev")
     return test_data_dir
 
 

@@ -28,7 +28,7 @@ def test_nuclei_build_command(adapter):
 
     # 2. Target is network.host
     host = NetworkHost.create(ip="10.0.0.1")
-    cmd_host = adapter.build_command(host, {"raw_flags": "-severity critical"})
+    cmd_host = adapter.build_command(host, {"flags": "-severity critical"})
     assert "-u" in cmd_host
     assert "http://10.0.0.1" in cmd_host
     assert "-severity" in cmd_host

@@ -3,9 +3,9 @@ name = "http_probe"
 description = "Pure-Python asynchronous HTTP discovery, banner grabbing, and web technology identification engine."
 one_line_summary = "zero-binary in-process HTTP discovery engine"
 category = "Web Enumeration"
-categories = ["recon", "web", "http"]
 binary = ""
 execution_tier = "coroutine"
+categories = ["recon", "web", "http"]
 theory = """
 ### HTTP Protocol Discovery & RFC 9110/9112 Mechanics
 High-performance asynchronous HTTP/1.1 and HTTP/2 probing extracts service banners, response codes, page titles, and web technologies directly in-process without spawning external processes.
@@ -14,27 +14,20 @@ High-performance asynchronous HTTP/1.1 and HTTP/2 probing extracts service banne
 Under `GatePolicy.SAFE`, every target endpoint is resolved via DNS before initiating TCP connections. Any destination mapping to cloud metadata (169.254.169.254, fd00:ec2::254), loopback (127.0.0.0/8, ::1), or link-local subnets is aborted with `PolicyViolationError` to prevent Server-Side Request Forgery.
 """
 
-[modes]
-learning = true
-power = true
-
 [input]
 accepts = ["web.endpoint", "network.service", "network.host", "dns.record", "domain.info"]
+target_types = ["url", "ip", "domain"]
 
 [output]
 produces = ["web.endpoint", "network.service", "web.technology"]
 
-[learning]
-enabled = true
+[execution]
+tier = "coroutine"
+output_format = "coroutine"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
 
-[[learning.recipes]]
-name = "HTTP Service Header & Title Audit"
-difficulty = "Beginner"
-description = "Perform HTTP GET and HEAD requests to inspect response codes, server banners, and HTML title."
-flags = []
-
-[learning.recipes.theory]
-concept = "Hypertext Transfer Protocol (RFC 9110)"
-explanation = "Probes HTTP services to identify server versions, redirection targets, and technology fingerprints."
-packet_wire_summary = "Client TCP:80/443 -> GET / HTTP/1.1 -> Server 200 OK"
-remediation = "Disable descriptive Server and X-Powered-By HTTP response headers to reduce technology fingerprinting."
+[flags]
+allowed = []
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]

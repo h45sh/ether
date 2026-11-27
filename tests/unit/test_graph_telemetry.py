@@ -89,7 +89,7 @@ async def test_compute_graph_diff_zero_tokens(tmp_path):
     # Node added before baseline
     h1 = NetworkHost.create(ip="10.0.0.1")
     h1_id = await store.upsert_finding(sess_id, h1)
-    async with store.connection() as db:
+    async with store._get_conn() as db:
         await db.execute(
             "UPDATE nodes SET created_at = '2020-01-01 00:00:00', updated_at = '2020-01-01 00:00:00' WHERE id = ?",
             (h1_id,),

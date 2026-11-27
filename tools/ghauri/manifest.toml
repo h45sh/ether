@@ -1,0 +1,33 @@
+[meta]
+name = "ghauri"
+description = "Advanced, lightweight SQL injection detection and exploitation tool specialized in WAF bypass and complex filter evasion."
+one_line_summary = "advanced SQL injection detection and filter evasion tool"
+category = "Vulnerability Assessment"
+binary = "ghauri"
+categories = ["web", "vuln", "sqli"]
+theory = """
+### Protocol Theory & SQL Injection Filter Evasion
+Ghauri detects SQL injection flaws using advanced boolean-based blind, time-based blind,
+and error-based vectors designed to evade Web Application Firewall (WAF) heuristic rules.
+"""
+
+[input]
+accepts = ["web.endpoint", "web.parameter"]
+target_types = ["url"]
+
+[output]
+produces = ["web.vulnerability"]
+
+[execution]
+tier = "subprocess"
+output_format = "text"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["--batch", "-u", "--url"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["--batch"]

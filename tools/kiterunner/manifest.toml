@@ -1,0 +1,33 @@
+[meta]
+name = "kiterunner"
+description = "High-speed routing and content discovery tool specialized in REST, Swagger, and GraphQL APIs."
+one_line_summary = "high-speed modern API and microservice endpoint discovery"
+category = "Web Enumeration"
+binary = "kr"
+categories = ["web", "api", "recon"]
+theory = """
+### Protocol Theory & Microservice API Routing
+Kiterunner tests known OpenAPI/Swagger endpoint schemas and routes against target HTTP servers.
+It identifies API paths and verbs even when documentation is unlinked.
+"""
+
+[input]
+accepts = ["web.endpoint", "network.service"]
+target_types = ["url"]
+
+[output]
+produces = ["web.endpoint"]
+
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-o"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["scan", "-o", "json"]

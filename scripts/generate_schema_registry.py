@@ -75,11 +75,11 @@ def generate_registry(check_only: bool = False):
 
         # Heuristic for parent
         parent = "—"
-        if schema_type == "network.service":
+        if schema_type in ("network.service", "database.service"):
             parent = "`network.host`"
         elif schema_type in ("web.endpoint", "tls.certificate"):
             parent = "`network.service`"
-        elif schema_type in ("web.resource", "web.vulnerability"):
+        elif schema_type in ("web.resource", "web.vulnerability", "web.parameter"):
             parent = "`web.endpoint`"
         elif schema_type == "web.technology":
             parent = "`web.endpoint` / `network.service`"

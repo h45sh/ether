@@ -133,6 +133,14 @@ async def test_cli_session_and_graph_commands(tmp_path, capsys):
     assert snap["session_id"] == sess_id
     assert snap["graph_summary"]["total_nodes"] >= 1
 
+    # 7. Session Verify Audit
+    code = main(["session", "verify-audit", sess_id, "--db", db_file, "--json"])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    audit_data = json.loads(captured.out)
+    assert audit_data["session_id"] == sess_id
+    assert audit_data["valid"] is True
+
 
 def test_cli_run_blocks_cloud_metadata(tmp_path, capsys):
     """Verify 'ether run' preflight gate blocks cloud metadata under safe policy."""
@@ -239,7 +247,7 @@ async def test_cli_graph_list_nodes_include_stale_and_prune(tmp_path, capsys):
     await store.upsert_finding(sess_id, h2)
 
     # Decay h1 to stale with an old last_seen_at
-    async with store.connection() as db:
+    async with store._get_conn() as db:
         await db.execute(
             "UPDATE nodes SET status = 'stale', last_seen_at = '2020-01-01 00:00:00' WHERE id = ?",
             (h1_id,),
@@ -315,3 +323,176 @@ async def test_cli_graph_search(tmp_path, capsys):
     assert code == EXIT_SUCCESS
     captured = capsys.readouterr()
     assert "No semantic matches found" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_run_preflight_error_rendering(tmp_path, capsys):
+    """Verify handle_run renders PreflightIssue fields (category, title, description, remediation_hint)."""
+    from types import SimpleNamespace
+
+    from ether.cli.commands.run import handle_run
+    from ether.cli.context import CliContext, GatePolicy
+
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=str(tmp_path / "preflight.db"),
+        tools_dir=None,
+        is_json=False,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+    args = SimpleNamespace(tool="nmap", target="169.254.169.254", flags=[], session_id=None)
+    code = await handle_run(args, ctx)
+    assert code == EXIT_RUNTIME_ERROR
+    captured = capsys.readouterr()
+    assert "Preflight validation failed for 'nmap':" in captured.err
+    assert "[security]" in captured.err
+    assert "metadata" in captured.err.lower()
+    assert "Remedy:" in captured.err
+
+
+def test_cli_logs_crashes(tmp_path, capsys):
+    """Verify 'ether logs --crashes' renders crash['block'] without KeyError."""
+    from types import SimpleNamespace
+
+    from ether import paths
+    from ether.cli.commands.logs import handle_logs
+    from ether.cli.context import CliContext, GatePolicy
+
+    log_path = paths.get_system_log_path(str(tmp_path))
+    import os
+
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("2026-11-25 10:00:00 [CRITICAL] FATAL UNHANDLED EXCEPTION\n")
+        f.write("Traceback (most recent call last):\n")
+        f.write("ValueError: simulated boom\n")
+
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=str(tmp_path / "logs.db"),
+        tools_dir=None,
+        is_json=False,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+    args = SimpleNamespace(crashes=True, limit=50)
+    code = handle_logs(args, ctx)
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "Recent Crash [2026-11-25 10:00:00]:" in captured.out
+    assert "ValueError: simulated boom" in captured.out
+
+
+def test_cli_tool_list_coroutine_uninstalled(tmp_path, capsys, monkeypatch):
+    """Verify 'ether tool list' reports 'no' when a coroutine adapter fails validate_install()."""
+    from types import SimpleNamespace
+
+    from ether.cli.commands.tool import handle_tool_list
+    from ether.cli.context import CliContext, GatePolicy
+
+    fake_meta = SimpleNamespace(
+        execution_tier="coroutine",
+        binary="native",
+        category="dns",
+        description="Fake coroutine tool",
+    )
+    fake_manifest = SimpleNamespace(meta=fake_meta)
+    fake_adapter = SimpleNamespace(validate_install=lambda: False)
+
+    class FakeRegistry:
+        def list_tools(self):
+            return ["fake_coro"]
+
+        def get_tool(self, name):
+            return {"manifest": fake_manifest, "adapter": fake_adapter}
+
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=str(tmp_path / "tool.db"),
+        tools_dir=None,
+        is_json=False,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+    monkeypatch.setattr(CliContext, "get_registry", lambda self: FakeRegistry())
+    code = handle_tool_list(SimpleNamespace(), ctx)
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "fake_coro" in captured.out
+    assert "no" in captured.out
+    assert "yes" not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_session_close_json_and_data_dir(tmp_path, capsys):
+    """Verify handle_session_close passes context.data_dir and outputs int compressed_logs."""
+    from types import SimpleNamespace
+
+    from ether.cli.commands.session import handle_session_close
+    from ether.cli.context import CliContext, GatePolicy
+    from ether.common.forensic_log import ForensicLogManager
+
+    db_file = str(tmp_path / "sess_close.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+    _, sess_id = await store.get_or_create_default_session()
+    await store.close()
+
+    # Create a raw .log spool inside tmp_path (custom data_dir)
+    sess_dir = ForensicLogManager.get_session_dir(sess_id, str(tmp_path))
+    log_file = sess_dir / "act12345.log"
+    log_file.write_text("sample log output\n", encoding="utf-8")
+
+    ctx = CliContext(
+        data_dir=str(tmp_path),
+        db_path=db_file,
+        tools_dir=None,
+        is_json=True,
+        verbose=False,
+        policy=GatePolicy.SAFE,
+    )
+    code = await handle_session_close(SimpleNamespace(session_id=sess_id), ctx)
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["status"] == "CLOSED"
+    assert isinstance(payload["compressed_logs"], int)
+    assert payload["compressed_logs"] == 1
+    assert (sess_dir / "act12345.log.gz").is_file()
+
+
+@pytest.mark.asyncio
+async def test_cli_graph_list_nodes_credential_masking(tmp_path, capsys):
+    """Verify 'ether graph list-nodes' masks credential.found secrets unless --unmask is passed."""
+    from ether.schemas.credential import CredentialFound
+
+    db_file = str(tmp_path / "cred_mask.db")
+    store = GraphStore(db_file)
+    await store.initialize()
+    _, sess_id = await store.get_or_create_default_session()
+    cred = CredentialFound.create(
+        context="ssh://10.0.0.5",
+        username="admin",
+        password="SuperSecretPassword123!",
+        host_ip="10.0.0.5",
+    )
+    await store.upsert_finding(sess_id, cred)
+    await store.close()
+
+    # 1. Default (masked)
+    code = main(["graph", "list-nodes", sess_id, "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    assert "SuperSecretPassword123!" not in captured.out
+    nodes = json.loads(captured.out)
+    cred_node = next(n for n in nodes if n["schema_type"] == "credential.found")
+    assert cred_node["data"]["password"] == "********"
+
+    # 2. With --unmask
+    code = main(["graph", "list-nodes", sess_id, "--unmask", "--json", "--db", db_file])
+    assert code == EXIT_SUCCESS
+    captured = capsys.readouterr()
+    nodes_unmasked = json.loads(captured.out)
+    cred_node_unmasked = next(n for n in nodes_unmasked if n["schema_type"] == "credential.found")
+    assert cred_node_unmasked["data"]["password"] == "SuperSecretPassword123!"

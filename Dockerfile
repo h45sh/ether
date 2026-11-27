@@ -1,5 +1,5 @@
 # Multi-arch compatible Debian image for headless Ether security engine
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm@sha256:44cf1793efa7c7a476bb0f2cff81443f4a072c90c1cb127e2924933daa3e8c64
 
 LABEL org.opencontainers.image.title="Ether" \
       org.opencontainers.image.description="Reactive Telemetry & Process Supervisor Substrate for Cybersecurity Tooling & Autonomous AI Agents" \
@@ -8,11 +8,12 @@ LABEL org.opencontainers.image.title="Ether" \
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    ETHER_DATA_DIR=/root/.ether
+    ETHER_DATA_DIR=/home/ether/.ether
 
 # Install core security tools supervised by Ether:
 # - nmap, gobuster, whois, ffuf, sqlmap: standard CLI tool adapters
 # - libxml-writer-perl: required by nikto for XML report output
+# - libcap2-bin: provides setcap for granting fine-grained Linux capabilities to scanners
 # - ca-certificates, curl, unzip, git, tar: required for binary extraction and tool setup
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
@@ -23,17 +24,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     perl \
     libnet-ssleay-perl \
     libxml-writer-perl \
+    libcap2-bin \
     ca-certificates \
     curl \
     unzip \
     tar \
     git \
-    && git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
+    && git init /opt/nikto \
+    && git -C /opt/nikto fetch --depth 1 https://github.com/sullo/nikto.git 312645d873478a77986627ab1fc8cffe595e85d4 \
+    && git -C /opt/nikto checkout --detach FETCH_HEAD \
     && ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
-    && git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb \
+    && git init /opt/exploitdb \
+    && git -C /opt/exploitdb fetch --depth 1 https://gitlab.com/exploit-database/exploitdb.git 8a926a9b85beb3bccd6e8016211fdb73e904b52b \
+    && git -C /opt/exploitdb checkout --detach FETCH_HEAD \
     && ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit \
     && apt-get purge -y --auto-remove git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && setcap cap_net_raw,cap_net_admin+eip /usr/bin/nmap
 
 # Install subfinder binary from official ProjectDiscovery release (multi-arch)
 ARG SUBFINDER_VERSION=2.6.6
@@ -63,6 +70,13 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     chmod +x /usr/local/bin/nuclei && \
     rm -rf /tmp/nuclei*
 
+# Create unprivileged system user/group (UID/GID 1000) with home directory
+RUN groupadd -g 1000 ether && \
+    useradd -u 1000 -g ether -m -s /bin/bash ether && \
+    mkdir -p /home/ether/.ether && \
+    chmod 700 /home/ether/.ether && \
+    chown -R ether:ether /home/ether
+
 WORKDIR /app
 
 # Copy packaging manifests, source code, and bundled assets
@@ -75,10 +89,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
 # Create persistent storage directory for session graphs and telemetry logs
-RUN mkdir -p /root/.ether
-VOLUME ["/root/.ether"]
+VOLUME ["/home/ether/.ether"]
 
-WORKDIR /root
+WORKDIR /home/ether
+USER ether
 
 # Default headless entrypoint
 ENTRYPOINT ["python3", "-m", "ether"]

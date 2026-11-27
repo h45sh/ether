@@ -1,11 +1,9 @@
 """SQLMap tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.registry.adapter import ToolAdapter
-from ether.registry.wordlists import substitute_wordlist_macros
 from ether.schemas.base import BaseFinding
 from ether.schemas.credential import CredentialFound
 from ether.schemas.web import WebVulnerability
@@ -53,9 +51,7 @@ class SqlmapAdapter(ToolAdapter):
         """Construct the sqlmap CLI execution command."""
         url = self.extract_url(target)
 
-        raw_flags = params.get("raw_flags", "").strip()
-        raw_flags, _ = substitute_wordlist_macros(raw_flags)
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.expand_flag_macros(self.normalize_flags(params), target)
 
         args = ["sqlmap"]
 

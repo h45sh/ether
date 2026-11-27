@@ -27,15 +27,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
           version: "latest"
 
       - name: Set up Python 3.12
         run: uv python install 3.12
+
+      - name: Verify Lockfile Integrity
+        run: uv lock --check
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
@@ -49,7 +52,7 @@ jobs:
         run: uv run mypy src/ether
 
       - name: Run Targeted Mutation Testing (Tier 1 Core)
-        run: uv run python3 scripts/run_mutation_tests.py --target=canonicalize
+        run: uv run python3 tests/mutation/run_mutation_tests.py --target=canonicalize
 
       - name: Verify Schema Registry Documentation Sync
         run: uv run python3 scripts/generate_schema_registry.py --check
@@ -66,15 +69,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
           version: "latest"
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
+
+      - name: Verify Lockfile Integrity
+        run: uv lock --check
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
@@ -83,7 +89,11 @@ jobs:
         run: uv run pytest -m tier0 -q
 
       - name: Run Full Regression Test Suite with Branch Coverage
-        run: uv run pytest tests/ --cov=src/ether --cov-branch --cov-fail-under=75 --cov-report=term-missing:skip-covered
+        run: uv run pytest tests/unit tests/integration --cov=src/ether --cov-branch --cov-fail-under=75 --cov-report=term-missing:skip-covered
+
+      - name: Run Benchmark and Scenario Suites
+        if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+        run: uv run pytest -m "benchmark or scenario"
 
       - name: Build Distribution Packages (sdist & wheel)
         run: uv build
@@ -95,15 +105,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
           version: "latest"
 
       - name: Set up Python 3.12
         run: uv python install 3.12
+
+      - name: Verify Lockfile Integrity
+        run: uv lock --check
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
@@ -111,5 +124,5 @@ jobs:
       - name: Run Tier 0 AST Architectural & Mathematical Invariants
         run: uv run pytest -m tier0 -q
 
-      - name: Run Full Regression Test Suite
-        run: uv run pytest tests/
+      - name: Run Fast PR Gate (tier0 or fast)
+        run: uv run pytest -m "tier0 or fast"

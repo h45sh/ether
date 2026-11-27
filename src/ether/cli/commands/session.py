@@ -2,8 +2,9 @@
 
 from typing import Any
 
-from ether.cli.context import EXIT_SUCCESS, CliContext
-from ether.cli.formatters import print_json, print_table
+from ether import paths
+from ether.cli.context import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, CliContext
+from ether.cli.formatters import print_error, print_json, print_table
 
 
 async def handle_session_list(args: Any, context: CliContext) -> int:
@@ -14,14 +15,7 @@ async def handle_session_list(args: Any, context: CliContext) -> int:
         if workspace_id:
             sessions = await store.list_sessions(workspace_id)
         else:
-            # Query all sessions across all workspaces
-            async with store.connection() as db:
-                import aiosqlite
-
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute("SELECT * FROM sessions ORDER BY created_at DESC")
-                rows = await cursor.fetchall()
-                sessions = [dict(r) for r in rows]
+            sessions = await store.list_all_sessions()
 
     if context.is_json:
         print_json(sessions)
@@ -58,4 +52,109 @@ async def handle_session_create(args: Any, context: CliContext) -> int:
     else:
         print(f"[+] Created session '{name}' (ID: {sess_id}) in workspace '{workspace_id}'")
 
+    return EXIT_SUCCESS
+
+
+async def handle_session_verify_audit(args: Any, context: CliContext) -> int:
+    """Verify cryptographic chain of custody and file hashes for a session's audit manifest."""
+    from ether.common.forensic_log import ForensicLogManager
+
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("Missing required session_id.")
+        return 1
+
+    is_valid, records = ForensicLogManager.verify_session_audit(
+        session_id, data_dir=context.data_dir
+    )
+    if context.is_json:
+        status_label = (
+            "empty" if (is_valid and not records) else ("valid" if is_valid else "invalid")
+        )
+        print_json(
+            {
+                "session_id": session_id,
+                "valid": is_valid,
+                "status": status_label,
+                "entries": records,
+            }
+        )
+        return EXIT_SUCCESS if is_valid else 1
+
+    if not records:
+        print(f"[-] No audit manifest found for session '{session_id}'.")
+        return EXIT_SUCCESS
+
+    headers = ["INDEX", "ACTION ID", "TOOL", "LOG FILE", "CHAIN", "FILE", "STATUS"]
+    rows = []
+    for r in records:
+        rows.append(
+            [
+                str(r["index"]),
+                str(r["action_id"])[:8],
+                str(r["tool"]),
+                str(r["log_file"]),
+                "PASS" if r["hash_chain_valid"] else "FAIL",
+                "PASS" if r["file_hash_valid"] else "FAIL",
+                "VALID" if r["valid"] else "TAMPERED",
+            ]
+        )
+    print_table(headers, rows)
+    if is_valid:
+        print(f"[+] Cryptographic audit chain verified: All {len(records)} entries intact.")
+        return EXIT_SUCCESS
+    else:
+        print("[!] Forensic audit verification FAILED: Tampering or corruption detected.")
+        return 1
+
+
+async def handle_session_close(args: Any, context: CliContext) -> int:
+    """Seal a session as forensically closed and compress raw log spools to .log.gz."""
+    from ether.common.forensic_log import ForensicLogManager
+
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("Missing required session_id.")
+        return 1
+
+    async with context.open_store() as store:
+        await store.close_session(session_id)
+
+    compressed = ForensicLogManager.compress_session_logs(session_id, data_dir=context.data_dir)
+    compressed_count = len(compressed)
+
+    if context.is_json:
+        print_json(
+            {
+                "session_id": session_id,
+                "status": "CLOSED",
+                "compressed_logs": compressed_count,
+            }
+        )
+    else:
+        print(
+            f"[+] Forensically sealed session '{session_id}' "
+            f"(compressed {compressed_count} log spool(s) to .log.gz)."
+        )
+    return EXIT_SUCCESS
+
+
+async def handle_session_use(args: Any, context: CliContext) -> int:
+    """Pin an existing session ID as the active default session."""
+    session_id = getattr(args, "session_id", None)
+    if not session_id:
+        print_error("session_id is required. Usage: ether session use <session_id>")
+        return EXIT_RUNTIME_ERROR
+
+    async with context.open_store() as store:
+        sess = await store.get_session(session_id)
+        if sess is None:
+            print_error(f"Session '{session_id}' not found.")
+            return EXIT_RUNTIME_ERROR
+
+    paths.atomic_create_file(context.active_session_file(), f"{session_id}\n")
+    if context.is_json:
+        print_json({"active_session": session_id, "name": sess.get("name", "")})
+    else:
+        print(f"[+] Active session pinned to '{session_id}' ({sess.get('name', '')}).")
     return EXIT_SUCCESS

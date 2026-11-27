@@ -1,7 +1,6 @@
 """Nikto tool adapter."""
 
 import re
-import shlex
 from typing import Any, AsyncIterator, Dict, List
 
 from ether.registry.adapter import ToolAdapter
@@ -41,8 +40,8 @@ class NiktoAdapter(ToolAdapter):
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         args = ["nikto"]
 
-        raw_flags = params.get("raw_flags", "")
-        if raw_flags:
+        flag_args = self.normalize_flags(params)
+        if flag_args:
             if target.schema_type == "web.endpoint":
                 target_str = target.pik.get("url", "")
             else:
@@ -51,7 +50,7 @@ class NiktoAdapter(ToolAdapter):
             port_str = str(port_val) if port_val else ""
 
             # Tokenize first to prevent argument injection from target_str or port_str
-            tokens = shlex.split(raw_flags)
+            tokens = flag_args
             resolved_tokens = []
             skip_next = False
             for i, token in enumerate(tokens):

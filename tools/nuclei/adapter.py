@@ -1,7 +1,6 @@
 """Nuclei vulnerability scanner adapter."""
 
 import json
-import shlex
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ether.registry.adapter import ToolAdapter
@@ -17,31 +16,11 @@ class NucleiAdapter(ToolAdapter):
         """Verify nuclei binary is available on system PATH."""
         return self.is_binary_available("nuclei")
 
-    def sanitize_output(self, raw_stdout: str) -> str:
-        """Filter verbose nuclei loading stats, update notices, and template clusters."""
-        lines = []
-        for line in raw_stdout.splitlines():
-            s = line.strip()
-            if any(
-                s.startswith(p)
-                for p in (
-                    "[INF] Current nuclei version",
-                    "[INF] New templates",
-                    "[INF] Loading templates",
-                    "[INF] Templates cluster",
-                    "[INF] Using",
-                )
-            ):
-                continue
-            lines.append(line)
-        return "\n".join(lines)
-
     def build_command(self, target: BaseFinding, params: Dict[str, Any]) -> List[str]:
         """Construct nuclei execution command with streaming JSONL output."""
         url = self.extract_url(target)
 
-        raw_flags = params.get("raw_flags", "").strip()
-        flag_args = shlex.split(raw_flags) if raw_flags else []
+        flag_args = self.normalize_flags(params)
 
         args = ["nuclei"]
 
@@ -80,19 +59,24 @@ class NucleiAdapter(ToolAdapter):
             target.pik.get("host_ip") or target.pik.get("ip") or target.data.get("host_ip")
         )
 
+        items = []
         for line in cleaned.splitlines():
             line = line.strip()
-            if not line or not line.startswith("{"):
+            if not line:
                 continue
-
             try:
                 item = json.loads(line)
-            except json.JSONDecodeError:
+                if isinstance(item, dict):
+                    items.append(item)
+            except Exception:
                 continue
 
-            if not isinstance(item, dict):
-                continue
+        if not items:
+            from ether.common.recovery import salvage_ndjson_lines
 
+            items = salvage_ndjson_lines(cleaned)
+
+        for item in items:
             template_id = str(item.get("template-id", "")).strip()
             info = item.get("info", {})
             if not isinstance(info, dict):

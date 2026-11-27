@@ -1,0 +1,33 @@
+[meta]
+name = "arjun"
+description = "HTTP parameter discovery suite for uncovering hidden GET and POST parameters on web endpoints."
+one_line_summary = "hidden HTTP GET/POST parameter discovery suite"
+category = "Web Enumeration"
+binary = "arjun"
+categories = ["web", "recon", "parameters"]
+theory = """
+### Protocol Theory & Parameter Discovery
+Arjun mines potential query and body parameters by injecting candidate keys and detecting
+subtle reflections, header alterations, or response body length shifts.
+"""
+
+[input]
+accepts = ["web.endpoint"]
+target_types = ["url"]
+
+[output]
+produces = ["web.parameter"]
+
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-oJ", "-", "-oT", "-u", "--url"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["-oJ", "-"]

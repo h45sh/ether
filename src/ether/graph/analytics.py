@@ -117,7 +117,7 @@ class GraphAnalyticsEngine:
 
         return reachable
 
-    def identify_critical_assets(self) -> List[Dict[str, Any]]:
+    def identify_critical_assets(self, exclude_honeypots: bool = True) -> List[Dict[str, Any]]:
         """Identify high-value crown-jewel assets from graph intelligence.
 
         Flags:
@@ -128,7 +128,17 @@ class GraphAnalyticsEngine:
         """
         critical_assets: List[Dict[str, Any]] = []
 
+        honeypot_ids = set()
+        if exclude_honeypots:
+            deception = self.evaluate_deception()
+            for nid, dec in deception.items():
+                if dec.get("is_honeypot"):
+                    honeypot_ids.add(nid)
+
         for node in self.nodes_by_id.values():
+            if node.get("id") in honeypot_ids:
+                continue
+
             schema = node.get("schema_type", "")
             data_raw = node.get("data_json", "{}")
             pik_raw = node.get("pik_json", "{}")
@@ -314,6 +324,203 @@ class GraphAnalyticsEngine:
                         q.append(neighbor)
             reachability[node_id] = visited
         return reachability
+
+    HONEYPOT_SIGNATURES: List[str] = [
+        "cowrie",
+        "kippo",
+        "dionaea",
+        "conpot",
+        "glastopf",
+        "honeyd",
+        "artillery",
+        "snort",
+        "honeypot",
+        "ssh-2.0-cowrie",
+    ]
+
+    def compute_bayesian_beliefs(self) -> List[Dict[str, Any]]:
+        """Compute and return Bayesian beliefs for all nodes as a list."""
+        return [{"node_id": k, **v} for k, v in self.evaluate_deception().items()]
+
+    def evaluate_deception(self) -> Dict[str, Dict[str, Any]]:
+        """Evaluate finding legitimacy confidence and detect honeypots/deception.
+
+        Returns a dictionary mapping node_id to:
+            {
+                "confidence": float (0.0 to 1.0),
+                "is_honeypot": bool,
+                "is_tarpit": bool,
+                "indicators": List[str],
+            }
+        """
+        results: Dict[str, Dict[str, Any]] = {}
+
+        # 1. Group services by host (via 'hosts' edges or pik/data host_ip)
+        services_by_host: Dict[str, List[str]] = {}
+        for edge in self.edges:
+            if edge.get("relation_type") == "hosts":
+                src = edge.get("source_id")
+                tgt = edge.get("target_id")
+                if src and tgt:
+                    services_by_host.setdefault(src, []).append(tgt)
+
+        # Fallback to host_ip attribute in node data if edges not present
+        for node_id, node in self.nodes_by_id.items():
+            if node.get("schema_type") == "network.service":
+                data_raw = node.get("data") if "data" in node else node.get("data_json", "{}")
+                pik_raw = node.get("pik") if "pik" in node else node.get("pik_json", "{}")
+                try:
+                    data = json.loads(data_raw) if isinstance(data_raw, str) else (data_raw or {})
+                except Exception:
+                    data = {}
+                try:
+                    pik = json.loads(pik_raw) if isinstance(pik_raw, str) else (pik_raw or {})
+                except Exception:
+                    pik = {}
+
+                host_ip = data.get("host_ip") or pik.get("host_ip")
+                if host_ip:
+                    for h_id, h_node in self.nodes_by_id.items():
+                        if h_node.get("schema_type") == "network.host":
+                            h_data_raw = (
+                                h_node.get("data")
+                                if "data" in h_node
+                                else h_node.get("data_json", "{}")
+                            )
+                            h_pik_raw = (
+                                h_node.get("pik")
+                                if "pik" in h_node
+                                else h_node.get("pik_json", "{}")
+                            )
+                            try:
+                                h_data = (
+                                    json.loads(h_data_raw)
+                                    if isinstance(h_data_raw, str)
+                                    else (h_data_raw or {})
+                                )
+                            except Exception:
+                                h_data = {}
+                            try:
+                                h_pik = (
+                                    json.loads(h_pik_raw)
+                                    if isinstance(h_pik_raw, str)
+                                    else (h_pik_raw or {})
+                                )
+                            except Exception:
+                                h_pik = {}
+
+                            h_ip = h_data.get("ip") or h_pik.get("ip")
+                            if h_ip == host_ip and node_id not in services_by_host.get(h_id, []):
+                                services_by_host.setdefault(h_id, []).append(node_id)
+
+        # 2. Evaluate each node
+        for node_id, node in self.nodes_by_id.items():
+            schema_type = node.get("schema_type", "")
+            data_raw = node.get("data") if "data" in node else node.get("data_json", "{}")
+            try:
+                data = json.loads(data_raw) if isinstance(data_raw, str) else (data_raw or {})
+            except Exception:
+                data = {}
+
+            indicators: List[str] = []
+            is_honeypot = False
+            is_tarpit = False
+            base_confidence = 0.85
+
+            # Factor A: Check for host-level open port sprawl (Honeypot / Port Reflector)
+            if schema_type == "network.host":
+                service_count = len(services_by_host.get(node_id, []))
+                if service_count >= 100:
+                    is_honeypot = True
+                    indicators.append(f"excessive_open_ports:{service_count}")
+                    base_confidence = 0.05 if service_count >= 500 else 0.20
+
+            elif schema_type == "network.service":
+                parent_hosts = [
+                    src for src, services in services_by_host.items() if node_id in services
+                ]
+                if parent_hosts:
+                    parent_svc_count = len(services_by_host[parent_hosts[0]])
+                    if parent_svc_count >= 100:
+                        is_honeypot = True
+                        indicators.append(f"parent_host_port_sprawl:{parent_svc_count}")
+                        base_confidence = 0.05 if parent_svc_count >= 500 else 0.20
+
+                # Factor B: Banner signature matching
+                pik_raw = node.get("pik") if "pik" in node else node.get("pik_json", "{}")
+                try:
+                    pik_dict = json.loads(pik_raw) if isinstance(pik_raw, str) else (pik_raw or {})
+                except Exception:
+                    pik_dict = {}
+                data_str = (json.dumps(data) + " " + json.dumps(pik_dict)).lower()
+                for sig in self.HONEYPOT_SIGNATURES:
+                    if sig in data_str:
+                        is_honeypot = True
+                        indicators.append(f"honeypot_signature:{sig}")
+                        base_confidence = min(base_confidence, 0.15)
+                        break
+
+                # Factor B.2: Tarpit timing anomalies on service
+                latency = (
+                    data.get("latency_sec") or data.get("duration") or data.get("connect_time")
+                )
+                try:
+                    lat_val = float(latency) if latency is not None else 0.0
+                except (ValueError, TypeError):
+                    lat_val = 0.0
+                if lat_val >= 15.0 or data.get("is_tarpit") or "tarpit" in data_str:
+                    is_tarpit = True
+                    indicators.append("inline_delay_tarpit")
+                    base_confidence = min(base_confidence, 0.10)
+
+                # Factor C: Cross-tool corroboration
+                obs_count = node.get("observation_count", 1)
+                incoming_edges = self._rev_adj.get(node_id, [])
+                if obs_count > 1 or len(incoming_edges) >= 2:
+                    if not is_honeypot:
+                        base_confidence = min(1.0, base_confidence + 0.10)
+                        indicators.append("multi_tool_corroborated")
+                else:
+                    if not is_honeypot:
+                        base_confidence = 0.70
+
+            # Check for tarpit indicator if present in data
+            if data.get("is_tarpit"):
+                is_tarpit = True
+                indicators.append("inline_delay_tarpit")
+                base_confidence = 0.10
+
+            results[node_id] = {
+                "confidence": round(base_confidence, 2),
+                "is_honeypot": is_honeypot,
+                "is_tarpit": is_tarpit,
+                "indicators": indicators,
+            }
+
+        return results
+
+    @classmethod
+    async def evaluate_and_persist(cls, store: Any, session_id: str) -> List[Dict[str, Any]]:
+        """Load session graph from store, evaluate deception, and persist into node_beliefs."""
+        nodes = await store.get_all_nodes(session_id)
+        edges = await store.get_all_edges(session_id)
+
+        engine = cls(nodes, edges)
+        beliefs = engine.evaluate_deception()
+
+        belief_rows = [
+            {
+                "node_id": node_id,
+                "confidence": b["confidence"],
+                "is_honeypot": 1 if b["is_honeypot"] else 0,
+                "is_tarpit": 1 if b["is_tarpit"] else 0,
+                "indicators": b["indicators"],
+            }
+            for node_id, b in beliefs.items()
+        ]
+        await store.upsert_node_beliefs_batch(session_id, belief_rows)
+
+        return await store.list_node_beliefs(session_id)
 
     def to_networkx(self) -> Optional[Any]:
         """Convert in-memory graph to a networkx.DiGraph instance if networkx is available."""

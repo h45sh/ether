@@ -43,7 +43,7 @@ async def test_gateway_user_explicit_shell():
     # 1. USER with explicit shell prefix '!' is allowed
     action = ActionRequest(
         session_id=uuid4(),
-        tool_name="ping 127.0.0.1",
+        tool_name="ping 10.0.0.1",
         is_explicit_shell=True,
         triggered_by=ActionSource.USER,
     )
@@ -52,7 +52,7 @@ async def test_gateway_user_explicit_shell():
     # 2. USER without explicit shell prefix on unregistered tool is rejected
     action_no_prefix = ActionRequest(
         session_id=uuid4(),
-        tool_name="ping 127.0.0.1",
+        tool_name="ping 10.0.0.1",
         is_explicit_shell=False,
         triggered_by=ActionSource.USER,
     )
@@ -164,11 +164,11 @@ async def test_gateway_blocks_cloud_metadata():
 
     gateway = ActionGateway(mock_registry, store)
 
-    # 1. Blocked via raw_flags
+    # 1. Blocked via flags
     action_flag = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "http://169.254.169.254/latest/meta-data/"},
+        params={"flags": "http://169.254.169.254/latest/meta-data/"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(
@@ -215,7 +215,7 @@ async def test_gateway_blocks_extended_metadata():
     action_azure = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "169.254.169.250"},
+        params={"flags": "169.254.169.250"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(
@@ -227,7 +227,7 @@ async def test_gateway_blocks_extended_metadata():
     action_ipv6 = ActionRequest(
         session_id=uuid4(),
         tool_name="curl",
-        params={"raw_flags": "http://[fd00:ec2::254]/latest/meta-data/"},
+        params={"flags": "http://[fd00:ec2::254]/latest/meta-data/"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(
@@ -239,7 +239,7 @@ async def test_gateway_blocks_extended_metadata():
     action_dec = ActionRequest(
         session_id=uuid4(),
         tool_name="curl",
-        params={"raw_flags": "http://2852039166/"},
+        params={"flags": "http://2852039166/"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(
@@ -283,31 +283,31 @@ async def test_gateway_imds_canonicalization_action_request():
 
     gateway = ActionGateway(mock_registry, store)
 
-    # Dotted-octal in raw_flags
+    # Dotted-octal in flags
     action_octal = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "0251.0376.0251.0376"},
+        params={"flags": "0251.0376.0251.0376"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(ActionValidationError, match="strictly prohibited"):
         await gateway.validate_action(action_octal)
 
-    # Dotted-hex in raw_flags
+    # Dotted-hex in flags
     action_hex = ActionRequest(
         session_id=uuid4(),
         tool_name="curl",
-        params={"raw_flags": "http://0xa9.0xfe.0xa9.0xfe/"},
+        params={"flags": "http://0xa9.0xfe.0xa9.0xfe/"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(ActionValidationError, match="strictly prohibited"):
         await gateway.validate_action(action_hex)
 
-    # IPv4-mapped IPv6 in raw_flags
+    # IPv4-mapped IPv6 in flags
     action_mapped = ActionRequest(
         session_id=uuid4(),
         tool_name="curl",
-        params={"raw_flags": "http://[::ffff:169.254.169.254]/"},
+        params={"flags": "http://[::ffff:169.254.169.254]/"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(ActionValidationError, match="strictly prohibited"):
@@ -326,7 +326,7 @@ def test_adapter_flag_injection_prevention():
     gobuster = GobusterAdapter()
     malicious_url = "http://target.com/ -o /tmp/pwned.txt"
     target = WebEndpoint.create(url=malicious_url)
-    cmd = gobuster.build_command(target, {"raw_flags": "dir -u {url} -w {wordlist}"})
+    cmd = gobuster.build_command(target, {"flags": "dir -u {url} -w {wordlist}"})
     u_idx = cmd.index("-u")
     assert cmd[u_idx + 1] == malicious_url
     assert "-o" not in cmd
@@ -335,7 +335,7 @@ def test_adapter_flag_injection_prevention():
     nikto = NiktoAdapter()
     malicious_target = "10.0.0.1 -format htm"
     host_target = NetworkHost.create(ip=malicious_target)
-    cmd_nikto = nikto.build_command(host_target, {"raw_flags": "-h {target} -p {port}"})
+    cmd_nikto = nikto.build_command(host_target, {"flags": "-h {target} -p {port}"})
     h_idx = cmd_nikto.index("-h")
     assert cmd_nikto[h_idx + 1] == malicious_target
     assert "-format" not in cmd_nikto
@@ -346,7 +346,7 @@ def test_adapter_flag_injection_prevention():
     dummy_target = NetworkHost.create(ip="1.2.3.4")
     dummy_target.schema_type = "dns.record"
     dummy_target.pik = {"domain": malicious_domain}
-    cmd_sub = subfinder.build_command(dummy_target, {"raw_flags": "-d {domain}"})
+    cmd_sub = subfinder.build_command(dummy_target, {"flags": "-d {domain}"})
     d_idx = cmd_sub.index("-d")
     assert cmd_sub[d_idx + 1] == malicious_domain
     assert "-o" not in cmd_sub
@@ -369,16 +369,16 @@ async def test_gateway_cidr_scope_enforcement(tmp_path):
     action_in_scope = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "-sV 10.50.1.20"},
+        params={"flags": "-sV 10.50.1.20"},
         triggered_by=ActionSource.USER,
     )
     assert await gateway.validate_action(action_in_scope) is True
 
-    # 2. Out-of-scope target in raw_flags raises ActionValidationError
+    # 2. Out-of-scope target in flags raises ActionValidationError
     action_out_scope = ActionRequest(
         session_id=uuid4(),
         tool_name="nmap",
-        params={"raw_flags": "-sV 172.16.0.5"},
+        params={"flags": "-sV 172.16.0.5"},
         triggered_by=ActionSource.USER,
     )
     with pytest.raises(ActionValidationError, match="violates authorized engagement CIDR scope"):
@@ -400,7 +400,7 @@ async def test_gateway_cidr_scope_enforcement(tmp_path):
     action_metadata = ActionRequest(
         session_id=uuid4(),
         tool_name="curl",
-        params={"raw_flags": "http://169.254.169.254/latest/meta-data/"},
+        params={"flags": "http://169.254.169.254/latest/meta-data/"},
         triggered_by=ActionSource.USER,
     )
     assert await gateway_unrestricted.validate_action(action_metadata) is True
@@ -410,5 +410,76 @@ async def test_gateway_cidr_scope_enforcement(tmp_path):
     report = await gateway_safe.verify_action(action_metadata)
     assert not report.is_valid
     assert any("strictly prohibited" in str(i.description) for i in report.issues)
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_gateway_scope_unrestricted_entity_verify_and_flags_normalization(tmp_path):
+    from ether.gateway.scope import EngagementScope
+    from ether.schemas.network import NetworkHost
+
+    store = GraphStore(str(tmp_path / "gate_t2.db"))
+    await store.initialize()
+    ws_id = await store.create_workspace("WS-T2")
+    sess_id = await store.create_session(ws_id, "S-T2")
+
+    # Stored out-of-scope / metadata host entity
+    meta_host = NetworkHost.create(ip="169.254.169.254")
+    meta_id = await store.upsert_finding(sess_id, meta_host)
+
+    scoped_host = NetworkHost.create(ip="10.0.0.5")
+    scoped_id = await store.upsert_finding(sess_id, scoped_host)
+
+    mock_registry = MagicMock()
+    mock_tool = MagicMock()
+    mock_tool.input = {"accepts": ["network.host"]}
+    mock_registry.get_tool.return_value = {"manifest": mock_tool, "adapter": MagicMock()}
+
+    # 1. Scope parameter accepted and synced with allowed_cidrs
+    scope = EngagementScope(allowed_cidrs=["10.0.0.0/8"], allow_loopback=False)
+    gw_unrestricted = ActionGateway(
+        mock_registry, store, scope=scope, policy=GatePolicy.UNRESTRICTED
+    )
+    assert gw_unrestricted.scope.allowed_cidrs == ["10.0.0.0/8"]
+
+    # 2. GatePolicy.UNRESTRICTED allows stored metadata entity target too
+    action_meta_entity = ActionRequest(
+        session_id=sess_id,
+        tool_name="nmap",
+        target_entity_id=meta_id,
+        triggered_by=ActionSource.USER,
+    )
+    assert await gw_unrestricted.validate_action(action_meta_entity) is True
+
+    # 3. Validates string flags in validate_action
+    gw_safe = ActionGateway(mock_registry, store, scope=scope, policy=GatePolicy.SAFE)
+    action_flags = ActionRequest(
+        session_id=sess_id,
+        tool_name="nmap",
+        params={"flags": "-sV 172.16.0.10"},
+        triggered_by=ActionSource.USER,
+    )
+    with pytest.raises(ActionValidationError, match="violates authorized engagement CIDR scope"):
+        await gw_safe.validate_action(action_flags)
+    assert action_flags.params["flags"] == "-sV 172.16.0.10"
+
+    # 4. verify_action resolves entity's actual target string (not UUID) before preflight_verify
+    captured_targets = []
+    orig_preflight = gw_safe.preflight_verify
+
+    def spy_preflight(tool_name: str, target: str, flags: str = ""):
+        captured_targets.append(target)
+        return orig_preflight(tool_name, target, flags)
+
+    gw_safe.preflight_verify = spy_preflight  # type: ignore[method-assign]
+    action_entity = ActionRequest(
+        session_id=sess_id,
+        tool_name="nmap",
+        target_entity_id=scoped_id,
+        triggered_by=ActionSource.USER,
+    )
+    await gw_safe.verify_action(action_entity)
+    assert captured_targets == ["10.0.0.5"]
 
     await store.close()

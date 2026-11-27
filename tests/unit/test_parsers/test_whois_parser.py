@@ -18,7 +18,7 @@ def test_whois_build_command(adapter):
 
     # 2. Target is network.host
     host = NetworkHost.create(ip="8.8.8.8")
-    cmd_host = adapter.build_command(host, {"raw_flags": "-h whois.arin.net"})
+    cmd_host = adapter.build_command(host, {"flags": "-h whois.arin.net"})
     assert "-h" in cmd_host
     assert "8.8.8.8" in cmd_host
 

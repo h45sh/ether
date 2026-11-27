@@ -37,6 +37,10 @@ def _build_dummy_target(accepts_list: list[str]) -> BaseFinding:
             return WebEndpoint.create(url="http://10.0.0.1:80/api")
         elif schema == "dns.record":
             return DnsRecord.create(domain="target.local", record_type="A", value="10.0.0.1")
+        elif schema in ("domain.info", "domain"):
+            from ether.schemas.dns import DomainInfo
+
+            return DomainInfo.create(domain="target.local")
 
     # Default fallback
     return NetworkHost.create(ip="10.0.0.1", hostname="target.local")
@@ -104,13 +108,13 @@ def test_all_adapters_build_command_invariants(tool_name, tool_data):
 
     adversarial_params = [
         {},
-        {"raw_flags": ""},
-        {"raw_flags": "   "},
-        {"raw_flags": "-p 80,443 -v --script 'default,vuln'"},
-        {"raw_flags": "; rm -rf /; echo $(id) && whoami | grep root"},
-        {"raw_flags": "null\x00byte\x00injection"},
-        {"raw_flags": "-H 'Authorization: Bearer test' -u 'https://example.com?id=1'"},
-        {"raw_flags": "A" * 5000},
+        {"flags": ""},
+        {"flags": "   "},
+        {"flags": "-p 80,443 -v --script 'default,vuln'"},
+        {"flags": "; rm -rf /; echo $(id) && whoami | grep root"},
+        {"flags": "null\x00byte\x00injection"},
+        {"flags": "-H 'Authorization: Bearer test' -u 'https://example.com?id=1'"},
+        {"flags": "A" * 5000},
     ]
 
     for params in adversarial_params:

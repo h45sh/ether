@@ -122,4 +122,52 @@ _Avoid_: Raw JSON dump, stringified dict, toString
 The retrieval-augmented generation pattern in `GraphTelemetryCompiler` and MCP tools that pulls semantically related vulnerabilities, services, and credentials based on an agent's tactical objective.
 _Avoid_: Document search, semantic lookup, finding search
 
+## Substrate Optimizations & Drift Analytics (Epoch 3)
+
+**Architectural Drift**:
+The measured structural divergence between an observed entity graph and a verified baseline specification, expressed as discrepancy findings across network surfaces, services, and endpoints.
+_Avoid_: Configuration audit, state diff, compliance scan, environment skew
+
+**Baseline Calibration**:
+A synthetic preflight probe dispatched by a web discovery tool to ascertain ambient 404 response geometry, deriving negative filter bounds to prevent graph pollution.
+_Avoid_: Fuzz tuning, 404 test, warmup scan, response profiling
+
+**Async Write Queue**:
+An asynchronous serialization channel that orders concurrent graph mutation requests through a single dedicated write connection to prevent contention in append-heavy workloads.
+_Avoid_: Task pool, write lock, transaction worker, batch worker
+
+**Drift Discrepancy Finding**:
+A normalized domain finding (`audit.drift`) denoting a specific topological divergence (such as an unexpected open port, absent expected service, or missing required HTTP header) between an observed session graph and an architectural baseline specification.
+_Avoid_: Diff node, discrepancy record, drift error, violation finding
+
+**Audit Manifest & Cryptographic Hash Chain**:
+An append-only, tamper-evident JSONL ledger (`AuditRecord`) linking each supervised action's payload, raw output log hash, and preceding block hash via SHA-256 for mathematical verification of the chain of custody.
+_Avoid_: Action history, command log, tracking file, audit dump
+
+**Scope Validator**:
+A high-leverage RadixTrie-backed network boundary engine in `ActionGateway` that enforces strict CIDR containment and permanently neutralizes cloud metadata/IMDS destinations under `GatePolicy.SAFE`.
+_Avoid_: Network filter, IP checker, range checker
+
+**Engagement Scope**:
+The declarative Rules of Engagement boundary (`allowed_cidrs`, `allowed_domains`, and explicit opt-ins for loopback, link-local, or metadata targets) evaluated by `Scope Validator` before tool dispatch or network connection.
+_Avoid_: Target whitelist, scope config, IP allowlist
+
+**Reactive Pipeline**:
+A multi-stage, backpressure-bounded execution chain (`PipelineEngine`) that streams `Finding` entities from upstream `Tool Adapter` stages into downstream stages with single-owner persistence.
+_Avoid_: Command pipe, workflow chain, task runner
+
+**Asset Resolver**:
+The centralized, externalized asset resolution module (`ether.registry.assets`) that resolves wordlist specs and macro tokens across direct paths, `$ETHER_WORDLISTS_DIR`, system SecLists, and the embedded `minimal.txt` fallback.
+_Avoid_: Wordlist loader, dictionary helper, seed script
+
+**Write Queue Worker**:
+A decoupled background serialization worker (`WriteQueue`) managing an async operation queue with exact-ownership reverse PIK lookup and transaction batching to ensure deadlock-free SQLite WAL writes.
+_Avoid_: Write thread, database queue, batch runner
+
+**Vector Index Engine**:
+A modular subsystem (`VectorIndex`) encapsulating `sqlite-vec` extension loading, `vec_findings` virtual table lifecycle, batch embeddings, and cosine similarity queries.
+_Avoid_: Vector helper, embedding module, search wrapper
+
+
+
 

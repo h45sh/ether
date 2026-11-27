@@ -108,7 +108,7 @@ async def test_execution_session_dispatch_and_events():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="nmap",
-        params={"raw_flags": "-p 80 10.0.0.1"},
+        params={"flags": "-p 80 10.0.0.1"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -174,7 +174,7 @@ async def test_execution_session_typed_subscription():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="whois",
-        params={"raw_flags": "example.com"},
+        params={"flags": "example.com"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -215,7 +215,7 @@ async def test_execution_session_kill_job():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="nmap",
-        params={"raw_flags": "-sV 10.0.0.1"},
+        params={"flags": "-sV 10.0.0.1"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -293,8 +293,8 @@ async def test_execution_session_cancel_coroutine():
     aborted = await session.abort_action(job_id)
     assert aborted is True
 
-    # Allow cancellation to propagate
-    await asyncio.sleep(0.02)
+    # Allow cancellation and cleanup to propagate
+    await asyncio.sleep(0.1)
     assert task.done()
     job = session.get_job(job_id)
     assert job.status == JobStatusEnum.FAILED
@@ -325,7 +325,7 @@ async def test_privileged_action_cached_credentials_no_suspend():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "whoami"},
+        params={"flags": "whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -349,7 +349,7 @@ async def test_privileged_action_cached_credentials_no_suspend():
     # TUI was NOT suspended because credentials were already cached
     assert suspend_ctx.suspended is False
     assert len(runner.executed_calls) == 1
-    call_params = runner.executed_calls[0]["params"]["raw_flags"]
+    call_params = runner.executed_calls[0]["params"]["flags"]
     assert call_params == "sudo whoami"
     assert any("uid=0(root)" in c for c in chunks_received)
 
@@ -381,7 +381,7 @@ async def test_privileged_action_prompt_and_resume_stream():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "nmap -sS 10.0.0.1"},
+        params={"flags": "nmap -sS 10.0.0.1"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -417,7 +417,7 @@ async def test_privileged_action_prompt_and_resume_stream():
     assert any("Nmap scan report" in c for c in chunks_received)
 
     assert len(runner.executed_calls) == 1
-    assert runner.executed_calls[0]["params"]["raw_flags"] == "sudo nmap -sS 10.0.0.1"
+    assert runner.executed_calls[0]["params"]["flags"] == "sudo nmap -sS 10.0.0.1"
 
     job = session.get_job(job_id)
     assert job.status == JobStatusEnum.DONE
@@ -447,7 +447,7 @@ async def test_privileged_action_auth_failure():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "whoami"},
+        params={"flags": "whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -505,7 +505,7 @@ async def test_privileged_action_deduplicates_sudo_flags():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "sudo whoami"},
+        params={"flags": "sudo whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -520,7 +520,7 @@ async def test_privileged_action_deduplicates_sudo_flags():
             await task
 
     assert len(runner.executed_calls) == 1
-    assert runner.executed_calls[0]["params"]["raw_flags"] == "sudo whoami"
+    assert runner.executed_calls[0]["params"]["flags"] == "sudo whoami"
     await store.close()
 
 
@@ -546,7 +546,7 @@ async def test_privileged_action_missing_sudo_binary():
         action_id=uuid4(),
         session_id=UUID(sess_id),
         tool_name="sudo",
-        params={"raw_flags": "whoami"},
+        params={"flags": "whoami"},
         triggered_by=ActionSource.USER,
         is_explicit_shell=True,
     )
@@ -585,5 +585,168 @@ async def test_execution_session_create_factory():
     gateway_session = gateway.create_session()
     assert gateway_session.gateway is gateway
     assert gateway_session.store is store
+
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_uses_executor_directly_and_no_subprocess_runner():
+    import ether.core.session as session_mod
+    from ether.core.executor import Executor
+
+    assert not hasattr(session_mod, "SubprocessCommandRunner")
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    session = ExecutionSession.create(store)
+    assert isinstance(session.runner, Executor)
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_normalizes_flags_param_before_validation():
+    from ether.schemas.network import NetworkHost
+
+    store = GraphStore(":memory:")
+    await store.initialize()
+    ws_id = await store.create_workspace("TestWS")
+    sess_id = await store.create_session(ws_id, "TestSess")
+
+    host = NetworkHost.create(ip="10.10.10.5")
+    host_id = await store.upsert_finding(sess_id, host)
+
+    seen_params = {}
+
+    class InspectingAdapter(ToolAdapter):
+        name = "inspect_tool"
+        execution_tier = "coroutine"
+
+        def validate_install(self):
+            return True
+
+        def build_command(self, target, params):
+            return ["inspect"]
+
+        async def parse_output(self, raw_stdout, target, context=None):
+            if False:
+                yield target
+
+        async def execute_action(self, target, params, context):
+            seen_params.update(params)
+            if False:
+                yield target
+
+    registry = ToolRegistry()
+    registry.tools["inspect_tool"] = {
+        "manifest": None,
+        "adapter": InspectingAdapter(),
+        "execution_tier": "coroutine",
+    }
+
+    validated_flags = []
+
+    class RecordingGateway(ActionGateway):
+        async def validate_action(self, action):
+            validated_flags.append(action.params.get("flags"))
+            return await super().validate_action(action)
+
+    gateway = RecordingGateway(registry, store)
+    session = ExecutionSession.create(store, gateway=gateway, registry=registry)
+
+    action = ActionRequest(
+        action_id=uuid4(),
+        session_id=UUID(sess_id),
+        tool_name="inspect_tool",
+        target_entity_id=host_id,
+        params={"flags": ["-sV", "$TARGET"]},
+        triggered_by=ActionSource.USER,
+    )
+    job_id = await session.dispatch(action)
+    task = session.get_running_task(job_id)
+    if task:
+        await task
+
+    assert validated_flags == [["-sV", "10.10.10.5"]]
+    assert seen_params["flags"] == ["-sV", "10.10.10.5"]
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_execution_session_single_spool_deque_and_audit_record(tmp_path):
+    from ether.common.forensic_log import ForensicLogManager, LogSpooler
+
+    db_path = str(tmp_path / "ether.db")
+    store = GraphStore(db_path)
+    await store.initialize()
+    ws_id = await store.create_workspace("TestWS")
+    sess_id = await store.create_session(ws_id, "TestSess")
+
+    class EmitAdapter(ToolAdapter):
+        name = "emit_tool"
+        execution_tier = "coroutine"
+
+        def validate_install(self):
+            return True
+
+        def build_command(self, target, params):
+            return ["emit"]
+
+        async def parse_output(self, raw_stdout, target, context=None):
+            if False:
+                yield target
+
+        async def execute_action(self, target, params, context):
+            await context.spool_line("hello-spool\n")
+            if False:
+                yield target
+
+    registry = ToolRegistry()
+    registry.tools["emit_tool"] = {
+        "manifest": None,
+        "adapter": EmitAdapter(),
+        "execution_tier": "coroutine",
+    }
+    session = ExecutionSession.create(store, registry=registry)
+
+    spooler_init_calls = []
+    orig_init = LogSpooler.__init__
+
+    def spy_init(self_spool, *args, **kwargs):
+        spooler_init_calls.append(args)
+        return orig_init(self_spool, *args, **kwargs)
+
+    action = ActionRequest(
+        action_id=uuid4(),
+        session_id=UUID(sess_id),
+        tool_name="emit_tool",
+        params={"target": "10.0.0.1"},
+        triggered_by=ActionSource.USER,
+    )
+
+    with patch.object(LogSpooler, "__init__", spy_init):
+        from ether.core.session import ByteBoundedRingBuffer
+
+        job_id = await session.dispatch(action)
+        assert isinstance(session._job_buffers[job_id], ByteBoundedRingBuffer)
+        assert session._job_buffers[job_id].max_chunks == 5000
+        task = session.get_running_task(job_id)
+        if task:
+            await task
+
+    assert len(spooler_init_calls) == 1
+    job = session.get_job(job_id)
+    assert job.status == JobStatusEnum.DONE
+    assert job.exit_code == 0
+
+    log_content = ForensicLogManager.read_action_log(
+        str(action.action_id), session_id=sess_id, data_dir=str(tmp_path)
+    )
+    assert log_content is not None
+    assert "hello-spool" in log_content
+
+    is_valid, records = ForensicLogManager.verify_session_audit(sess_id, data_dir=str(tmp_path))
+    assert is_valid
+    assert len(records) == 1
+    assert records[0]["action_id"] == str(action.action_id)
 
     await store.close()

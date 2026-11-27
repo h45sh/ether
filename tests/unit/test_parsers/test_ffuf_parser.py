@@ -29,7 +29,7 @@ def test_ffuf_build_command(adapter):
     # 2. Macro substitution in raw flags
     cmd_custom = adapter.build_command(
         endpoint,
-        {"raw_flags": "-u http://example.com/api/FUZZ -w {wordlist:common_dirs} -mc 200"},
+        {"flags": "-u http://example.com/api/FUZZ -w {wordlist:common_dirs} -mc 200"},
     )
     assert "-mc" in cmd_custom
     assert "{wordlist:" not in " ".join(cmd_custom)

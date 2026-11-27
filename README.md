@@ -41,13 +41,13 @@ To understand Ether, consider the role of a traditional supervisory runtime: it 
 | Supervisory Architecture Role | Ether Runtime Substrate |
 | :--- | :--- |
 | **Process Scheduler & Lifecycle** (`fork`/`exec`, cgroups) | **Async Process Supervisor**: Pure argument vectors (`create_subprocess_exec`), zero `shell=True`, 64KB log disk spooling (`LogSpooler`), and automatic `SIGTERM` $\to$ `SIGKILL` timeouts. |
-| **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using bounded ring buffers (`deque(maxlen=5000)`). |
+| **Virtual Memory Management (VMM)** | **Bounded Memory Governor**: Strictly caps RAM consumption at **< 10MB** per active job using byte- and chunk-bounded ring buffers (`ByteBoundedRingBuffer`, 2 MB / 5,000 chunks). |
 | **Device Drivers** (`/dev/*` hardware modules) | **Pluggable Smart Adapters**: Decoupled drivers in `tools/<name>/` normalizing heterogenous CLI outputs into structured Pydantic finding schemas. |
 | **Filesystem & Inodes** (ext4, deterministic paths) | **Deterministic GraphStore**: SQLite WAL engine indexing findings by deterministic SHA-256 **Primary Identity Keys (PIK)** ($H(\text{schema} + \text{sorted\_pik})$). |
 | **Security Rings / Access Controls** | **Dual GatePolicy Seam**: Engine-level enforcement of `GatePolicy.SAFE` (SSRF/IMDS blocking, CIDR boundaries) vs `GatePolicy.UNRESTRICTED` (unconstrained execution for red-teams). |
 | **Hardware State Invariance & Migration** | **Cryptographic Identity Anchoring & Temporal Decay**: Decouples volatile IPs via cryptographic fingerprints (`tls:`, `ssh:`, `favicon:`) and decays stale states (`confirmed` $\to$ `flapping` $\to$ `stale`). |
 | **Embedded Hardware Acceleration** | **Zero-Egress Vector Memory (`sqlite-vec`)**: Embedded 384-dimensional unit vector engine for sub-millisecond semantic search without external model downloads or API egress. |
-| **System Audit & Event Log** | **Forensic Event Log & Zero-Token Diffs**: Append-only event sourcing and set-theoretic graph deltas ($\Delta = S_{t+1} \setminus S_t$) cutting agent token usage by 98%. |
+| **System Audit & Forensic Log** | **Cryptographic Forensic Auditing (`ForensicLogManager`)**: Append-only event sourcing with SHA-256 hash chaining, automatic session-close gzip compaction, and set-theoretic graph deltas ($\Delta = S_{t+1} \setminus S_t$) cutting agent token usage by 98%. |
 | **Userland Syscalls & IPC** (`read`, `write`, `ioctl`) | **Native Model Context Protocol (MCP)**, **Headless CLI**, and **Async Python SDK**. |
 
 ```
@@ -89,24 +89,24 @@ To understand Ether, consider the role of a traditional supervisory runtime: it 
 ### The 6 Core Engine Subsystems
 
 1. **Async Process Supervisor & Memory Governor**
-   Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`maxlen=5000`) below **10MB RAM**.
+   Spawns binaries strictly via pure argument vectors (`asyncio.create_subprocess_exec`) without shell interpolation (`shell=True`). Strips all host API keys and operator secrets (`OPENAI_*`, `AWS_*`, `SSH_*`, `AZURE_*`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY`) via `sanitize_subprocess_env`. Spools gigabytes of raw console output directly to disk with 64KB buffering while strictly capping in-memory ring buffers (`ByteBoundedRingBuffer`: 2 MB / 5,000 chunks) below **10MB RAM**.
 
-2. **Deterministic Entity State Machine**
-   Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter.
+2. **Deterministic Entity State Machine & Decoupled GraphStore**
+   Entities (Hosts, Services, Vulnerabilities, Endpoints) are indexed by mathematical **Primary Identity Keys (PIKs)**. Node IDs are deterministic SHA-256 hashes of `(schema_type + sorted_pik)`. Ingesting the same finding across multiple tools non-destructively merges attributes into a single node rather than creating duplicate graph clutter. Concurrency is governed by a dedicated **`WriteQueue`** with exact-ownership batch coalescing and a read connection pool with `PRAGMA query_only = ON`.
 
 3. **Cryptographic Identity Anchoring & Temporal State Decay**
    Decouples volatile IP addresses from logical service identities using invariant cryptographic fingerprints (`tls:<sha256>`, `ssh:<fingerprint>`, `favicon:<hash>`). When a service migrates across cloud IPs, Ether automatically links cross-IP identity migration edges (`anchored_identity`). Unseen nodes undergo automatic confidence state decay (`confirmed` $\to$ `flapping` $\to$ `stale`).
 
 4. **Zero-Egress Embedded Vector Memory (`sqlite-vec`)**
-   Discovered findings are automatically converted into 384-dimensional unit vectors stored inside SQLite via `sqlite-vec`'s `vec0` virtual table. Enables sub-millisecond k-NN semantic search and task-directed context retrieval for AI agents with **zero model downloads, zero external API keys, and zero network egress**.
+   Discovered findings are automatically converted into 384-dimensional unit vectors stored inside SQLite via `VectorIndex` and `sqlite-vec`'s `vec0` virtual table. Enables sub-millisecond k-NN semantic search and task-directed context retrieval for AI agents with **zero model downloads, zero external API keys, and zero network egress**.
 
-5. **Dual-Mode Security Policy Seam (`GatePolicy`)**
+5. **Dual-Mode Security Policy Seam (`ScopeValidator` & `GatePolicy`)**
    Provides first-class runtime policy enforcement:
-   * `GatePolicy.SAFE`: Strictly blocks cloud metadata endpoints (AWS IMDSv2 `169.254.169.254`, GCP, Azure), enforces authorized CIDR scope guardrails, and strips credentials.
+   * `GatePolicy.SAFE`: Enforces strict CIDR scope guardrails via Radix Trie lookup, blocks cloud metadata endpoints (AWS IMDSv2 `169.254.169.254`, GCP, Azure), and dynamically validates tool targets.
    * `GatePolicy.UNRESTRICTED`: Unlocks raw, unconstrained execution for authorized red-team engagements and advanced penetration testing operations.
 
-6. **AI Prompt Injection Boundary Sandbox**
-   Protects AI reasoning loops from malicious target payloads (e.g. prompt injection embedded in target HTTP headers, TLS certs, or HTML comments). Wraps untrusted target stdout inside structural `<untrusted_scan_output>` boundary tags, neutralizing breakout sequences (`</untrusted_scan_output>` escaped to `<\/untrusted_scan_output>`) and redacting private keys and bearer tokens.
+6. **AI Prompt Injection Boundary & Cryptographic Audit Trails**
+   Protects AI reasoning loops from malicious target payloads (e.g. prompt injection embedded in target HTTP headers, TLS certs, or HTML comments). Wraps untrusted target stdout inside structural `<untrusted_scan_output>` boundary tags with closing tag breakout neutralization (`<\/untrusted_scan_output>`) and strict length bounding (`max_chars=100_000`). All executed actions generate an append-only cryptographic `AuditRecord` in `~/.ether/audit/{session_id}.jsonl` with SHA-256 hash chaining and session-close gzip compaction.
 
 ---
 
@@ -133,12 +133,13 @@ Every executed command and parsed finding is logged into an append-only event so
 - Linux or macOS
 
 ```bash
-# Option A: Install directly from PyPI
-pip install ether-core
-# (or with pipx for isolated global CLI access)
+# Option A: Fast Global CLI & MCP Install with pipx (Recommended)
 pipx install ether-core
 
-# Option B: Clone for local development
+# Option B: Standard Python Install
+pip install ether-core
+
+# Option C: Local Development Clone
 git clone https://github.com/h45sh/ether.git
 cd ether
 uv venv && source .venv/bin/activate
@@ -156,20 +157,20 @@ Ether is multi-modal by design. You can drive the engine through any of the foll
 
 ### Method 1: The Headless CLI (For Operators & Shell Automation)
 
-The `ether` CLI provides 8 high-leverage subcommands to manage workspaces, supervise scans, query the graph, and search findings:
+The `ether` CLI provides 10 high-leverage subcommands to manage workspaces, supervise scans, query the graph, search findings, and audit architectural drift:
 
 ```bash
 # 1. Verify environment health and discovered security tools
 ether doctor
 
-# 2. Inspect available tool adapters (nmap, nuclei, ffuf, subfinder, etc.)
+# 2. Inspect available tool adapters (36 registered adapters; use ETHER_PLUGIN_TRUST_MODE=dev if bundled tools lack .sha256/.sig sidecars)
 ether tool list
 
 # 3. Create a dedicated investigation session
 SESSION_ID=$(ether session create "Target Perimeter Recon" --json | jq -r '.session_id')
 
 # 4. Supervise a tool scan (stdout is normalized streamingly into the graph)
-ether run nmap 192.168.1.50 --session-id "$SESSION_ID" --params '{"raw_flags": "-sV -p 80,443,8080"}'
+ether run nmap 192.168.1.50 --session-id "$SESSION_ID" --params '{"flags": "-sV -p 80,443,8080"}'
 
 # 5. List discovered finding nodes in the session graph
 ether graph list-nodes "$SESSION_ID"
@@ -177,11 +178,20 @@ ether graph list-nodes "$SESSION_ID"
 # 6. Perform offline semantic vector search over findings (k-NN cosine distance)
 ether graph search "$SESSION_ID" "Log4j RCE vulnerabilities or exposed web panels"
 
-# 7. Extract token-budgeted AI telemetry snapshot
+# 7. View credentials with plaintext unmasking
+ether graph search "$SESSION_ID" "admin" --unmask
+
+# 8. Verify cryptographic audit chain of custody and log file hashes
+ether session verify-audit "$SESSION_ID"
+
+# 9. Extract token-budgeted AI telemetry snapshot
 ether telemetry snapshot "$SESSION_ID" --budget 2000
 
-# 8. Export forensic audit archive (encrypted with AES-256-GCM)
+# 10. Export forensic audit archive (encrypted with AES-256-GCM)
 ether graph export "$SESSION_ID" -o engagement_backup.enc --encrypt --passphrase "StrongPassword123"
+
+# 11. Audit architectural drift against an expected baseline
+ether drift audit "$SESSION_ID" --baseline baseline.json --record
 ```
 
 *For complete CLI reference and all flags, see the [Headless CLI Operations Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/cli-usage.md).*
@@ -190,34 +200,33 @@ ether graph export "$SESSION_ID" -o engagement_backup.enc --encrypt --passphrase
 
 ### Method 2: Native AI Agent MCP Server (For Claude Desktop, Cursor, & Swarms)
 
-Ether provides a built-in **Model Context Protocol (MCP)** server over standard I/O (`stdio`) or Server-Sent Events (`sse`), exposing 13 tools: `execute_tool`, `query_graph`, `inspect_entity`, `get_diff`, `search_findings_semantic`, `abort_action`, `get_attack_path`, `get_blast_radius`, `get_crown_jewels`, `list_tools`, `get_tool_info`, `manage_session`, and `read_action_log`.
+Ether provides a built-in **Model Context Protocol (MCP)** server over standard I/O (`stdio`) or Server-Sent Events (`sse`), exposing **18 high-leverage supervisory tools** (plus MCP resources for schemas/guidance and workflow prompts): `execute_tool`, `execute_pipeline`, `query_graph`, `inspect_entity`, `get_diff`, `get_telemetry_snapshot`, `search_findings_semantic`, `abort_action`, `get_attack_path`, `get_blast_radius`, `get_crown_jewels`, `list_tools`, `get_tool_info`, `manage_session`, `verify_session_audit`, `read_action_log`, `get_deception_report`, and `audit_drift`.
 
-#### Configure Claude Desktop (`claude_desktop_config.json`)
+#### Zero-Friction Setup for Claude Desktop (`claude_desktop_config.json`)
 ```json
 {
   "mcpServers": {
     "ether": {
-      "command": "/path/to/ether/.venv/bin/ether",
-      "args": ["mcp"],
-      "env": {
-        "ETHER_DATA_DIR": "/home/user/.ether"
-      }
-    }
-  }
-}
-```
-
-#### Configure Cursor (`.cursor/mcp.json`)
-```json
-{
-  "mcpServers": {
-    "ether": {
-      "command": "/path/to/ether/.venv/bin/ether",
+      "command": "ether",
       "args": ["mcp"]
     }
   }
 }
 ```
+
+#### Zero-Friction Setup for Cursor (`.cursor/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "ether": {
+      "command": "ether",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+*(Note: If installed via `pipx` without global PATH symlinks, replace `"command": "ether"` with `"command": "pipx"`, `"args": ["run", "ether-core", "mcp"]`.)*
 
 #### Prompting Your AI Agent
 Once connected, give your agent natural language cybersecurity tasks:
@@ -314,33 +323,91 @@ Ether strictly adheres to the following mechanical engineering contracts:
 | :--- | :--- | :--- |
 | **Strict Headless Core** | Zero Textual, curses, or UI imports | Verified via AST linting (`pytest -m tier0`). Pure headless engine. |
 | **Process Isolation** | Pure argument vectors (`asyncio.create_subprocess_exec`) | Zero `shell=True`. 100% immune to shell injection. |
-| **Bounded Memory Ceiling** | Bounded ring buffers (`maxlen=5000`) & 64KB disk spooling | Memory usage strictly capped at **<10MB** per active job. |
+| **Bounded Memory Ceiling** | `ByteBoundedRingBuffer` (2 MB / 5,000 chunks) & 64KB disk spooling | Memory usage strictly capped at **<10MB** per active job. |
 | **Secret Scrubbing** | Child environment scrubbing (`sanitize_subprocess_env`) | Host API keys (`OPENAI_*`, `AWS_*`, `SSH_*`) never leak to child tools. |
 | **Deterministic State** | Primary Identity Key (PIK) hashing via SHA-256 | Non-destructive idempotent entity merging in SQLite WAL. |
 | **Zero-Token Diffs** | Set-theoretic delta calculation ($\Delta = S_{t+1} \setminus S_t$) | Cuts LLM agent context window consumption by **98%**. |
 | **Dual Policy Seam** | `GatePolicy.SAFE` vs `GatePolicy.UNRESTRICTED` | Defends against SSRF & cloud metadata theft; unlocks unconstrained execution for red-teams. |
 | **Offline Vector RAG** | Native `sqlite-vec` k-NN search (384-dimensional) | High-speed semantic search with zero network egress or external API calls. |
+| **Forensic Audit Integrity** | SHA-256 block hash chaining (`ForensicLogManager`) | Tamper-evident action ledger and automatic session-close gzip compaction. |
 
 ---
 
-## Universal Smart Adapter Ecosystem
+## Empirical Performance & Mechanical Invariants
 
-Ether decouples command building and parsing into pluggable tool adapters located in `tools/<name>/`:
+Ether is empirically validated across automated mechanical testbeds and multi-scenario cyber-range simulations, verifying concurrency, memory bounds, protocol symmetry, and security isolation:
 
-| Tool | Category | Execution Tier | Normalized Schemas Produced |
-| :--- | :--- | :--- | :--- |
-| **`nmap`** | Port & Service Scanning | Subprocess (Tier B) | `network.host`, `network.service` |
-| **`nuclei`** | Vulnerability Scanning | Subprocess (Tier B) | `vulnerability.found` |
-| **`ffuf`** | Web Fuzzing & Directory Discovery | Subprocess (Tier B) | `web.endpoint` |
-| **`gobuster`** | URI & DNS Enumeration | Subprocess (Tier B) | `web.endpoint`, `dns.record` |
-| **`subfinder`** | Passive Subdomain Discovery | Subprocess (Tier B) | `dns.record`, `domain.info` |
-| **`nikto`** | Web Server Vulnerability Scanner | Subprocess (Tier B) | `vulnerability.found`, `audit.misconfig` |
-| **`sqlmap`** | Database Vulnerability Scanner | Subprocess (Tier B) | `vulnerability.found` |
-| **`searchsploit`** | Exploit-DB Offline Search | Subprocess (Tier B) | `exploit.reference` |
-| **`whois`** | Network Range & ASN Lookup | Subprocess (Tier B) | `network.netblock`, `domain.info` |
-| **`netexec`** | Active Directory & Network Auditing | Subprocess (Tier B) | `network.host`, `credential.found` |
-| **`dnspython`** | DNS Records & Zone Transfers | Native Coroutine (Tier A) | `dns.record`, `domain.info` |
-| **`http_probe`** | HTTP Surface & Favicon Probing | Native Coroutine (Tier A) | `web.endpoint`, `web.technology` |
+### Mechanical Invariants & Operational Verification
+
+| Focus Area | Verified Mechanical Guarantee | Target Benchmark / Status |
+| :--- | :--- | :--- |
+| **Packaging & Isolation** | Clean wheel build (`uv build --wheel`), standalone execution outside repository tree, 36 discovered adapters, 18 MCP tools (`stdio`), fallback bundled wordlists. | Standalone isolation verified |
+| **CLI / MCP Symmetry** | 100% feature and schema parity between Headless CLI and native Model Context Protocol (MCP) server. | Full schema parity verified |
+| **Reactive Pipeline DAGs** | Real-time streaming tool chains (`subfinder \| nmap \| nuclei`) with asynchronous queue backpressure and non-blocking propagation. | In-memory stream propagation |
+| **Adversarial Defenses** | Active blocking of HTTP 302 redirects to cloud IMDS (`169.254.169.254`), IP evasion defense, zero leak of host secrets (`ETHER_*`, `OPENAI_*`). | 100% containment |
+| **Graph Intelligence** | Multi-hop pivot graph exploration, crown jewels pathfinding, blast radius analysis, deterministic PIK merging. | Zero duplicated nodes |
+| **Deception Defenses** | TCP banner-loop tarpit detection, Bayesian deception scoring on port sprawl, automated exclusion of canary ports. | Real-time belief updating |
+| **Stealth & Firewall Accuracy** | Accurate preservation of `filtered` firewall states, native SYN scan flags, >98% token reduction via zero-token deltas. | Exact state fidelity |
+| **Identity Anchoring & Drift** | Cryptographic fingerprinting (`tls:`, `ssh:`, `favicon:`), cross-IP migration tracking, temporal confidence decay. | Cryptographic anchoring |
+| **Storage & Memory Limits** | **2,266.4 upserts/sec** WAL write throughput with `WriteQueue` batching, **0.366MB** RSS delta (<10MB ceiling). | Concurrency & RAM bounds met |
+| **Forensic Chain-of-Custody** | Cryptographic SHA-256 block hash chaining, closed session immutability (`PermissionError`), AES-256-GCM encrypted archives. | Tamper-evident verification |
+
+### Empirical Run 1 Benchmark
+
+| Evaluation Metric | Measured Benchmark | Engineering Impact & Real-World Capability |
+| :--- | :--- | :--- |
+| **Token Economics ROI** | **> 98.4% Token Reduction** | Zero-token set-theoretic diffs ($\Delta = S_{t+1} \setminus S_t$) spend **0 net LLM tokens** on unchanged state, eliminating 50,000-token raw terminal dumps. |
+| **Security Boundary Block Rate** | **100.0% (14/14 Blocked)** | Complete neutralization of hostile prompt injection tag breakouts, SSRF attempts, and cloud metadata theft (AWS IMDSv2 `169.254.169.254`, GCP, Azure) under `GatePolicy.SAFE`. |
+| **Universal Parser Crash Invariant** | **0.00% Crash Rate** | 100% crash immunity across **630 hostile stream invocations** (broken ANSI, truncated JSON chunks, null bytes, and 20,000-token adversarial buffer floods). |
+| **Bounded Memory Ceiling** | **1.46 MB Peak Heap RAM** | Bounded circular ring buffers (`deque(maxlen=5000)`) strictly respected the <10MB ceiling during high-throughput multi-agent execution. |
+| **Forensic Chain of Custody** | **100% Verifiable** | Continuous SHA-256 block hash chaining (`ForensicLogManager`) linking all executed actions, with automatic gzip compaction upon session closure (`ether session verify-audit`). |
+| **Entity Graph Ingestion** | **100% Idempotent** | Disparate multi-tool findings automatically normalized into deterministic SHA-256 Primary Identity Keys (PIK) without duplicated graph clutter. |
+
+*For complete evaluation data, see the [Master Ether Evaluation Report](reports/run_1/master_ether_evaluation_report.html).*
+
+---
+
+## Universal Smart Adapter Arsenal (36 Pluggable Adapters)
+
+Ether decouples command building, execution, and stream normalization into pluggable tool adapters located in `tools/<name>/`:
+
+| Domain | Tool | Tier | Purpose & Capabilities | Normalized Schemas Produced |
+| :--- | :--- | :--- | :--- | :--- |
+| **Network & Port Scanning** | **`nmap`** | Subprocess (Tier B) | Host discovery, port scanning, OS detection, service versioning | `network.host`, `network.service` |
+| | **`masscan`** | Subprocess (Tier B) | Asynchronous ultra-high-rate TCP port scanner | `network.host`, `network.service` |
+| | **`naabu`** | Subprocess (Tier B) | Fast port scanner with flexible probe mechanics | `network.host`, `network.service` |
+| | **`rustscan`** | Subprocess (Tier B) | High-speed port scanner with adaptive timeouts | `network.host`, `network.service` |
+| | **`zmap`** | Subprocess (Tier B) | Single-packet network scanner for internet-scale surveys | `network.host`, `network.service` |
+| | **`stealth_scan`** | Native Coroutine (Tier A) | Low-observable stealth TCP SYN scanner with honeypot/tarpit detection | `network.host`, `network.service` |
+| **Web Surface & APIs** | **`gobuster`** | Subprocess (Tier B) | High-throughput URI, vhost, and directory brute-forcing | `web.endpoint`, `dns.record` |
+| | **`ffuf`** | Subprocess (Tier B) | High-speed web fuzzer for paths, parameters, and headers | `web.endpoint` |
+| | **`feroxbuster`** | Subprocess (Tier B) | Recursive content discovery and multi-threaded enumeration | `web.endpoint` |
+| | **`katana`** | Subprocess (Tier B) | Next-generation web crawler and spidering framework | `web.endpoint`, `web.resource` |
+| | **`kiterunner`** | Subprocess (Tier B) | OpenAPI, Swagger, and REST API route dictionary discovery | `web.endpoint` |
+| | **`arjun`** | Subprocess (Tier B) | HTTP query parameter discovery and injection surface finder | `web.parameter`, `web.endpoint` |
+| | **`nikto`** | Subprocess (Tier B) | Comprehensive web server misconfiguration and CGI scanner | `vulnerability.found`, `audit.misconfig` |
+| | **`wpscan`** | Subprocess (Tier B) | WordPress core, plugin, and theme vulnerability auditor | `vulnerability.found`, `web.technology` |
+| **DNS & OSINT** | **`subfinder`** | Subprocess (Tier B) | Fast passive subdomain discovery using curated online sources | `dns.record`, `domain.info` |
+| | **`amass`** | Subprocess (Tier B) | In-depth network mapping and external asset discovery | `dns.record`, `network.netblock` |
+| | **`dnspython`** | Native Coroutine (Tier A) | Wire-level RFC 1035 DNS interrogator and AXFR auditor | `dns.record`, `domain.info` |
+| | **`dnsrecon`** | Subprocess (Tier B) | Advanced DNS enumeration and cache snooping tool | `dns.record` |
+| | **`whois`** | Subprocess (Tier B) | Regional Internet Registry (RIR) and ASN lookup client | `network.netblock`, `domain.info` |
+| | **`crtsh`** | Native Coroutine (Tier A) | Certificate Transparency log search for domain intelligence | `dns.record`, `tls.certificate` |
+| | **`cloud_enum`** | Subprocess (Tier B) | Multi-cloud public asset enumerator (AWS S3, Azure Blob, GCP) | `cloud.asset` |
+| **Vulnerability & Exploits** | **`nuclei`** | Subprocess (Tier B) | Template-driven protocol vulnerability scanner | `vulnerability.found` |
+| | **`sqlmap`** | Subprocess (Tier B) | Automated SQL injection detection and database extraction | `vulnerability.found` |
+| | **`ghauri`** | Subprocess (Tier B) | Advanced automated SQL injection detection engine | `vulnerability.found` |
+| | **`searchsploit`** | Subprocess (Tier B) | Exploit-DB offline archive search and PoC indexing | `exploit.reference` |
+| | **`cve_search`** | Native Coroutine (Tier A) | National Vulnerability Database (NVD) CVE lookup engine | `vulnerability.found` |
+| **Credentials & Auth** | **`hydra`** | Subprocess (Tier B) | Network logon cracker across 50+ protocols (SSH, HTTP, SMB) | `credential.found` |
+| | **`netexec`** | Subprocess (Tier B) | Active Directory and network exploitation assessment suite | `network.host`, `credential.found` |
+| **In-Process Probers (Tier A)** | **`http_probe`** | Native Coroutine (Tier A) | In-process HTTP banner grabbing and tech fingerprinting | `web.endpoint`, `web.technology` |
+| | **`tls_probe`** | Native Coroutine (Tier A) | In-process TLS/SSL handshake analysis and certificate validation | `tls.certificate`, `tls.cipher_suite` |
+| | **`sslyze`** | Native Coroutine (Tier A) | In-depth SSL/TLS cipher suite and protocol security auditor | `tls.certificate`, `tls.cipher_suite` |
+| | **`imds_probe`** | Native Coroutine (Tier A) | Cloud instance metadata service (IMDSv1/IMDSv2) token extractor | `cloud.asset` |
+| | **`mysql_probe`** | Native Coroutine (Tier A) | Asynchronous MySQL service handshaking and banner probe | `database.service` |
+| | **`postgres_probe`** | Native Coroutine (Tier A) | Asynchronous PostgreSQL protocol greeting and auth probe | `database.service` |
+| | **`redis_probe`** | Native Coroutine (Tier A) | Lightweight async Redis info and unauthorized access probe | `database.service` |
 
 *To build or scaffold your own tool adapter, consult the [Adapter Authoring Guide](https://github.com/h45sh/ether/blob/main/docs/how-to/author-adapters.md) and use the official [Ether DevKit (`ether-devkit`)](https://github.com/h45sh/ether-devkit) developer CLI & agent skill (`pipx install git+https://github.com/h45sh/ether-devkit.git` or `npx skills add h45sh/ether-devkit`).*
 
@@ -360,11 +427,14 @@ pytest -m tier0
 # Run Universal Adapter Fuzzing Suite across all tool adapters
 pytest -m fuzz
 
-# Run Full Regression Suite (284 tests)
+# Run Full Regression Suite (421+ tests)
 pytest tests/
 
 # Evaluate Performance Limits & Benchmark Invariants
-python3 scripts/generate_benchmark_report.py --check
+python3 tests/benchmarks/runner.py --check
+
+# Run In-Tree AST Mutation Testing
+python3 tests/mutation/run_mutation_tests.py --target=canonicalize
 ```
 
 ---
@@ -393,7 +463,7 @@ Ether’s documentation is structured according to the **[Diátaxis Framework](h
                  Explanation             │               Reference
           (Understanding-Oriented)       │         (Information-Oriented)
         "Help me understand the why"     │     "Give me the technical specs"
-        - [Architecture Deep Dive]       │     - [Schema Registry (18 Models)]
+        - [Architecture Deep Dive]       │     - [Schema Registry (25 Models)]
           (docs/explanation/architecture.md)      (docs/reference/schema-registry.md)
         - [Database & Graph State]       │     - [Engineering Standards]
           (docs/explanation/database.md) │        (docs/reference/engineering-standards.md)

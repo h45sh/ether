@@ -1,0 +1,33 @@
+[meta]
+name = "cve_search"
+description = "Local offline CVE and vulnerability database search tool mapping software names and versions to CVSS v3 ratings."
+one_line_summary = "offline local CVE and CVSS v3 vulnerability query utility"
+category = "Vulnerability Assessment"
+binary = "cve_search"
+categories = ["vuln", "cve", "offline"]
+theory = """
+### Protocol Theory & Vulnerability Mapping
+Matches identified software names and version numbers against local CVE dictionaries to surface
+known Common Vulnerabilities and Exposures (CVEs) without outbound network queries.
+"""
+
+[input]
+accepts = ["network.service", "web.endpoint", "host.software_package"]
+target_types = ["keyword", "domain", "ip"]
+
+[output]
+produces = ["vulnerability.found"]
+
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["--json"]
+blocked = ["-oG", "-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["--json"]

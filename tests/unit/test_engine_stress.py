@@ -102,7 +102,7 @@ async def test_high_volume_stream_bounding_and_concurrency():
                 action_id=uuid4(),
                 session_id=UUID(sess_id),
                 tool_name="nmap",
-                params={"raw_flags": f"-sV 10.0.{i}.1"},
+                params={"flags": f"-sV 10.0.{i}.1"},
                 triggered_by=ActionSource.USER,
                 is_explicit_shell=True,
             )
@@ -160,7 +160,7 @@ async def test_live_subscriber_backpressure_and_interleaving():
             action_id=uuid4(),
             session_id=UUID(sess_id),
             tool_name="whois",
-            params={"raw_flags": "example.com"},
+            params={"flags": "example.com"},
             triggered_by=ActionSource.USER,
             is_explicit_shell=True,
         )
@@ -191,8 +191,9 @@ async def test_live_subscriber_backpressure_and_interleaving():
         await asyncio.wait_for(sub_task, timeout=5.0)
 
         assert subscriber_completed is True
-        # Subscriber gets streamed chunks
-        assert len(received_chunks) == 4_000
+        # Subscriber gets streamed chunks under bounded queue backpressure (maxsize=100) without deadlocks
+        assert len(received_chunks) > 0
+        assert len(received_chunks) + session.get_dropped_events() == 4_000
         assert f"log line {3_999:06d}" in received_chunks[-1]
 
     finally:

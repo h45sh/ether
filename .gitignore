@@ -14,7 +14,6 @@ dist/
 build/
 *.egg-info/
 *.egg
-uv.lock
 
 # Testing, coverage, and linting caches
 .pytest_cache/

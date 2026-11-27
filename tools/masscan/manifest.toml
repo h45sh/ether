@@ -1,0 +1,33 @@
+[meta]
+name = "masscan"
+description = "High-throughput asynchronous TCP port scanner designed for full CIDR and Internet-scale sweeps."
+one_line_summary = "internet-scale asynchronous port scanner"
+category = "Network Reconnaissance"
+binary = "masscan"
+categories = ["recon", "network", "portscan"]
+theory = """
+### Protocol Theory & Asynchronous Packet Transmission
+Masscan uses its own custom TCP/IP stack to transmit asynchronous SYN frames at line rate.
+It reads return SYN-ACK frames to discover open ports without maintaining OS socket state.
+"""
+
+[input]
+accepts = ["network.host", "network.netblock"]
+target_types = ["ip", "cidr", "domain"]
+
+[output]
+produces = ["network.service"]
+
+[execution]
+tier = "subprocess"
+output_format = "ndjson"
+supports_streaming_parse = true
+default_timeout_sec = 120.0
+
+[flags]
+allowed = ["-p80,443,8080", "--rate", "-oJ", "-", "-oG", "-oX", "-p"]
+blocked = ["-oN", "-oA", "--script", "--proxy", "-iL", "--config", "--eval"]
+compound_delimiters = ["=", ":", ","]
+
+[profiles]
+fast = ["-p80,443,8080", "--rate=1000", "-oJ", "-"]

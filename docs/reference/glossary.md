@@ -134,3 +134,64 @@ _Avoid_: Raw JSON dump, stringified dict, toString
 The retrieval-augmented generation pattern in `GraphTelemetryCompiler` and MCP tools that pulls semantically related vulnerabilities, services, and credentials based on an agent's tactical objective.
 _Avoid_: Document search, semantic lookup, finding search
 
+---
+
+## Substrate Optimizations & Drift Analytics (Epoch 3)
+
+**Architectural Drift**:
+The measured structural divergence between an observed entity graph and a verified baseline specification, expressed as discrepancy findings across network surfaces, services, and endpoints.
+_Avoid_: Configuration audit, state diff, compliance scan, environment skew
+
+**Baseline Calibration**:
+A synthetic preflight probe dispatched by a web discovery tool to ascertain ambient 404 response geometry, deriving negative filter bounds to prevent graph pollution.
+_Avoid_: Fuzz tuning, 404 test, warmup scan, response profiling
+
+**Async Write Queue**:
+An asynchronous serialization channel that orders concurrent graph mutation requests through a single dedicated write connection to prevent contention in append-heavy workloads.
+_Avoid_: Task pool, write lock, transaction worker, batch worker
+
+**Drift Discrepancy Finding**:
+A normalized domain finding (`audit.drift`) denoting a specific topological divergence (such as an unexpected open port, absent expected service, or missing required HTTP header) between an observed session graph and an architectural baseline specification.
+_Avoid_: Diff node, discrepancy record, drift error, violation finding
+
+**Audit Manifest & Cryptographic Hash Chain**:
+An append-only, tamper-evident JSONL ledger (`AuditRecord`) linking each supervised action's payload, raw output log hash, and preceding block hash via SHA-256 for mathematical verification of the chain of custody.
+_Avoid_: Action history, command log, tracking file, audit dump
+
+**Scope Validator**:
+A high-leverage RadixTrie-backed network boundary engine in `ActionGateway` that enforces strict CIDR containment and permanently neutralizes cloud metadata/IMDS destinations under `GatePolicy.SAFE`.
+_Avoid_: Network filter, IP checker, range checker
+
+**Write Queue Worker**:
+A decoupled background serialization worker (`WriteQueue`) managing an async operation queue with exact-ownership reverse PIK lookup and transaction batching to ensure deadlock-free SQLite WAL writes.
+_Avoid_: Write thread, database queue, batch runner
+
+**Vector Index Engine**:
+A modular subsystem (`VectorIndex`) encapsulating `sqlite-vec` extension loading, `vec_findings` virtual table lifecycle, batch embeddings, and cosine similarity queries.
+_Avoid_: Vector helper, embedding module, search wrapper
+
+**Byte-Bounded Ring Buffer**:
+A memory-capped streaming buffer (`ByteBoundedRingBuffer`) in `ExecutionSession` that evicts oldest chunks when total buffered bytes exceed 2 MB or chunk count exceeds 5,000, guaranteeing <10 MB RSS overhead per active job.
+_Avoid_: Unbounded buffer, raw deque
+
+**Containerized Tool Runner**:
+An execution supervisor module (`ContainerizedToolRunner`) that transparently falls back to an isolated OCI container (`podman`/`docker`) when a required security binary is absent from the host `$PATH`.
+_Avoid_: Docker wrapper, container shim
+
+**Raw Network Governor**:
+A network execution module (`RawNetworkGovernor`) that performs asynchronous TCP SYN sweeps using ambient `CAP_NET_RAW` capabilities, automatically falling back to non-blocking `asyncio.open_connection` pools when raw sockets are unavailable.
+_Avoid_: Port scanner, raw socket helper
+
+**Stream Recovery Engine**:
+A parser-pipeline module (`StreamRecoveryEngine`) that salvages valid JSON/XML entities from truncated or timed-out scanner output buffers rather than discarding partial findings.
+_Avoid_: Regex fallback, error ignorer
+
+**Storage Lifecycle Manager**:
+A background filesystem module (`StorageLifecycleManager`) that enforces configurable disk quotas and Zstandard (`zstd`) compression on historical console logs while preserving `ForensicLogManager` SHA-256 audit chains.
+_Avoid_: Log rotator, cleanup cron
+
+**Adaptive Volatility Scoring**:
+A `TemporalDecayEngine` mechanism that dynamically scales entity TTL windows using a historical flapping coefficient ($V_n \in [0.1, 1.0]$) so ephemeral cloud containers decay faster than stable hosts.
+_Avoid_: Static TTL, fixed expiry
+
+

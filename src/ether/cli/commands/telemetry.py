@@ -14,7 +14,8 @@ async def handle_telemetry_snapshot(args: Any, context: CliContext) -> int:
         print_error("session_id is required.")
         return EXIT_RUNTIME_ERROR
 
-    max_tokens = int(getattr(args, "max_tokens", 4000))
+    budget = getattr(args, "budget", None)
+    max_tokens = int(budget if budget is not None else getattr(args, "max_tokens", 4000))
     selected_entity_id = getattr(args, "entity_id", None)
 
     async with context.open_store() as store:
@@ -48,4 +49,35 @@ async def handle_telemetry_diff(args: Any, context: CliContext) -> int:
         diff = await compiler.compute_graph_diff(baseline_timestamp=baseline, action_id=action_id)
 
     print_json(diff)
+    return EXIT_SUCCESS
+
+
+async def handle_telemetry_health(args: Any, context: CliContext) -> int:
+    """Collect runtime diagnostics and emit JSON or Prometheus text metrics."""
+    from ether.core.diagnostics import DiagnosticEngine
+
+    engine = DiagnosticEngine(db_path=context.db_path, tools_dir=context.tools_dir)
+    metrics = await engine.collect_runtime_metrics()
+
+    if getattr(args, "prometheus", False):
+        prom_text = engine.to_prometheus_text(metrics)
+        print(prom_text, end="")
+        return EXIT_SUCCESS
+
+    if context.is_json:
+        print_json(metrics)
+    else:
+        print("[+] Ether Telemetry Substrate Health")
+        print(
+            f"    Open FDs:               {metrics.get('open_fds')} (soft max: {metrics.get('max_fds', {}).get('soft')})"
+        )
+        print(
+            f"    Resident Memory (RSS):  {metrics.get('resident_memory_bytes', 0) / (1024 * 1024):.2f} MB"
+        )
+        print(
+            f"    Event Loop Latency:     {metrics.get('event_loop_lag_seconds', 0.0) * 1000:.3f} ms"
+        )
+        print(f"    Active Workers:         {metrics.get('active_workers', 0)}")
+        print(f"    Queue Depth:            {metrics.get('queue_depth', 0)}")
+
     return EXIT_SUCCESS

@@ -6,20 +6,43 @@ import sys
 from typing import List, Optional
 
 from ether import __version__
+from ether.cli.commands.config import (
+    handle_config_init,
+    handle_config_path,
+    handle_config_show,
+)
 from ether.cli.commands.doctor import handle_doctor
+from ether.cli.commands.drift import handle_drift_audit, handle_drift_export_baseline
 from ether.cli.commands.graph import (
+    handle_graph_attack_path,
+    handle_graph_belief,
+    handle_graph_blast_radius,
+    handle_graph_crown_jewels,
     handle_graph_export,
     handle_graph_import,
     handle_graph_list_nodes,
     handle_graph_prune,
     handle_graph_search,
+    handle_graph_tree,
 )
 from ether.cli.commands.logs import handle_logs
 from ether.cli.commands.mcp import handle_mcp
+from ether.cli.commands.ops import handle_kill, handle_ps, handle_report, handle_status
+from ether.cli.commands.pipeline import handle_pipeline_run
 from ether.cli.commands.run import handle_run
-from ether.cli.commands.session import handle_session_create, handle_session_list
-from ether.cli.commands.telemetry import handle_telemetry_diff, handle_telemetry_snapshot
-from ether.cli.commands.tool import handle_tool_info, handle_tool_list
+from ether.cli.commands.session import (
+    handle_session_close,
+    handle_session_create,
+    handle_session_list,
+    handle_session_use,
+    handle_session_verify_audit,
+)
+from ether.cli.commands.telemetry import (
+    handle_telemetry_diff,
+    handle_telemetry_health,
+    handle_telemetry_snapshot,
+)
+from ether.cli.commands.tool import handle_tool_info, handle_tool_list, handle_tool_search
 from ether.cli.context import (
     EXIT_RUNTIME_ERROR,
     EXIT_SUCCESS,
@@ -54,19 +77,27 @@ def build_parser() -> argparse.ArgumentParser:
         "-j",
         "--json",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Output in machine-readable JSON format",
     )
     common_options.add_argument(
         "-v",
         "--verbose",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Enable verbose debug logging to stderr",
     )
     common_options.add_argument(
         "--policy",
         choices=["safe", "unrestricted"],
-        default="safe",
+        default=argparse.SUPPRESS,
         help="Execution gateway policy mode (default: safe)",
+    )
+    common_options.add_argument(
+        "--config",
+        metavar="PATH",
+        default=argparse.SUPPRESS,
+        help="Path to Ether config.toml (default: ~/.ether/config.toml)",
     )
 
     parser = argparse.ArgumentParser(
@@ -99,6 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tool_subs = tool_parser.add_subparsers(dest="tool_action")
     tool_subs.add_parser("list", parents=[common_options], help="List all available tools")
+    tool_search_p = tool_subs.add_parser(
+        "search", parents=[common_options], help="Search tools by keyword or schema"
+    )
+    tool_search_p.add_argument("query", nargs="?", default=None, help="Keyword to search")
+    tool_search_p.add_argument("--accepts", default=None, help="Filter by input schema")
+    tool_search_p.add_argument("--produces", default=None, help="Filter by output schema")
     tool_info_p = tool_subs.add_parser(
         "info", parents=[common_options], help="Show details for a tool"
     )
@@ -113,10 +150,21 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("tool", help="Tool to execute (e.g. nmap, subfinder, gobuster)")
     run_parser.add_argument("target", help="Target IP, hostname, URL, or CIDR")
     run_parser.add_argument(
+        "--profile",
+        default=None,
+        help="Preset flag profile from manifest.toml (e.g. fast, standard, deep)",
+    )
+    run_parser.add_argument(
         "--flags",
-        nargs=argparse.REMAINDER,
-        default=[],
+        default="",
+        type=str,
         help="Extra flags to pass to the tool binary",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Override execution timeout in seconds (default: settings.execution.default_timeout_sec)",
     )
     run_parser.add_argument(
         "-s", "--session-id", dest="session_id", help="Session ID to record findings into"
@@ -142,6 +190,24 @@ def build_parser() -> argparse.ArgumentParser:
     sess_create_p.add_argument(
         "-w", "--workspace-id", dest="workspace_id", help="Target workspace ID"
     )
+    sess_verify_p = session_subs.add_parser(
+        "verify-audit",
+        parents=[common_options],
+        help="Verify cryptographic audit chain and log file integrity for a session",
+    )
+    sess_verify_p.add_argument("session_id", help="Session ID to verify")
+    sess_close_p = session_subs.add_parser(
+        "close",
+        parents=[common_options],
+        help="Forensically seal a session and compress raw log spools to .log.gz",
+    )
+    sess_close_p.add_argument("session_id", help="Session ID to seal and compress")
+    sess_use_p = session_subs.add_parser(
+        "use",
+        parents=[common_options],
+        help="Pin an existing session ID as the active default session",
+    )
+    sess_use_p.add_argument("session_id", help="Session ID to pin as active")
 
     # 5. graph
     graph_parser = subparsers.add_parser(
@@ -153,12 +219,17 @@ def build_parser() -> argparse.ArgumentParser:
     nodes_p = graph_subs.add_parser(
         "list-nodes", parents=[common_options], help="List finding nodes"
     )
-    nodes_p.add_argument("session_id", help="Session ID to inspect")
+    nodes_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
     nodes_p.add_argument(
         "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.host)"
     )
     nodes_p.add_argument(
         "--include-stale", action="store_true", help="Include decayed stale nodes in listing"
+    )
+    nodes_p.add_argument(
+        "--unmask", action="store_true", help="Display sensitive credential attributes in plaintext"
     )
 
     prune_p = graph_subs.add_parser(
@@ -214,6 +285,61 @@ def build_parser() -> argparse.ArgumentParser:
     search_p.add_argument(
         "-t", "--type", dest="type", help="Filter by schema_type (e.g. network.service)"
     )
+    search_p.add_argument(
+        "--unmask", action="store_true", help="Display sensitive credential attributes in plaintext"
+    )
+
+    belief_p = graph_subs.add_parser(
+        "belief",
+        parents=[common_options],
+        help="Inspect Bayesian belief scores and honeypot/tarpit status",
+    )
+    belief_p.add_argument("session_id", help="Session ID to inspect")
+    belief_p.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Re-run Bayesian deception analysis before displaying",
+    )
+
+    attack_path_p = graph_subs.add_parser(
+        "attack-path",
+        parents=[common_options],
+        help="Compute shortest directed attack path between entities",
+    )
+    attack_path_p.add_argument("session_id", help="Session ID")
+    attack_path_p.add_argument("source_id", help="Origin entity ID")
+    attack_path_p.add_argument("target_id", help="Destination entity ID")
+
+    blast_p = graph_subs.add_parser(
+        "blast-radius",
+        parents=[common_options],
+        help="Calculate compromise blast radius for a node",
+    )
+    blast_p.add_argument("session_id", help="Session ID")
+    blast_p.add_argument("node_id", help="Compromised entity ID")
+    blast_p.add_argument(
+        "--max-depth", type=int, default=10, help="Maximum hop depth (default: 10)"
+    )
+
+    jewels_p = graph_subs.add_parser(
+        "crown-jewels",
+        parents=[common_options],
+        help="Identify critical crown-jewel assets in a session",
+    )
+    jewels_p.add_argument("session_id", help="Session ID")
+
+    tree_p = graph_subs.add_parser(
+        "tree",
+        parents=[common_options],
+        help="Display the full session graph (nodes + edges) as an ASCII tree or JSON",
+    )
+    tree_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    tree_p.add_argument("--include-stale", action="store_true", help="Include decayed stale nodes")
+    tree_p.add_argument(
+        "--unmask", action="store_true", help="Display sensitive credential attributes in plaintext"
+    )
 
     # 6. telemetry
     telemetry_parser = subparsers.add_parser(
@@ -229,6 +355,9 @@ def build_parser() -> argparse.ArgumentParser:
     snap_p.add_argument(
         "--max-tokens", dest="max_tokens", type=int, default=4000, help="Max token budget"
     )
+    snap_p.add_argument(
+        "--budget", dest="budget", type=int, default=None, help="Alias for --max-tokens"
+    )
     snap_p.add_argument("--entity-id", dest="entity_id", help="Selected entity node ID")
 
     diff_p = telemetry_subs.add_parser(
@@ -237,6 +366,13 @@ def build_parser() -> argparse.ArgumentParser:
     diff_p.add_argument("session_id", help="Session ID")
     diff_p.add_argument("--action-id", dest="action_id", help="Action ID to diff")
     diff_p.add_argument("--baseline", dest="baseline", help="Baseline timestamp")
+
+    health_p = telemetry_subs.add_parser(
+        "health", parents=[common_options], help="Inspect runtime health, memory, FDs, and metrics"
+    )
+    health_p.add_argument(
+        "--prometheus", action="store_true", help="Output metrics in Prometheus text format"
+    )
 
     # 7. logs
     logs_parser = subparsers.add_parser(
@@ -247,6 +383,28 @@ def build_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument("--limit", type=int, default=50, help="Number of lines to tail")
     logs_parser.add_argument(
         "--crashes", action="store_true", help="Show recent unhandled crash summary"
+    )
+    logs_parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="Enforce log retention quota and compress historical logs",
+    )
+    logs_parser.add_argument(
+        "--max-disk-mb",
+        type=int,
+        default=1000,
+        help="Maximum log directory size in MB (default: 1000)",
+    )
+    logs_parser.add_argument(
+        "--max-age-days",
+        type=int,
+        default=30,
+        help="Maximum age for log retention in days (default: 30)",
+    )
+    logs_parser.add_argument(
+        "--include-forensic",
+        action="store_true",
+        help="Force compression and pruning of audit_manifest-tracked forensic logs",
     )
 
     # 8. mcp
@@ -278,6 +436,144 @@ def build_parser() -> argparse.ArgumentParser:
         default="127.0.0.1",
         help="Host for SSE transport (default: 127.0.0.1)",
     )
+    mcp_parser.add_argument(
+        "--auth-token",
+        dest="auth_token",
+        default=None,
+        help="Bearer authentication token for MCP SSE endpoints (or ETHER_MCP_AUTH_TOKEN env var)",
+    )
+
+    # 9. pipeline
+    pipeline_parser = subparsers.add_parser(
+        "pipeline",
+        parents=[common_options],
+        help="Execute chained tool pipeline DAG (e.g. 'subfinder | dnspython | http_probe')",
+    )
+    pipeline_parser.add_argument("expression", help="Pipeline expression string")
+    pipeline_parser.add_argument(
+        "-s",
+        "--session",
+        dest="session",
+        help="Session ID to associate findings with",
+    )
+
+    # 10. drift
+    drift_parser = subparsers.add_parser(
+        "drift",
+        parents=[common_options],
+        help="Audit architectural drift against baseline ground truth",
+    )
+    drift_subs = drift_parser.add_subparsers(dest="drift_action")
+    drift_export_p = drift_subs.add_parser(
+        "export-baseline",
+        parents=[common_options],
+        help="Export session graph as ground-truth baseline JSON",
+    )
+    drift_export_p.add_argument("session_id", help="Session ID to export")
+    drift_export_p.add_argument(
+        "-o", "--out", dest="out", help="Output file path for baseline JSON"
+    )
+
+    drift_audit_p = drift_subs.add_parser(
+        "audit",
+        parents=[common_options],
+        help="Audit session graph against baseline JSON",
+    )
+    drift_audit_p.add_argument("session_id", help="Session ID to audit")
+    drift_audit_p.add_argument(
+        "-b",
+        "--baseline",
+        required=True,
+        dest="baseline",
+        help="Path to ground-truth baseline JSON file",
+    )
+    drift_audit_p.add_argument(
+        "-m",
+        "--mode",
+        choices=["topology", "strict"],
+        default="topology",
+        help="Evaluation mode (default: topology)",
+    )
+    drift_audit_p.add_argument(
+        "-r",
+        "--record",
+        action="store_true",
+        help="Record AuditDrift findings into session graph",
+    )
+
+    # 11. config
+    config_parser = subparsers.add_parser(
+        "config",
+        parents=[common_options],
+        help="Inspect unified Ether configuration and config.toml path",
+    )
+    config_subs = config_parser.add_subparsers(dest="config_action")
+    config_show_p = config_subs.add_parser(
+        "show", parents=[common_options], help="Display resolved EtherSettings"
+    )
+    config_show_p.add_argument(
+        "--unmask",
+        action="store_true",
+        help="Include unmasked auth tokens in output",
+    )
+    config_subs.add_parser("path", parents=[common_options], help="Print active config.toml path")
+    config_init_p = config_subs.add_parser(
+        "init", parents=[common_options], help="Generate a starter config.toml"
+    )
+    config_init_p.add_argument(
+        "--force", action="store_true", help="Overwrite existing config.toml if present"
+    )
+
+    # 12. status / ps / kill / report
+    status_p = subparsers.add_parser(
+        "status",
+        parents=[common_options],
+        help="Show one-glance status for the active or specified session",
+    )
+    status_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    status_p.add_argument(
+        "-s", "--session-id", dest="session_id_opt", default=None, help="Session ID"
+    )
+
+    ps_p = subparsers.add_parser(
+        "ps",
+        parents=[common_options],
+        help="List running and recent actions for the active or specified session",
+    )
+    ps_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    ps_p.add_argument("-s", "--session-id", dest="session_id_opt", default=None, help="Session ID")
+    ps_p.add_argument("--limit", type=int, default=25, help="Maximum actions to list (default: 25)")
+
+    kill_p = subparsers.add_parser(
+        "kill",
+        parents=[common_options],
+        help="Abort/close a running or orphaned action by ID",
+    )
+    kill_p.add_argument("action_id", help="Action UUID to abort/close")
+    kill_p.add_argument("-s", "--session-id", dest="session_id", default=None, help="Session ID")
+
+    report_p = subparsers.add_parser(
+        "report",
+        parents=[common_options],
+        help="Compile a Markdown or JSON engagement report from the session graph",
+    )
+    report_p.add_argument(
+        "session_id", nargs="?", default=None, help="Session ID (defaults to active session)"
+    )
+    report_p.add_argument(
+        "-s", "--session-id", dest="session_id_opt", default=None, help="Session ID"
+    )
+    report_p.add_argument(
+        "--format", choices=["md", "json"], default="md", help="Report format (default: md)"
+    )
+    report_p.add_argument("-o", "--output", dest="output", help="Write report to file path")
+    report_p.add_argument(
+        "--unmask", action="store_true", help="Include plaintext credentials in report"
+    )
 
     return parser
 
@@ -297,10 +593,297 @@ def _run_coroutine(coro):
     return asyncio.run(coro)
 
 
+def normalize_cli_args(argv: Optional[List[str]] = None) -> List[str]:
+    """Pre-normalize CLI argument vector for 100% positional and keyword parameter symmetry."""
+    if argv is None:
+        argv = sys.argv[1:]
+    else:
+        argv = list(argv)
+
+    if not argv:
+        return argv
+
+    subcmd_idx = -1
+    subcommands = {
+        "doctor",
+        "tool",
+        "run",
+        "session",
+        "graph",
+        "telemetry",
+        "logs",
+        "mcp",
+        "pipeline",
+        "drift",
+    }
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in subcommands:
+            subcmd_idx = i
+            break
+        if arg in ("--data-dir", "--db", "--tools", "--policy"):
+            i += 2
+            continue
+        i += 1
+
+    if subcmd_idx == -1:
+        return argv
+
+    subcmd = argv[subcmd_idx]
+    prefix = argv[: subcmd_idx + 1]
+    rest = argv[subcmd_idx + 1 :]
+
+    # Hoist boolean flags (-j, --json, -v, --verbose) appearing before sub-actions to preserve symmetry
+    if subcmd in ("session", "tool", "graph", "telemetry", "drift") and rest:
+        hoisted_flags = []
+        cleaned_rest = []
+        for t in rest:
+            if t in ("-j", "--json", "-v", "--verbose"):
+                hoisted_flags.append(t)
+            else:
+                cleaned_rest.append(t)
+        rest = cleaned_rest + hoisted_flags
+
+    if subcmd == "run":
+        new_rest = []
+        tool_val = None
+        target_val = None
+        idx = 0
+        while idx < len(rest):
+            token = rest[idx]
+            if token == "--flags":
+                new_rest.extend(rest[idx:])
+                break
+            elif token == "--tool":
+                if idx + 1 < len(rest):
+                    tool_val = rest[idx + 1]
+                    idx += 2
+                    continue
+            elif token.startswith("--tool="):
+                tool_val = token.split("=", 1)[1]
+                idx += 1
+                continue
+            elif token == "--target":
+                if idx + 1 < len(rest):
+                    target_val = rest[idx + 1]
+                    idx += 2
+                    continue
+            elif token.startswith("--target="):
+                target_val = token.split("=", 1)[1]
+                idx += 1
+                continue
+            new_rest.append(token)
+            idx += 1
+
+        pos_args = []
+        opt_args = []
+        j = 0
+        while j < len(new_rest):
+            t = new_rest[j]
+            if t.startswith("-"):
+                opt_args.extend(new_rest[j:])
+                break
+            pos_args.append(t)
+            j += 1
+
+        final_pos = list(pos_args)
+        if len(final_pos) == 0 and tool_val:
+            final_pos.append(tool_val)
+        if len(final_pos) == 1 and target_val:
+            final_pos.append(target_val)
+
+        return prefix + final_pos + opt_args
+
+    elif subcmd == "session":
+        if rest and rest[0] == "list":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            if len(sub_rest) == 1 and not sub_rest[0].startswith("-"):
+                return prefix + sub_prefix + ["--workspace-id", sub_rest[0]]
+            return prefix + rest
+        elif rest and rest[0] == "create":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            new_sub_rest = []
+            name_val = None
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token == "--name":
+                    if idx + 1 < len(sub_rest):
+                        name_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--name="):
+                    name_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if name_val:
+                return prefix + sub_prefix + [name_val] + new_sub_rest
+            return prefix + rest
+        elif rest and rest[0] in ("verify-audit", "close"):
+            sub_action = rest[0]
+            sub_prefix = [sub_action]
+            sub_rest = rest[1:]
+            sess_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+
+    elif subcmd == "tool":
+        if rest and rest[0] == "info":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            name_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("--name", "--tool"):
+                    if idx + 1 < len(sub_rest):
+                        name_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--name=") or token.startswith("--tool="):
+                    name_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if name_val:
+                return prefix + sub_prefix + [name_val] + new_sub_rest
+            return prefix + rest
+
+    elif subcmd == "graph":
+        if rest and rest[0] in ("list-nodes", "prune", "search", "belief", "crown-jewels"):
+            sub_action = rest[0]
+            sub_prefix = [sub_action]
+            sub_rest = rest[1:]
+            sess_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+        elif rest and rest[0] == "export":
+            sub_prefix = [rest[0]]
+            sub_rest = rest[1:]
+            sess_val = None
+            out_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                elif token in ("-o", "--output"):
+                    if idx + 1 < len(sub_rest):
+                        out_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--output="):
+                    out_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            pos = [t for t in new_sub_rest if not t.startswith("-")]
+            opts = [t for t in new_sub_rest if t.startswith("-")]
+            if sess_val and out_val:
+                return prefix + sub_prefix + [sess_val] + opts + ["-o", out_val]
+            elif sess_val and len(pos) == 1:
+                return prefix + sub_prefix + [sess_val] + opts + ["-o", pos[0]]
+            elif len(pos) == 2 and not out_val:
+                return prefix + sub_prefix + [pos[0]] + opts + ["-o", pos[1]]
+            elif sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+
+    elif subcmd == "drift":
+        if rest and rest[0] in ("export-baseline", "audit"):
+            sub_action = rest[0]
+            sub_prefix = [sub_action]
+            sub_rest = rest[1:]
+            sess_val = None
+            new_sub_rest = []
+            idx = 0
+            while idx < len(sub_rest):
+                token = sub_rest[idx]
+                if token in ("-s", "--session-id", "--session"):
+                    if idx + 1 < len(sub_rest):
+                        sess_val = sub_rest[idx + 1]
+                        idx += 2
+                        continue
+                elif token.startswith("--session-id=") or token.startswith("--session="):
+                    sess_val = token.split("=", 1)[1]
+                    idx += 1
+                    continue
+                new_sub_rest.append(token)
+                idx += 1
+            if sess_val:
+                return prefix + sub_prefix + [sess_val] + new_sub_rest
+            return prefix + rest
+
+    return prefix + rest
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """CLI execution entrypoint."""
+    if argv is None:
+        argv = sys.argv[1:]
+    normalized_argv = normalize_cli_args(argv)
+    # Rewrite `--flags <val>` to `--flags=<val>` so argparse never treats `-p 80` or `-v` as a CLI option
+    safe_argv: List[str] = []
+    idx = 0
+    while idx < len(normalized_argv):
+        tok = normalized_argv[idx]
+        if tok == "--flags" and idx + 1 < len(normalized_argv):
+            safe_argv.append(f"--flags={normalized_argv[idx + 1]}")
+            idx += 2
+        else:
+            safe_argv.append(tok)
+            idx += 1
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(safe_argv)
 
     if not args.subcommand:
         parser.print_help()
@@ -315,6 +898,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.subcommand == "tool":
             if args.tool_action == "info":
                 return handle_tool_info(args, context)
+            elif args.tool_action == "search":
+                return handle_tool_search(args, context)
             return handle_tool_list(args, context)
 
         elif args.subcommand == "run":
@@ -323,6 +908,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.subcommand == "session":
             if args.session_action == "create":
                 return _run_coroutine(handle_session_create(args, context))
+            elif args.session_action == "verify-audit":
+                return _run_coroutine(handle_session_verify_audit(args, context))
+            elif args.session_action == "close":
+                return _run_coroutine(handle_session_close(args, context))
+            elif args.session_action == "use":
+                return _run_coroutine(handle_session_use(args, context))
             return _run_coroutine(handle_session_list(args, context))
 
         elif args.subcommand == "graph":
@@ -334,11 +925,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _run_coroutine(handle_graph_prune(args, context))
             elif args.graph_action == "search":
                 return _run_coroutine(handle_graph_search(args, context))
+            elif args.graph_action == "belief":
+                return _run_coroutine(handle_graph_belief(args, context))
+            elif args.graph_action == "attack-path":
+                return _run_coroutine(handle_graph_attack_path(args, context))
+            elif args.graph_action == "blast-radius":
+                return _run_coroutine(handle_graph_blast_radius(args, context))
+            elif args.graph_action == "crown-jewels":
+                return _run_coroutine(handle_graph_crown_jewels(args, context))
+            elif args.graph_action == "tree":
+                return _run_coroutine(handle_graph_tree(args, context))
             return _run_coroutine(handle_graph_list_nodes(args, context))
 
         elif args.subcommand == "telemetry":
             if args.telemetry_action == "diff":
                 return _run_coroutine(handle_telemetry_diff(args, context))
+            elif args.telemetry_action == "health":
+                return _run_coroutine(handle_telemetry_health(args, context))
             return _run_coroutine(handle_telemetry_snapshot(args, context))
 
         elif args.subcommand == "logs":
@@ -346,6 +949,37 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         elif args.subcommand == "mcp":
             return _run_coroutine(handle_mcp(args, context))
+
+        elif args.subcommand == "pipeline":
+            return _run_coroutine(handle_pipeline_run(args, context))
+
+        elif args.subcommand == "drift":
+            if args.drift_action == "export-baseline":
+                return _run_coroutine(handle_drift_export_baseline(args, context))
+            elif args.drift_action == "audit":
+                return _run_coroutine(handle_drift_audit(args, context))
+            else:
+                parser.print_help()
+                return EXIT_USAGE_ERROR
+
+        elif args.subcommand == "config":
+            if getattr(args, "config_action", None) == "path":
+                return handle_config_path(args, context)
+            elif getattr(args, "config_action", None) == "init":
+                return handle_config_init(args, context)
+            return handle_config_show(args, context)
+
+        elif args.subcommand == "status":
+            return _run_coroutine(handle_status(args, context))
+
+        elif args.subcommand == "ps":
+            return _run_coroutine(handle_ps(args, context))
+
+        elif args.subcommand == "kill":
+            return _run_coroutine(handle_kill(args, context))
+
+        elif args.subcommand == "report":
+            return _run_coroutine(handle_report(args, context))
 
         else:
             parser.print_help()
