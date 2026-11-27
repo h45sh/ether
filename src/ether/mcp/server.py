@@ -44,7 +44,7 @@ class EtherMCPServer(MCPServer):
 
                 kwargs["version"] = ether.__version__
             except Exception:
-                kwargs["version"] = "0.1.3"
+                kwargs["version"] = "0.1.4"
         super().__init__(*args, **kwargs)
         self.auth_token = auth_token
         self.security_middleware = security_middleware

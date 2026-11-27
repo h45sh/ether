@@ -5,9 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [0.1.4] - 2026-11-24
+## [0.1.4] - 2026-11-27
 
-### Hardened Core, Sandbox Integrity & Forensic Telemetry Substrate (Epoch 3 Section 5)
+### Hardened Core, Sandbox Integrity, Pre-Epoch 4 Gate & Adapter Seams (Epoch 3 Sections 5–9)
 
 #### Forensic Telemetry & Cryptographic Audit Trails
 * **Cryptographic Hash Chaining (`ForensicLogManager`)**: Every supervised tool execution automatically appends an `AuditRecord` containing SHA-256 hashes of the action payload, raw output log file, previous audit record hash, and chained block hash.

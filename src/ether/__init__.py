@@ -24,7 +24,7 @@ try:
 
     __version__ = version("ether-core")
 except (PackageNotFoundError, ImportError):
-    __version__ = "0.1.3"
+    __version__ = "0.1.4"
 
 __all__ = [
     "ActionGateway",
